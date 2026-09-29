@@ -24,8 +24,9 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import java.util.concurrent.Executors
 
-/** Hosts Home, App Drawer, Library and Settings; delegates media to WatchPlayer/ReaderPanel and state to LauncherState. */
+/** Hosts Home, App Drawer, Library and Settings; delegates media to WatchPlayer/ReaderPanel, state to LauncherState and input mapping to RemoteControls. */
 class MainActivity : Activity() {
+    private lateinit var remote: RemoteControls
     private lateinit var state: LauncherState
     private lateinit var ui: LauncherUi
     private lateinit var root: LinearLayout
@@ -47,6 +48,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         state = LauncherState(this)
+        remote = RemoteControls(this)
         pickerMode = savedInstanceState?.getString("pickerMode") ?: state.mode
         if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver,
             IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
@@ -323,6 +325,7 @@ class MainActivity : Activity() {
                 state.favouriteCount = listOf(4, 6, 8)[index]; settings()
             }.show()
         })
+        content.addView(ui.button("Remote buttons") { remoteSettings() })
         content.addView(ui.button("Arrange favourites") { manageFavourites() })
         content.addView(ui.button("Set as default launcher") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) })
         content.addView(ui.button("Mode · ${state.mode}") { chooseMode() })
@@ -349,6 +352,50 @@ class MainActivity : Activity() {
         content.addView(ui.label("${display.name}\n${mode.physicalWidth} × ${mode.physicalHeight} · ${mode.refreshRate.toInt()} Hz", 17f))
         content.addView(ui.label("CEC, charging bypass and e-paper refresh need device-specific support. No hardware capability has been assumed.", 16f))
         content.addView(ui.label("Snapplication · Private development\nAll features free. No launcher advertisements or paid feature gates.", 16f))
+    }
+
+    /** Shows real learned keys and controls for mapping or resetting launcher-only remote actions. */
+    private fun remoteSettings() {
+        begin("Remote buttons")
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        content.addView(ui.label("Connect your remote through Android's Bluetooth settings or USB, then choose an action below.", 17f))
+        content.addView(ui.label("Mappings apply to launcher screens. Text fields, dialogs and other apps keep normal controls. Back, power, volume and system Home cannot be reassigned. Hold Back on any launcher screen to reset all mappings if navigation becomes difficult. Assigning an action again replaces its previous button on that remote.", 16f))
+        content.addView(ui.label(remote.summary(), 16f))
+        remote.actions.forEach { action ->
+            content.addView(ui.button("Map $action") { remote.learn(action) { remoteSettings() } })
+        }
+        content.addView(ui.button("Reset all remote buttons") {
+            AlertDialog.Builder(this).setTitle("Reset remote buttons?").setMessage("Remove all custom assignments and restore normal controls.")
+                .setNegativeButton("Cancel", null).setPositiveButton("Reset") { _, _ -> remote.reset(); remoteSettings() }.show()
+        })
+    }
+
+    /** Applies saved remote keys only in this activity, preserving text entry and paired key events. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (!::remote.isInitialized) return super.dispatchKeyEvent(event)
+        // Physical Back is never remapped and offers recovery even when Select has been reassigned.
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_DOWN && event.isLongPress) {
+            remote.reset(); remote.clearHeldButtons()
+            message("Remote buttons reset. Standard controls restored.")
+            return true
+        }
+        val action = remote.assignment(event, currentFocus is EditText) ?: return super.dispatchKeyEvent(event)
+        remote.navigationEvent(event, action)?.let { return super.dispatchKeyEvent(it) }
+        if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled) {
+            when (action) {
+                "Home" -> home()
+                "Apps" -> drawer()
+                "Back" -> if (screen != "Home") home()
+            }
+        }
+        return true
+    }
+
+    /** Prevents a release from an earlier window from triggering a launcher shortcut. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus && ::remote.isInitialized) remote.clearHeldButtons()
     }
 
     /** Stores user-selected custom colours after validating both values. */
