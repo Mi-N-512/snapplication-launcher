@@ -103,14 +103,17 @@ class MainActivity : Activity() {
         val body = ui.column(landscape)
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         val panel = FrameLayout(this).apply { setBackgroundColor(ui.surface) }
-        val favourites = state.favourites()
+        val favourites = state.favourites().filter { flat ->
+            val component = ComponentName.unflattenFromString(flat)
+            component != null && runCatching { packageManager.getActivityInfo(component, 0) }.isSuccess
+        }.take(state.favouriteCount)
         if (landscape) {
-            body.addView(favouriteColumn(favourites.take((favourites.size + 1) / 2)), LinearLayout.LayoutParams(0, -1, 0.15f))
+            body.addView(favouriteColumn(favourites.take(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.15f))
             body.addView(panel, LinearLayout.LayoutParams(0, -1, 0.70f))
-            body.addView(favouriteColumn(favourites.drop((favourites.size + 1) / 2)), LinearLayout.LayoutParams(0, -1, 0.15f))
+            body.addView(favouriteColumn(favourites.drop(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.15f))
         } else {
             body.addView(panel, LinearLayout.LayoutParams(-1, 0, 0.60f))
-            body.addView(favouriteColumn(favourites), LinearLayout.LayoutParams(-1, 0, 0.40f))
+            body.addView(favouriteColumn(favourites, portrait = true), LinearLayout.LayoutParams(-1, 0, 0.40f))
         }
         val last = state.last(state.mode)
         if (last == null) {
@@ -131,22 +134,65 @@ class MainActivity : Activity() {
         root.addView(ui.button("⌃ All apps") { drawer() })
     }
 
-    /** Builds favourite app controls, resolving labels and icons from installed applications. */
-    private fun favouriteColumn(components: List<String>): ScrollView {
+    /** Builds the reference's portrait grid or landscape strip with accessible icon labels. */
+    private fun favouriteColumn(components: List<String>, portrait: Boolean = false): ScrollView {
         val column = ui.column()
-        if (components.isEmpty()) column.addView(ui.label("Long-press an app to add favourites", 14f))
-        components.forEach { flat ->
-            val component = ComponentName.unflattenFromString(flat) ?: return@forEach
-            val info = runCatching { packageManager.getActivityInfo(component, 0) }.getOrNull() ?: return@forEach
-            val label = info.loadLabel(packageManager).toString()
-            val button = ui.button(if (state.grid) "" else label) { launch(component) }
-            val icon = info.loadIcon(packageManager).apply { setBounds(0, 0, ui.dp(22), ui.dp(22)) }
-            button.setCompoundDrawables(icon, null, null, null)
-            button.contentDescription = label
-            button.setOnLongClickListener { state.toggleFavourite(flat); home(); true }
-            column.addView(button, LinearLayout.LayoutParams(-1, ui.dp(56)))
+        if (components.isEmpty()) column.addView(ui.label("Add favourites from Apps", 14f))
+        val columns = if (state.grid && portrait) state.favouriteCount / 2 else 1
+        components.chunked(columns).forEach { group ->
+            val row = ui.column(true)
+            group.forEach { flat ->
+                val component = ComponentName.unflattenFromString(flat) ?: return@forEach
+                val info = runCatching { packageManager.getActivityInfo(component, 0) }.getOrNull() ?: return@forEach
+                val label = info.loadLabel(packageManager).toString()
+                val button = ui.button(if (state.grid) "" else label) { launch(component) }
+                val icon = info.loadIcon(packageManager).apply { setBounds(0, 0, ui.dp(28), ui.dp(28)) }
+                button.setCompoundDrawables(null, icon, null, null)
+                button.gravity = android.view.Gravity.CENTER
+                button.contentDescription = label
+                button.tooltipText = label
+                button.setOnLongClickListener { favouriteActions(flat, label) { home() }; true }
+                row.addView(button, LinearLayout.LayoutParams(0, ui.dp(if (state.grid) 64 else 80), 1f)
+                    .apply { setMargins(ui.dp(2), ui.dp(2), ui.dp(2), ui.dp(2)) })
+            }
+            repeat(columns - group.size) { row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
+            column.addView(row)
         }
         return ScrollView(this).apply { addView(column) }
+    }
+
+    /** Offers explicit reorder/remove actions without requiring drag gestures or accidental removal. */
+    private fun favouriteActions(flat: String, label: String, refresh: () -> Unit) {
+        val items = state.favourites()
+        val index = items.indexOf(flat)
+        if (index < 0) return
+        val actions = mutableListOf<String>()
+        if (index > 0) actions.add("Move earlier")
+        if (index < items.lastIndex) actions.add("Move later")
+        actions.add("Remove favourite")
+        AlertDialog.Builder(this).setTitle(label).setItems(actions.toTypedArray()) { _, selected ->
+            when (actions[selected]) {
+                "Move earlier" -> state.moveFavourite(flat, -1)
+                "Move later" -> state.moveFavourite(flat, 1)
+                else -> state.toggleFavourite(flat)
+            }
+            refresh()
+        }.setNegativeButton("Cancel", null).show()
+    }
+
+    /** Lists every saved favourite, including hidden and unavailable apps, for touch or remote editing. */
+    private fun manageFavourites() {
+        begin("Favourites")
+        val column = ui.column()
+        root.addView(ScrollView(this).apply { addView(column) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        column.addView(ui.label("Choose an app to move or remove it. Home shows the first ${state.favouriteCount} available apps.", 17f))
+        state.favourites().forEachIndexed { index, flat ->
+            val component = ComponentName.unflattenFromString(flat)
+            val label = component?.let { runCatching { packageManager.getActivityInfo(it, 0).loadLabel(packageManager).toString() }.getOrNull() }
+                ?: "Unavailable app · ${component?.packageName ?: flat}"
+            column.addView(ui.button("${index + 1}. $label") { favouriteActions(flat, label) { manageFavourites() } })
+        }
+        column.addView(ui.button("Add favourites from Apps") { drawer() })
     }
 
     /** Lists actual launchable apps and filters names; long-press toggles favourites. */
@@ -271,7 +317,13 @@ class MainActivity : Activity() {
                 if (state.theme == "Custom") customColours() else settings()
             }.show()
         })
-        content.addView(ui.button("Favourites · ${if (state.grid) "Icons" else "List"}") { state.grid = !state.grid; settings() })
+        content.addView(ui.button("Favourites · ${if (state.grid) "Grid" else "List"}") { state.grid = !state.grid; settings() })
+        content.addView(ui.button("Visible favourites · ${state.favouriteCount}") {
+            AlertDialog.Builder(this).setTitle("Visible favourites").setItems(arrayOf("4", "6", "8")) { _, index ->
+                state.favouriteCount = listOf(4, 6, 8)[index]; settings()
+            }.show()
+        })
+        content.addView(ui.button("Arrange favourites") { manageFavourites() })
         content.addView(ui.button("Set as default launcher") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) })
         content.addView(ui.button("Mode · ${state.mode}") { chooseMode() })
         val threshold = ui.label("Next episode after ${state.completion}%", 18f)

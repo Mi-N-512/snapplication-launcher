@@ -10,12 +10,14 @@ This is a private development checkpoint, not a completed V1 or a release.
 - Actual Media3 video playback in the home panel, media-session controls, saved playback position and ordered local episode queues.
 - Configurable completion threshold to stage the next local episode when the screen turns off.
 - Local PDF, CBZ and image reading with saved page position, natural comic page ordering, bounded decoding and one cached document copy per selection.
-- Favourite app shortcuts, list/icon choices, dark/light/OLED/Material You/custom/e-paper colour choices.
+- Favourite app shortcuts, list/grid choices, 4/6/8 visible items and touch/remote-accessible reorder and removal controls; dark/light/OLED/Material You/custom/e-paper colour choices.
 - Class responsibility and relationship comments and documented methods.
 
 ## Evidence
 
 On the Android 15 emulator on 23 September 2026, a local sample video played visibly inside the home panel and the media session reported PLAYING. A three-page PDF reopened at page two after force-stop and restart. A CBZ containing 1.png, 10.png and 2.png displayed page two before page ten. The first visual check exposed system-bar overlap, which was corrected with window insets; the subsequent screenshots showed the corrected layout. The narrow portrait folder button was subsequently shortened to avoid wrapping.
+
+On 29 September 2026, the favourites layout and arrangement changes passed debug compilation and lint (no errors). Their visual and interaction checks remain pending because the dedicated emulator did not connect to adb during this checkpoint.
 
 Five unit tests cover numeric page ordering, long numeric filenames, completion thresholds, unknown-duration media and zero/100-percent boundaries. These tests do not prove hardware compatibility or every launcher feature.
 
@@ -24,7 +26,7 @@ Five unit tests cover numeric page ordering, long numeric filenames, completion 
 - Final device testing on the Huawei Mate 10 Pro, USB-C HDMI hub and air mouse.
 - Broader directional-navigation and accessibility checks; configurable remote mapping.
 - End-to-end screen-off episode transition and reboot resume tests on the final code.
-- Favourite reordering, full 4/6/8-item grid layouts and closer final design fidelity.
+- Emulator verification of favourite reordering and 4/6/8-item layouts, followed by closer final design fidelity.
 - Custom colour picker UI and user-supplied wallpaper integration.
 - External-app resume behavior where those apps expose supported APIs; no universal process suspension guarantee.
 - E-paper refresh capability detection and supported vendor integration; colour changes alone do not clear physical ghosting.

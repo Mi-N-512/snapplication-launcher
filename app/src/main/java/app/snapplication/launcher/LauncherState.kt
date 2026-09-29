@@ -19,6 +19,9 @@ class LauncherState(context: Context) {
     var grid: Boolean
         get() = prefs.getBoolean("grid", false)
         set(value) { prefs.edit().putBoolean("grid", value).apply() }
+    var favouriteCount: Int
+        get() = prefs.getInt("favouriteCount", 4).takeIf { it in listOf(4, 6, 8) } ?: 4
+        set(value) { require(value in listOf(4, 6, 8)); prefs.edit().putInt("favouriteCount", value).apply() }
     var accent: Int
         get() = prefs.getInt("accent", 0xffd0bcff.toInt())
         set(value) { prefs.edit().putInt("accent", value).apply() }
@@ -84,6 +87,16 @@ class LauncherState(context: Context) {
     fun toggleFavourite(component: String) {
         val items = favourites().toMutableList()
         if (!items.remove(component)) items.add(component)
+        prefs.edit().putString("favourites", JSONArray(items).toString()).apply()
+    }
+
+    /** Moves an existing shortcut one place without deleting favourites hidden by the display limit. */
+    fun moveFavourite(component: String, offset: Int) {
+        val items = favourites().toMutableList()
+        val from = items.indexOf(component)
+        val to = from + offset
+        if (from < 0 || to !in items.indices) return
+        items.add(to, items.removeAt(from))
         prefs.edit().putString("favourites", JSONArray(items).toString()).apply()
     }
 }
