@@ -14,6 +14,7 @@ This is a private development checkpoint, not a completed V1 or a release.
 - Per-device remote button learning for directions, Select, Back, Home and Apps; normal text/dialog input, paired press handling, and a physical hold-Back recovery reset.
 - Visual custom-colour picker with hue/saturation/brightness gradients and preview; Save commits both colours, Cancel preserves the current theme.
 - Optional Android system wallpaper behind Home, with a system picker for static or installed live wallpapers.
+- Refreshable device diagnostics: Android/device version, battery level and temperature, charging state, supported thermal status, display modes and input-device sources.
 - Class responsibility and relationship comments and documented methods.
 
 ## Evidence
@@ -33,7 +34,7 @@ Five unit tests cover numeric page ordering, long numeric filenames, completion 
 - Device/emulator interaction and visual checks for the custom colour picker and static/live wallpaper integration.
 - External-app resume behavior where those apps expose supported APIs; no universal process suspension guarantee.
 - E-paper refresh capability detection and supported vendor integration; colour changes alone do not clear physical ghosting.
-- Thermal/display diagnostics, screen-control feasibility and opt-in macro support.
+- Physical validation of thermal/display diagnostics, foreground temperature alerts, screen-control feasibility and opt-in macro support.
 - Cleanup of lint warnings, broader error-case tests and the requested Design Report artifact.
 
 HDMI CEC, bypass charging and independent phone/display power control must be tested for actual device support. No simulated success controls are included. The project does not require root.
@@ -49,3 +50,7 @@ Device-specific persistence uses Android [InputDevice descriptors](https://devel
 ## Appearance checkpoint — 30 September 2026
 
 The colour picker, cancel behavior and wallpaper controls pass debug compilation, unit tests and lint without errors. The picker uses generated view IDs and Android 8-compatible touch sizing. Visual/device verification remains pending. Wallpaper rendering uses Android’s [FLAG_SHOW_WALLPAPER](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_SHOW_WALLPAPER) with a transparent window background and a tinted Home surface; picking wallpaper is a user-confirmed system action that changes the device wallpaper.
+
+## Device diagnostics checkpoint — 30 September 2026
+
+Debug compilation, existing unit tests and lint pass. Runtime sensor values still require device validation. The screen takes an on-demand snapshot and does not monitor temperature while another screen or app is open. Android battery data comes from [BatteryManager](https://developer.android.com/reference/android/os/BatteryManager); system thermal status uses [PowerManager](https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus()) on Android 10 and later. Display mode availability does not prove hub/CEC compatibility.

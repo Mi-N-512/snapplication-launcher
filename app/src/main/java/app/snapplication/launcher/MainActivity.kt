@@ -359,12 +359,23 @@ class MainActivity : Activity() {
             })
         })
         content.addView(ui.label("On screen-off, stage the next local episode when this percentage is reached. Playback stays paused until you return.", 16f))
-        content.addView(ui.label("Display and hardware", 22f))
-        val display = windowManager.defaultDisplay
-        val mode = display.mode
-        content.addView(ui.label("${display.name}\n${mode.physicalWidth} × ${mode.physicalHeight} · ${mode.refreshRate.toInt()} Hz", 17f))
+        content.addView(ui.button("Device diagnostics") { diagnostics() })
         content.addView(ui.label("CEC, charging bypass and e-paper refresh need device-specific support. No hardware capability has been assumed.", 16f))
         content.addView(ui.label("Snapplication · Private development\nAll features free. No launcher advertisements or paid feature gates.", 16f))
+    }
+
+    /** Shows a refreshable hardware snapshot without registering background monitors or requiring root. */
+    private fun diagnostics() {
+        begin("Device diagnostics")
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val values = ui.label("", 17f)
+        val reader = DeviceDiagnostics(this)
+        val refresh = ui.button("Refresh device information") { values.text = reader.snapshot() }
+        content.addView(refresh)
+        values.text = reader.snapshot()
+        content.addView(values)
+        content.addView(ui.label("These are Android-reported values at the last refresh. They do not verify CEC, charging bypass, independent display power or e-paper refresh support.", 16f))
     }
 
     /** Shows real learned keys and controls for mapping or resetting launcher-only remote actions. */
