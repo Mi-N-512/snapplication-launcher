@@ -216,6 +216,7 @@ class MainActivity : Activity() {
     private fun drawer() {
         begin("Apps")
         val search = EditText(this).apply { hint = "Search apps"; setTextColor(ui.text); setHintTextColor(ui.text) }
+        root.addView(ui.button("Other app playback") { externalPlayback() })
         root.addView(search)
         val list = ui.column()
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -372,6 +373,14 @@ class MainActivity : Activity() {
         content.addView(ui.button("Device diagnostics") { diagnostics() })
         content.addView(ui.label("CEC, charging bypass and e-paper refresh need device-specific support. No hardware capability has been assumed.", 16f))
         content.addView(ui.label("Snapplication · Private development\nAll features free. No launcher advertisements or paid feature gates.", 16f))
+    }
+
+    /** Opens optional external media controls without loading providers or taking ownership of their playback. */
+    private fun externalPlayback() {
+        begin("Other app playback")
+        val panel = ExternalPlaybackPanel(this, ui)
+        root.addView(ScrollView(this).apply { addView(panel.view) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        panel.refresh()
     }
 
     /** Shows a refreshable hardware snapshot without registering background monitors or requiring root. */
