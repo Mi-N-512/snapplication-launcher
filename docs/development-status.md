@@ -15,6 +15,7 @@ This is a private development checkpoint, not a completed V1 or a release.
 - Visual custom-colour picker with hue/saturation/brightness gradients and preview; Save commits both colours, Cancel preserves the current theme.
 - Optional Android system wallpaper behind Home, with a system picker for static or installed live wallpapers.
 - Refreshable device diagnostics: Android/device version, battery level and temperature, charging state, supported thermal status, display modes and input-device sources.
+- Foreground thermal notices based on Android severe-to-shutdown statuses, sampled every 15 seconds while the launcher is visible. Monitoring stops when the activity stops.
 - Class responsibility and relationship comments and documented methods.
 
 ## Evidence
@@ -23,7 +24,7 @@ On the Android 15 emulator on 23 September 2026, a local sample video played vis
 
 On 29 September 2026, the favourites layout and arrangement changes passed debug compilation and lint (no errors). Their visual and interaction checks remain pending because the dedicated emulator initially started suspended. Restarting it with approved host permissions restored boot, but adb reports unauthorized even after reconnecting and restarting the server. Emulator and host public keys match. Remote settings compile and pass lint; their interaction behavior is not yet verified.
 
-Five unit tests cover numeric page ordering, long numeric filenames, completion thresholds, unknown-duration media and zero/100-percent boundaries. These tests do not prove hardware compatibility or every launcher feature.
+Seven unit tests cover numeric page ordering, long numeric filenames, completion thresholds, unknown-duration media and zero/100-percent boundaries, and thermal warning thresholds including unknown/missing readings. These tests do not prove hardware compatibility or every launcher feature.
 
 ## Still required before V1 completion
 
@@ -34,7 +35,7 @@ Five unit tests cover numeric page ordering, long numeric filenames, completion 
 - Device/emulator interaction and visual checks for the custom colour picker and static/live wallpaper integration.
 - External-app resume behavior where those apps expose supported APIs; no universal process suspension guarantee.
 - E-paper refresh capability detection and supported vendor integration; colour changes alone do not clear physical ghosting.
-- Physical validation of thermal/display diagnostics, foreground temperature alerts, screen-control feasibility and opt-in macro support.
+- Physical validation of thermal/display diagnostics and foreground temperature alerts, screen-control feasibility and opt-in macro support.
 - Cleanup of lint warnings, broader error-case tests and the requested Design Report artifact.
 
 HDMI CEC, bypass charging and independent phone/display power control must be tested for actual device support. No simulated success controls are included. The project does not require root.
@@ -53,4 +54,8 @@ The colour picker, cancel behavior and wallpaper controls pass debug compilation
 
 ## Device diagnostics checkpoint — 30 September 2026
 
-Debug compilation, existing unit tests and lint pass. Runtime sensor values still require device validation. The screen takes an on-demand snapshot and does not monitor temperature while another screen or app is open. Android battery data comes from [BatteryManager](https://developer.android.com/reference/android/os/BatteryManager); system thermal status uses [PowerManager](https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus()) on Android 10 and later. Display mode availability does not prove hub/CEC compatibility.
+Debug compilation, existing unit tests and lint pass. Runtime sensor values still require device validation. The diagnostics screen takes an on-demand snapshot. A separate foreground monitor now samples system thermal status while launcher screens are visible; it stops when the launcher activity stops. Android battery data comes from [BatteryManager](https://developer.android.com/reference/android/os/BatteryManager); system thermal status uses [PowerManager](https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus()) on Android 10 and later. Display mode availability does not prove hub/CEC compatibility.
+
+## Thermal notices checkpoint — 30 September 2026
+
+Debug build and lint pass, and all seven unit tests pass. Two new tests check the severe threshold through shutdown and ensure missing, unknown and non-severe states do not produce overheating notices. Code review found no further issues. Runtime warning appearance, sensor reporting and lifecycle behavior remain to be tested on Android hardware. The application does not promise thermal protection or monitor other apps in the background.

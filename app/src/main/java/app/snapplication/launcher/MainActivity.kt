@@ -26,6 +26,9 @@ import java.util.concurrent.Executors
 
 /** Hosts Home, App Drawer, Library and Settings; delegates media to WatchPlayer/ReaderPanel, state to LauncherState and input mapping to RemoteControls. */
 class MainActivity : Activity() {
+    private lateinit var thermal: ThermalMonitor
+    private var thermalText: String? = null
+    private var thermalBanner: android.widget.TextView? = null
     private lateinit var remote: RemoteControls
     private lateinit var state: LauncherState
     private lateinit var ui: LauncherUi
@@ -49,6 +52,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         state = LauncherState(this)
         remote = RemoteControls(this)
+        thermal = ThermalMonitor(this) { text -> thermalText = text; updateThermalBanner() }
         pickerMode = savedInstanceState?.getString("pickerMode") ?: state.mode
         if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver,
             IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
@@ -94,6 +98,12 @@ class MainActivity : Activity() {
         ui.addWeighted(nav, ui.button("Apps") { drawer() })
         ui.addWeighted(nav, ui.button("Settings") { settings() })
         root.addView(nav)
+        thermalBanner = ui.label("", 16f).apply {
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            setBackgroundColor(ui.surface)
+        }
+        root.addView(thermalBanner)
+        updateThermalBanner()
         setContentView(root)
         return root
     }
@@ -432,11 +442,23 @@ class MainActivity : Activity() {
     @Deprecated("Legacy back callback for the native Activity host")
     override fun onBackPressed() { if (screen != "Home") home() else super.onBackPressed() }
 
+    /** Updates the existing notice without rebuilding Home or interrupting playback and reading. */
+    private fun updateThermalBanner() {
+        thermalBanner?.apply {
+            text = thermalText.orEmpty()
+            visibility = if (thermalText == null) View.GONE else View.VISIBLE
+        }
+    }
+
+    /** Limits thermal polling to the launcher's visible lifecycle. */
+    override fun onStart() { super.onStart(); thermal.start() }
+
     /** Saves and pauses playback whenever another app or the lock screen takes over. */
-    override fun onStop() { watch?.pause(); super.onStop() }
+    override fun onStop() { thermal.stop(); watch?.pause(); super.onStop() }
 
     /** Releases media resources and pending folder work when the activity is destroyed. */
     override fun onDestroy() {
+        thermal.stop()
         unregisterReceiver(screenReceiver)
         scanGeneration++; watch?.close(); reader?.close(); worker.shutdownNow(); super.onDestroy()
     }
