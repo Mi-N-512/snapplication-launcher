@@ -59,3 +59,10 @@ Debug compilation, existing unit tests and lint pass. Runtime sensor values stil
 ## Thermal notices checkpoint — 30 September 2026
 
 Debug build and lint pass, and all seven unit tests pass. Two new tests check the severe threshold through shutdown and ensure missing, unknown and non-severe states do not produce overheating notices. Code review found no further issues. Runtime warning appearance, sensor reporting and lifecycle behavior remain to be tested on Android hardware. The application does not promise thermal protection or monitor other apps in the background.
+## External media controls under development
+
+An optional Other app playback screen is being added to the app drawer. It uses Android media sessions from installed apps after the user grants notification access. Provider plugins remain deferred. The screen does not embed another application's video or promise restoration of a closed session. It reads media-session metadata but has no implementation that reads, saves or forwards notification message content. Runtime access, revocation and transport-control checks remain pending.
+
+The external-media checkpoint passes debug compilation, lint and the existing seven unit tests. Those tests do not exercise other apps' sessions. Code review identified toggle-only sessions; paired play/pause media-button support was added and the checks rerun successfully. Runtime verification remains pending. Build tooling can run without escalation by placing the compiler temporary files under the workspace; the command-line override is not committed as a machine-specific project setting.
+
+On 30 September, the authenticated emulator console showed an actual USB debugging approval dialog. Enabling keyboard and directional input on the isolated AVD did not make console key events navigate that dialog. Reopening a visible emulator was not executed because automatic approval review hit its usage limit (retry time 4:33 PM). The latest external-media code is saved locally; GitHub and Downloads synchronization is pending.
