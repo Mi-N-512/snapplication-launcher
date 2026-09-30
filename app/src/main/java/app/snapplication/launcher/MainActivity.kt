@@ -77,7 +77,12 @@ class MainActivity : Activity() {
         reader?.close(); reader = null
         screen = title
         ui = LauncherUi(this, state)
+        val showWallpaper = title == "Home" && state.useWallpaper
+        if (showWallpaper) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(if (showWallpaper) Color.TRANSPARENT else ui.background))
         root = ui.column()
+        root.setBackgroundColor(if (showWallpaper) (ui.background and 0xffffff) or 0xb3000000.toInt() else ui.background)
         root.setPadding(ui.dp(8), ui.dp(4), ui.dp(8), ui.dp(4))
         root.setOnApplyWindowInsetsListener { view, insets ->
             view.setPadding(insets.systemWindowInsetLeft + ui.dp(8), insets.systemWindowInsetTop + ui.dp(4),
@@ -315,8 +320,8 @@ class MainActivity : Activity() {
         content.addView(ui.button("Theme · ${state.theme}") {
             val themes = arrayOf("Dark", "Light", "OLED Black", "Material You", "Custom", "E-paper")
             AlertDialog.Builder(this).setTitle("Theme").setItems(themes) { _, index ->
-                state.theme = themes[index]
-                if (state.theme == "Custom") customColours() else settings()
+                if (themes[index] == "Custom") customColours()
+                else { state.theme = themes[index]; settings() }
             }.show()
         })
         content.addView(ui.button("Favourites · ${if (state.grid) "Grid" else "List"}") { state.grid = !state.grid; settings() })
@@ -325,6 +330,14 @@ class MainActivity : Activity() {
                 state.favouriteCount = listOf(4, 6, 8)[index]; settings()
             }.show()
         })
+        content.addView(ui.button("Home wallpaper · ${if (state.useWallpaper) "On" else "Off"}") {
+            state.useWallpaper = !state.useWallpaper; settings()
+        })
+        content.addView(ui.button("Choose Android wallpaper") {
+            runCatching { startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Choose wallpaper")) }
+                .onFailure { message("No wallpaper picker is available on this device.") }
+        })
+        content.addView(ui.label("Enable Home wallpaper to show Android's wallpaper behind your shortcuts. The Android picker changes the device wallpaper and can offer installed live wallpapers.", 16f))
         content.addView(ui.button("Remote buttons") { remoteSettings() })
         content.addView(ui.button("Arrange favourites") { manageFavourites() })
         content.addView(ui.button("Set as default launcher") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) })
@@ -398,19 +411,8 @@ class MainActivity : Activity() {
         if (!hasFocus && ::remote.isInitialized) remote.clearHeldButtons()
     }
 
-    /** Stores user-selected custom colours after validating both values. */
-    private fun customColours() {
-        val fields = ui.column()
-        val bg = EditText(this).apply { hint = "Background #181818"; setText("#%06X".format(state.background and 0xffffff)) }
-        val accent = EditText(this).apply { hint = "Accent #D0BCFF"; setText("#%06X".format(state.accent and 0xffffff)) }
-        fields.addView(bg); fields.addView(accent)
-        AlertDialog.Builder(this).setTitle("Custom colours").setView(fields).setNegativeButton("Cancel", null)
-            .setPositiveButton("Save") { _, _ ->
-                runCatching { Color.parseColor(bg.text.toString()) to Color.parseColor(accent.text.toString()) }
-                    .onSuccess { state.background = it.first; state.accent = it.second; settings() }
-                    .onFailure { message("Use colours in #RRGGBB format.") }
-            }.show()
-    }
+    /** Opens a staged visual picker; cancelling preserves the current theme and colours. */
+    private fun customColours() { ColourPicker(this, state, ui).show { settings() } }
 
     /** Shows concise recoverable errors without exposing private source URLs or credentials. */
     private fun message(text: String) { if (!isFinishing) AlertDialog.Builder(this).setMessage(text).setPositiveButton("OK", null).show() }

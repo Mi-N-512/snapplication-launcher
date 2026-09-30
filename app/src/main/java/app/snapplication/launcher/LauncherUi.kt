@@ -33,7 +33,7 @@ class LauncherUi(private val context: Context, state: LauncherState) {
     /** Creates a vertical or horizontal container shared across launcher screens. */
     fun column(horizontal: Boolean = false): LinearLayout = LinearLayout(context).apply {
         orientation = if (horizontal) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-        setBackgroundColor(this@LauncherUi.background)
+        // The page shell owns its background, allowing Home to reveal the system wallpaper.
     }
 
     /** Creates readable text with generous line spacing for television and touch use. */

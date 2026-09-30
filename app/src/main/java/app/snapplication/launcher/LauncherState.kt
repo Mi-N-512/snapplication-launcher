@@ -16,6 +16,9 @@ class LauncherState(context: Context) {
     var theme: String
         get() = prefs.getString("theme", "Dark")!!
         set(value) { prefs.edit().putString("theme", value).apply() }
+    var useWallpaper: Boolean
+        get() = prefs.getBoolean("useWallpaper", false)
+        set(value) { prefs.edit().putBoolean("useWallpaper", value).apply() }
     var grid: Boolean
         get() = prefs.getBoolean("grid", false)
         set(value) { prefs.edit().putBoolean("grid", value).apply() }

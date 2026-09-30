@@ -12,6 +12,8 @@ This is a private development checkpoint, not a completed V1 or a release.
 - Local PDF, CBZ and image reading with saved page position, natural comic page ordering, bounded decoding and one cached document copy per selection.
 - Favourite app shortcuts, list/grid choices, 4/6/8 visible items and touch/remote-accessible reorder and removal controls; dark/light/OLED/Material You/custom/e-paper colour choices.
 - Per-device remote button learning for directions, Select, Back, Home and Apps; normal text/dialog input, paired press handling, and a physical hold-Back recovery reset.
+- Visual custom-colour picker with hue/saturation/brightness gradients and preview; Save commits both colours, Cancel preserves the current theme.
+- Optional Android system wallpaper behind Home, with a system picker for static or installed live wallpapers.
 - Class responsibility and relationship comments and documented methods.
 
 ## Evidence
@@ -28,7 +30,7 @@ Five unit tests cover numeric page ordering, long numeric filenames, completion 
 - End-to-end remote mapping, recovery, directional-navigation and accessibility checks on emulator and physical remote.
 - End-to-end screen-off episode transition and reboot resume tests on the final code.
 - Emulator verification of favourite reordering and 4/6/8-item layouts, followed by closer final design fidelity.
-- Custom colour picker UI and user-supplied wallpaper integration.
+- Device/emulator interaction and visual checks for the custom colour picker and static/live wallpaper integration.
 - External-app resume behavior where those apps expose supported APIs; no universal process suspension guarantee.
 - E-paper refresh capability detection and supported vendor integration; colour changes alone do not clear physical ghosting.
 - Thermal/display diagnostics, screen-control feasibility and opt-in macro support.
@@ -43,3 +45,7 @@ Direct provider plugins and their playback integration are excluded from V1. Kei
 ## Remote input implementation references
 
 Device-specific persistence uses Android [InputDevice descriptors](https://developer.android.com/reference/android/view/InputDevice#getDescriptor()). Translated controls preserve [KeyEvent](https://developer.android.com/reference/android/view/KeyEvent) press/release metadata. Mappings are local to launcher activity screens; they do not intercept other apps or system dialogs.
+
+## Appearance checkpoint — 30 September 2026
+
+The colour picker, cancel behavior and wallpaper controls pass debug compilation, unit tests and lint without errors. The picker uses generated view IDs and Android 8-compatible touch sizing. Visual/device verification remains pending. Wallpaper rendering uses Android’s [FLAG_SHOW_WALLPAPER](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_SHOW_WALLPAPER) with a transparent window background and a tinted Home surface; picking wallpaper is a user-confirmed system action that changes the device wallpaper.
