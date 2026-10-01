@@ -35,7 +35,6 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private var watch: WatchPlayer? = null
     private var reader: ReaderPanel? = null
-    private var scaleControl: android.widget.Button? = null
     private var screen = "Home"
     private var pickerMode = "Watch"
     private val worker = Executors.newSingleThreadExecutor()
@@ -92,7 +91,6 @@ class MainActivity : Activity() {
         watch?.pause()
         reader?.close(); reader = null
         screen = title
-        scaleControl = null
         ui = LauncherUi(this, state)
         // Keep real Android status/navigation icons readable on light and e-paper surfaces.
         window.decorView.systemUiVisibility = if (ui.text == Color.BLACK)
@@ -134,13 +132,6 @@ class MainActivity : Activity() {
         val body = ui.column(landscape)
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         val viewer = ui.column().apply { setBackgroundColor(ui.surface) }
-        val options = ui.column(true)
-        ui.addWeighted(options, ui.button(if (state.viewerSource == "App") "Continue app ▾" else "Folder content ▾") { chooseViewerSource() })
-        if (state.viewerSource == "Folder") {
-            scaleControl = ui.button("${state.contentScale} ▾") { chooseContentScale() }
-            ui.addWeighted(options, scaleControl!!)
-        }
-        viewer.addView(options)
         val panel = FrameLayout(this).apply { setBackgroundColor(ui.surface) }
         viewer.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
         val favourites = state.favourites().filter { flat ->
@@ -190,7 +181,7 @@ class MainActivity : Activity() {
     /** Lets the viewer switch between an app resume entry and user-selected folder media. */
     private fun chooseViewerSource() {
         AlertDialog.Builder(this).setTitle("Main viewer").setItems(arrayOf("Continue app", "Folder content")) { _, index ->
-            state.viewerSource = if (index == 0) "App" else "Folder"; home()
+            state.viewerSource = if (index == 0) "App" else "Folder"; settings()
         }.setNegativeButton("Cancel", null).show()
     }
 
@@ -201,7 +192,7 @@ class MainActivity : Activity() {
             .setItems(arrayOf("Fit to block · show everything", "Fill block · crop edges", "Stretch · use full block")) { _, index ->
                 state.contentScale = values[index]
                 reader?.applyContentScale(); watch?.applyContentScale()
-                scaleControl?.text = "${state.contentScale} ▾"
+                settings()
             }.setNegativeButton("Cancel", null).show()
     }
 
@@ -254,7 +245,7 @@ class MainActivity : Activity() {
                 button.textSize = if (portrait) 18f else 11f
                 button.gravity = android.view.Gravity.CENTER
                 button.contentDescription = label; button.tooltipText = label
-                ui.flatFocus(button, if (state.grid) ui.surface else Color.TRANSPARENT)
+                ui.flatFocus(button, Color.TRANSPARENT, outline = false)
                 button.stateListAnimator = null
                 button.setOnLongClickListener { favouriteActions(flat, label) { home() }; true }
                 val tile = if (portrait && state.grid) SquareShortcut(this, button) else button
@@ -468,6 +459,11 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Favourites Style", "${if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
         content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
         content.addView(ui.section("Read & Watch"))
+        content.addView(ui.setting("Main viewer", if (state.viewerSource == "App") "Continue app" else "Folder content") { chooseViewerSource() })
+        content.addView(ui.setting("Content sizing", "${state.contentScale} · folder documents and videos") { chooseContentScale() })
+        content.addView(ui.setting("Previous / Next buttons", "Show page controls in the reading panel", if (state.showReaderControls) "On" else "Off") {
+            state.showReaderControls = !state.showReaderControls; settings()
+        })
         content.addView(ui.row("Mode    ${state.mode}  ›") { chooseMode() })
         content.addView(ui.row("Library    ›") { library() })
         content.addView(ui.row("Choose folder    ›") { pickFolder() })

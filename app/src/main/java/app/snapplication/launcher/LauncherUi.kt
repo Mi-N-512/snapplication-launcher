@@ -81,14 +81,14 @@ class LauncherUi(private val context: Context, state: LauncherState) {
     }
 
     /** Preserves flat reference styling through focus changes, with a clear remote outline. */
-    fun flatFocus(view: View, colour: Int = Color.TRANSPARENT) {
+    fun flatFocus(view: View, colour: Int = Color.TRANSPARENT, outline: Boolean = true) {
         view.onFocusChangeListener = null
         view.background = android.graphics.drawable.StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), GradientDrawable().apply {
                 setColor(colour); setStroke(dp(2), accent)
             })
             addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { setColor(surface) })
-            addState(intArrayOf(), GradientDrawable().apply { setColor(colour); setStroke(dp(1), border) })
+            addState(intArrayOf(), GradientDrawable().apply { setColor(colour); if (outline) setStroke(dp(1), border) })
         }
     }
 

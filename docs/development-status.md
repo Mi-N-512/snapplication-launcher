@@ -99,3 +99,10 @@ Home defaults to Continue app, saving the last component launched through Snappl
 Fit/Fill/Stretch map to native image/video aspect modes and persist per mode. Review caught a reloading implementation; it was corrected to update existing ReaderPanel/WatchPlayer surfaces without rebuilding Home. Emulator interaction cycled through all three document modes. External task resumption was verified using Clock: Stopwatch remained the selected screen after Continue Clock. This does not prove universal third-party state retention or embedded app support.
 
 All edition builds, lint checks and seven unit tests per edition pass. Physical device and broader multimedia checks remain open. Android's [task model](https://developer.android.com/guide/components/activities/tasks-and-back-stack) and [process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle) govern external-app retention; Snapplication does not force suspension or bypass those rules.
+
+
+## Clean Home controls — 1 October 2026
+
+Moved Main viewer source and Content sizing choices into Settings → Read & Watch. Previous/Next reading buttons default to hidden; a persisted Settings toggle enables them. Emulator UI testing verified source selection in Settings, no source/fit/page buttons on the default local-content Home, enabling page buttons, and disabling them again. Continue app remains the default Home source.
+
+Removed the inner normal-state border/background around Home app icons. Only the grid-cell divider lines remain; remote focus still receives a visible outline when selected. Full source and private debug builds are synchronized to the editable Downloads project.
