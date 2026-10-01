@@ -34,7 +34,7 @@ See [the current requirements audit](requirements-audit.md) for explicit impleme
 - End-to-end remote mapping, recovery, directional-navigation and accessibility checks on emulator and physical remote.
 - Physical-device validation of screen-off episode transition and reboot resume; emulator transition and process-restart checks passed on 1 October.
 - Emulator verification of favourite reordering and 4/6/8-item layouts, followed by closer final design fidelity.
-- Device/emulator interaction and visual checks for the custom colour picker and static/live wallpaper integration.
+- Live wallpaper lifecycle and device-specific appearance checks; custom-colour Save/Cancel/restart and static wallpaper have emulator evidence.
 - External-app resume behavior where those apps expose supported APIs; no universal process suspension guarantee.
 - E-paper refresh capability detection and supported vendor integration; colour changes alone do not clear physical ghosting.
 - Physical validation of thermal/display diagnostics and foreground temperature alerts, screen-control feasibility and opt-in macro support.
@@ -144,3 +144,8 @@ Landscape Home is immersive and fills the full 2400×1080 emulator display; the 
 Transparency replaces the Home-only wallpaper label and reuses its saved preference. Wallpaper-backed surfaces now apply to drawer/settings and their controls; turning it off restores opaque theme surfaces. This is translucent styling, not real-time blur/refraction.
 
 Verification: all three edition builds/lint and seven unit tests per edition pass. Android's activity log confirms video handoff to Google Photos with video/mp4, the selected content URI and read grant; this confirms dispatch, not universal third-party playback/resume. CBZ missing-reader fallback passed. Final build's embedded toggle shows controls and plays. Transparency off/on assertions and visual Settings inspection passed; user's current Read/E-paper choices restored after QA. Physical device and full external-reader compatibility remain unverified.
+
+
+## Custom-colour interaction check — 2 October 2026
+
+On the private b50cf2f build, used UI-tree-derived controls to change Brightness and cancel; stored theme/background/accent remained unchanged. Reopened Custom, adjusted Hue/Saturation/Brightness for both Background and Accent, and saved. Both stored colours changed and the selected theme became Custom. Force-stop/relaunch retained the exact saved values. Restored the original theme and colour preferences after testing. This verifies the dialog transaction and persistence; physical e-ink appearance remains owner-tested.

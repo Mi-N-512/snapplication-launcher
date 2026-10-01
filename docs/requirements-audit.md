@@ -10,7 +10,7 @@ Read and Watch are in scope. Universal, E-reader and TV packages remain private.
 |---|---|---|
 | Android without root | Manifest and source use ordinary Android APIs; minSdk 26; Android 15 emulator exercised | Android 8 baseline and Huawei version/device testing |
 | Home, drawer, settings; favourites and remote navigation | MainActivity, LauncherState, RemoteControls; emulator add/remove, drawer gestures, D-pad and remapping/recovery checks recorded in development-status | Final 6/8-block and reordering matrix, physical remote/accessibility pass |
-| Dark, Light, OLED, Material You, Custom, E-paper | LauncherUi, ColourPicker, WireframePreview | Full custom-colour Save/Cancel runtime matrix and physical e-ink contrast |
+| Dark, Light, OLED, Material You, Custom, E-paper | LauncherUi, ColourPicker, WireframePreview; Save/Cancel and process-restart persistence passed 2 October | Physical e-ink contrast and additional device/theme combinations |
 | User wallpaper and transparency | System picker and shared Transparency toggle; static wallpaper and Settings on/off checked | Installed live wallpaper lifecycle test |
 | Fast return to last external app | Per-mode component stored; Continue uses Android task launch; Clock task continuation checked | No forced suspension, arbitrary app snapshot, or universal post-reboot state restoration implemented |
 | Last media visibly represented in Home | Local document/video preview implemented; external app entry shows launch controls | Arbitrary third-party media/book preview not implemented; requires supported integrations or explicit capture design |
