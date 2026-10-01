@@ -13,6 +13,29 @@ android {
         versionName = "0.1-dev"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
+    // A local, ignored key keeps development updates compatible across Android Studio and test tooling.
+    signingConfigs.getByName("debug") {
+        val localDebugKey = rootProject.file(".local/debug.keystore")
+        if (localDebugKey.exists()) storeFile = localDebugKey
+    }
+    buildFeatures { buildConfig = true }
+    flavorDimensions += "edition"
+    productFlavors {
+        create("universal") {
+            dimension = "edition"
+            resValue("string", "app_name", "Snapplication")
+        }
+        create("ereader") {
+            dimension = "edition"
+            applicationIdSuffix = ".ereader"
+            resValue("string", "app_name", "Snapplication E-reader")
+        }
+        create("tv") {
+            dimension = "edition"
+            applicationIdSuffix = ".tv"
+            resValue("string", "app_name", "Snapplication TV")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
