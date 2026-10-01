@@ -35,6 +35,7 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private var watch: WatchPlayer? = null
     private var reader: ReaderPanel? = null
+    private val drawerGestureAreas = mutableListOf<View>()
     private var screen = "Home"
     private var pickerMode = "Watch"
     private val worker = Executors.newSingleThreadExecutor()
@@ -91,6 +92,7 @@ class MainActivity : Activity() {
         watch?.pause()
         reader?.close(); reader = null
         screen = title
+        drawerGestureAreas.clear(); drawerSwipeEligible = false
         ui = LauncherUi(this, state)
         // Keep real Android status/navigation icons readable on light and e-paper surfaces.
         window.decorView.systemUiVisibility = if (ui.text == Color.BLACK)
@@ -175,6 +177,7 @@ class MainActivity : Activity() {
         root.addView(ui.row("⌃   ALL APPS") { drawer() }.apply {
             gravity = android.view.Gravity.CENTER; textSize = 11f
             typeface = android.graphics.Typeface.MONOSPACE
+            drawerGestureAreas.add(this)
         }, LinearLayout.LayoutParams(-1, ui.dp(48)))
     }
 
@@ -255,6 +258,7 @@ class MainActivity : Activity() {
             repeat(columns - group.size) { row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
             column.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         }
+        drawerGestureAreas.add(shell)
         return shell
     }
 
@@ -303,6 +307,7 @@ class MainActivity : Activity() {
         }
         root.addView(ui.row("⌄   APP DRAWER") { home() }.apply {
             gravity = android.view.Gravity.CENTER; textSize = 11f
+            drawerGestureAreas.add(this)
         })
         root.addView(search)
         root.addView(ui.label("Tap ☆ to add an app to Home. Tap ★ to remove it.", 12f))
@@ -586,18 +591,29 @@ class MainActivity : Activity() {
     private var drawerSwipeX = 0f
     private var drawerSwipeEligible = false
 
-    /** Opens the drawer from favourite space or its handle without hijacking media gestures. */
+    /** Opens from Home shortcuts or closes from the drawer handle using actual inset-aware view bounds. */
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
-        if (screen == "Home") {
-            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
-                drawerSwipeY = event.y; drawerSwipeX = event.x
-                val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-                drawerSwipeEligible = if (landscape) event.x < root.width * .10f || event.x > root.width * .90f || event.y > root.height - ui.dp(48)
-                    else event.y > root.height * .75f
-            } else if (event.actionMasked == android.view.MotionEvent.ACTION_UP && drawerSwipeEligible &&
-                drawerSwipeY - event.y > ui.dp(48) && kotlin.math.abs(event.x - drawerSwipeX) < ui.dp(80)) {
-                val cancel = android.view.MotionEvent.obtain(event).apply { action = android.view.MotionEvent.ACTION_CANCEL }
-                super.dispatchTouchEvent(cancel); cancel.recycle(); drawer(); return true
+        if (screen == "Home" || screen == "Apps") {
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    drawerSwipeY = event.rawY; drawerSwipeX = event.rawX
+                    drawerSwipeEligible = drawerGestureAreas.any { area ->
+                        val bounds = android.graphics.Rect()
+                        area.getGlobalVisibleRect(bounds) && bounds.contains(event.rawX.toInt(), event.rawY.toInt())
+                    }
+                }
+                android.view.MotionEvent.ACTION_CANCEL, android.view.MotionEvent.ACTION_POINTER_DOWN -> drawerSwipeEligible = false
+                android.view.MotionEvent.ACTION_UP -> {
+                    val distance = if (screen == "Home") drawerSwipeY - event.rawY else event.rawY - drawerSwipeY
+                    val navigate = drawerSwipeEligible && distance > ui.dp(48) && kotlin.math.abs(event.rawX - drawerSwipeX) < ui.dp(80)
+                    drawerSwipeEligible = false
+                    if (navigate) {
+                        val cancel = android.view.MotionEvent.obtain(event).apply { action = android.view.MotionEvent.ACTION_CANCEL }
+                        super.dispatchTouchEvent(cancel); cancel.recycle()
+                        if (screen == "Home") drawer() else home()
+                        return true
+                    }
+                }
             }
         }
         return super.dispatchTouchEvent(event)
