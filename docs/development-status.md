@@ -33,7 +33,7 @@ See [the current requirements audit](requirements-audit.md) for explicit impleme
 - Final device testing on the Huawei Mate 10 Pro, USB-C HDMI hub and air mouse.
 - End-to-end remote mapping, recovery, directional-navigation and accessibility checks on emulator and physical remote.
 - Physical-device validation of screen-off episode transition and reboot resume; emulator transition and process-restart checks passed on 1 October.
-- Emulator verification of favourite reordering and 4/6/8-item layouts, followed by closer final design fidelity.
+- Further owner feedback on design fidelity; emulator favourite reordering and 4/6/8 layouts passed 2 October.
 - Live wallpaper lifecycle and device-specific appearance checks; custom-colour Save/Cancel/restart and static wallpaper have emulator evidence.
 - External-app resume behavior where those apps expose supported APIs; no universal process suspension guarantee.
 - E-paper refresh capability detection and supported vendor integration; colour changes alone do not clear physical ghosting.
@@ -149,3 +149,10 @@ Verification: all three edition builds/lint and seven unit tests per edition pas
 ## Custom-colour interaction check — 2 October 2026
 
 On the private b50cf2f build, used UI-tree-derived controls to change Brightness and cancel; stored theme/background/accent remained unchanged. Reopened Custom, adjusted Hue/Saturation/Brightness for both Background and Accent, and saved. Both stored colours changed and the selected theme became Custom. Force-stop/relaunch retained the exact saved values. Restored the original theme and colour preferences after testing. This verifies the dialog transaction and persistence; physical e-ink appearance remains owner-tested.
+
+
+## Favourite layout matrix and footer polish — 2 October 2026
+
+Populated eight valid installed apps in the isolated emulator and checked configured counts 4, 6 and 8 in both Portrait and Landscape. Each case exposed exactly the configured number of visible, non-overlapping shortcut buttons, each at least 48 dp in both dimensions. Portrait had two rows and landscape had count/2 rows in each side column. Inspected eight-block screenshots. Long-press Move later reordered the first two favourites and persisted through process restart; original favourites/layout restored afterward.
+
+Visual inspection found the 32 dp All Apps footer clipping its label because the inherited row style kept 24 dp of vertical padding. Removed that padding and redundant minimum height for this footer, retained its requested compact height, and confirmed the full text visually in landscape. All three edition builds/lint and existing seven tests per edition pass. This is a minor polish update to the private test APKs.
