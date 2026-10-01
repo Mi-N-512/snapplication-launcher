@@ -1,79 +1,77 @@
 # Snapplication design report content
 
-Prepared for the project owner · 30 September 2026
+Prepared for the project owner · 1 October 2026
 
-This is the content draft for the selected Design Report template. The formatted Word deliverable is pending template rendering and visual verification. Implementation evidence refers to commit `fc39a227e513f505db2da0476088dc30c6f741da`.
+Content draft for the selected Design Report template. The formatted Word deliverable remains pending template rendering and visual verification. Product source checkpoint: 3666385; packaged private builds: b50cf2f; live-testing handoff: 50fede1.
 
 ## Executive summary
 
-Snapplication is a private Android launcher project intended to make an existing phone useful for reading and watching media, including use with an external display and remote. V1 focuses on Read and Watch. Its home screen combines a large content panel with favourite applications, while the app drawer and settings remain reachable by touch or directional input.
+Snapplication reuses an Android device as a reading and viewing launcher. The current private build combines a large media preview with favourite apps, a searchable drawer and Settings. The owner will test the application independently on real devices and return with feedback. The immediate priority is a polished everyday experience; this checkpoint is not a completed V1 or public release.
 
-The native Kotlin foundation builds successfully and includes local video playback, PDF and comic reading, saved progress, configurable favourites, remote button learning, themes, wallpaper controls and device diagnostics. Early emulator checks demonstrated playback and reading progress. Later features have build and code-review evidence but still need interaction testing. V1 is not ready to declare complete or distribute.
+Read and Watch are implemented in three private editions: Universal, E-reader and TV. Tapping a selected local video or book preview opens it in a compatible external app by default. Separate toggles enable playback or reading directly inside Home. Android and the receiving app control external resume state; the launcher does not force arbitrary applications to remain suspended or embed their private screens.
 
 ## At a glance
 
-- Private repository: MLN-WORK/snapplication-launcher. No public release or store publication is authorized.
-- Android Studio project: C:\Users\miche\Downloads\snapplication-launcher. All features remain free, with no advertisements or paid feature gates.
-- Primary target: Huawei Mate 10 Pro, generic USB-C HDMI hub and USB remote. The phone's exact Android version and hardware behavior remain unverified.
+- Private repository: Mi-N-512/snapplication-launcher. No public release or store publication authorized.
+- Editable project: C:\Users\miche\Downloads\snapplication-launcher, with all three APKs in private-test-builds.
+- Android baseline: minSdk 26, targetSdk 35, compileSdk 36. Java 21 is configured for the local Gradle environment; bytecode target remains Java 17.
+- All features remain free, without advertisements or paid feature gates. Distribution licensing is undecided.
 
 ## Introduction
 
-The supplied launcher idea and Figma Make design establish the product experience. The latest Make source uses a large central content panel, favourites at either side in landscape, and favourites below the panel in portrait. The implementation follows that structure using native Android views and actual installed applications.
+The original document, Figma Make source and later user corrections define the experience. Portrait Home follows the Make layout with a 57 percent viewer and favourites below. Landscape places the viewer between two side columns in a 15/70/15 split. Four, six or eight grid slots remain visible; unassigned slots open the app picker. Divider lines separate cells without inset icon borders. Favourites headings are optional and hidden by default.
 
-User clarifications define the current scope: Read and Watch first, no root requirement, a private repository, and an editable local project. Direct provider plugins and their player integration are deferred beyond V1. GameHub is also deferred. The earlier Adalo reference does not determine the implementation.
+Landscape Home fills the display, and edge swipes reveal Android navigation. The All Apps bar is reduced to 32 dp in landscape and 40 dp in portrait. A shared Transparency setting reveals the chosen system wallpaper through Home, drawer and Settings. The effect uses translucent gradients and contrast surfaces; it is not real-time optical refraction or background blur.
 
 ## Key findings
 
-### Context and conditions
+### Local content and external handoff
 
-The visual prototype is a design reference, not proof of working Android features. Its hard-coded television information and simulated controls cannot establish real HDMI CEC, charging bypass or independent display-power support. The native application instead reports Android-accessible device information and retains unsupported features as explicit development work.
+Media3 supplies embedded video; ReaderPanel renders PDFs, CBZ comics and images. Progress is stored per content URI. Local video playback, PDF restart restoration and natural comic-page ordering have emulator evidence. A screen-off threshold test staged the next embedded episode at zero; process restart retained that target. Full emulator reboot restored a saved video position exactly.
 
-The current application provisionally supports Android 8 and newer. It targets Android 15 behavior and compiles with SDK 36. Hardware-dependent features require testing on the user's equipment rather than an assumption based on Android version alone.
+External file opening uses Android ACTION_VIEW with a MIME type and temporary read grant. Activity logs show dispatch to Google Photos. Missing comic-reader handling was exercised. This proves dispatch and fallback behavior, not complete compatibility or exact resume in every third-party app. Provider plugins remain deferred.
 
-### Patterns in the evidence
+### Navigation and appearance
 
-A local video visibly played in the home panel on the Android 15 emulator on 23 September. A three-page PDF reopened at page two after force-stop and restart. A comic archive containing pages 1, 10 and 2 displayed page 2 before page 10. These checks support local playback, reading restoration and numeric page ordering on that tested build.
+Emulator checks cover favourite addition/removal and persistence, drawer gestures, directional input, remote remapping/recovery, heading toggles, static wallpaper and Transparency on/off. The final embedded-playback toggle displays its controls and plays. Further live use should focus on awkward transitions, focus visibility, readability, folder access and how external viewers return to Home.
 
-Subsequent builds added favourite layouts, reordering, remote mappings, the colour picker, system wallpaper support and diagnostics. Compilation, lint and five existing unit tests pass. Those tests cover numeric ordering and completion-threshold boundaries; they do not verify every new screen. The emulator currently reports an unauthorized debugging connection, so later interaction checks remain pending.
+All three editions compile and pass lint without errors. Seven unit tests per edition cover numeric ordering, episode-threshold boundaries and thermal-warning thresholds. Deprecation and other lint warnings remain; these checks do not establish compatibility with every Android device.
 
-**Key takeaway:** the local media foundation has runtime evidence. The remaining V1 work combines unverified interactions, unfinished requested features and device-specific feasibility checks.
+### Hardware and feasibility
+
+The original visual prototype contains simulated device controls. The native app reports available display, input, battery and thermal information without pretending to provide unsupported hardware control. Huawei HDMI behavior, CEC, independent phone/display power, charging bypass, remote battery information and physical e-ink refresh remain unresolved or unverified.
+
+The owner elected to conduct hardware tests independently. Device attachment and USB-debugging requests should not be repeated as a prerequisite for feedback. E-paper currently supplies a high-contrast theme, not a vendor refresh driver or a guarantee against ghosting.
 
 ## Implications
 
-The architecture separates the screen host from playback, reading, persisted state and device information. MainActivity coordinates navigation; WatchPlayer owns Media3 playback and its media session; ReaderPanel owns document decoding; LauncherState persists choices and progress. RemoteControls, ColourPicker and DeviceDiagnostics provide focused support for settings. Classes and methods carry responsibility comments for future editing in Android Studio.
+MainActivity coordinates navigation and file/app launching. LauncherState stores choices and progress. WatchPlayer owns video playback and media-session lifecycle; ReaderPanel owns bounded document decoding. LauncherUi centralizes theme and transparency rendering. RemoteControls, ColourPicker, DeviceDiagnostics and ThermalMonitor provide focused support. Named production classes, objects and methods have preceding responsibility or behavior comments.
 
-| Area | Current observation | Design implication |
+| Area | Current behavior | Implication |
 | --- | --- | --- |
-| Local media | Progress is persisted by content URI | Resume can survive process restarts; folder permission and unavailable-file cases still need testing |
-| External applications | Launching apps works; universal state restoration is not established | Integrate only supported external APIs and describe the actual resume behavior |
-| Hardware | Displays, inputs and thermal information can be queried | Device readings are useful diagnostics, but do not establish hardware control capabilities |
+| Embedded content | Launcher persists local reading/playback progress | Local resume is testable independently of another app's process |
+| External content | Android opens an exact file or returns to an app task | Private third-party seek/page state requires app-specific support |
+| Preview-only mode | Embedded playback and completion staging stay disabled | Opening another viewer does not silently advance the launcher's local queue |
+| Hardware | Read-only diagnostics and supported thermal notices | Actual device control requires separate feasibility evidence |
 
 ## Recommendations
 
-1. Restore runtime testing and check every new interaction. Exercise all favourite counts in both orientations; reorder and remove entries; map, replace, cancel and reset remote buttons; save and cancel custom colours; test static and live wallpapers. Confirm focus visibility and usable touch targets.
-2. Complete the remaining V1 feature work against the original requirements. This includes foreground thermal alerts, supported external-app resume, e-paper refresh feasibility, screen-control feasibility and opt-in macros with recording and adjustable speed. Unsupported device controls must not be presented as working features.
-3. Validate on the Mate 10 Pro with the actual hub and remote. Test folder grants, process death, reboot restoration, screen-off episode progression, display connection changes, remote recovery and thermal readings. Retain reproducible evidence and revisit design fidelity after those flows work.
+1. Use the supplied private build in normal daily use and report concrete friction with device, edition, action and expected outcome. Preserve the tested build so feedback maps to a known checkpoint.
+2. Resolve the remaining software work against docs/requirements-audit.md. Open items include broader file-error cases, supported external media-session tests, live wallpapers, custom-colour interaction coverage, credits/attribution, macros and external media previews.
+3. Treat physical device observations as the basis for hardware decisions. Implement supported vendor features explicitly and describe unavailable capabilities plainly. Do not substitute theme changes for real e-ink refresh or file dispatch for universal suspension.
 
 ## Conclusion
 
-Continue development from the private Android Studio project. Keep provider plugins and GameHub outside the current V1 implementation, as requested. Preserve the free-feature model and defer distribution licensing until the owner chooses terms.
-
-A successful build is a development checkpoint. Completion requires the outstanding feature work and direct verification of the requested experience on the target hardware. No release should be created at this stage.
+The private build is ready for owner-led live evaluation of its implemented flows. Continue polishing from that feedback while retaining the original unresolved requirements. Keep provider plugins and Game mode deferred, preserve free features and private distribution, and leave licensing undecided until the owner chooses terms.
 
 ## Appendix
 
-### Notes
+### Evidence boundaries
 
-The episode threshold stages the next local video on screen-off; it does not authorize autoplay while the user is away. Remote mappings apply to launcher activity screens, while text fields, dialogs and other apps keep their normal controls. Holding physical Back provides a mapping reset path that still needs testing on the real remote.
-
-The e-paper option currently changes colours; it does not prove physical ghosting control. Diagnostics show a refreshable snapshot, not continuous background monitoring. The system wallpaper picker changes the device wallpaper after the user confirms the choice.
+The embedded completion rule does not control another application's episode queue. Android owns app process lifetime; the project does not provide a permanent suspend snapshot. External viewer playback position can differ from the local preview. The three editions share features but keep independent settings. Physical hardware tests and a template-rendered Word report remain incomplete.
 
 ### Sources
 
-- User-provided Android launcher idea original.docx, Android Wireframe.make and Android Wireframe.zip; subsequent scope clarifications in this conversation.
-- Repository README, docs/development-status.md and Kotlin implementation at the commit identified above. Earlier emulator evidence and current build results are summarized in development-status.md.
-- Android activity process lifecycle: https://developer.android.com/guide/components/activities/process-lifecycle
-- Android media sessions: https://developer.android.com/reference/android/media/session/MediaSessionManager
-- Android input devices: https://developer.android.com/reference/android/view/InputDevice
-- Android wallpaper window flag: https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_SHOW_WALLPAPER
-- Android thermal status: https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus()
+- Original Android launcher idea DOCX, Android Wireframe.make, Android Wireframe.zip and subsequent owner instructions.
+- README.md, docs/development-status.md, docs/requirements-audit.md and docs/live-test-guide.md at the checkpoints stated above.
+- Source files in app/src/main/java/app/snapplication/launcher and the associated build, lint and emulator evidence summarized in development-status.md.
