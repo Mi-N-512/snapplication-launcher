@@ -79,3 +79,12 @@ Three separate debug editions build: Universal, E-reader and TV. All three pass 
 The emulator authorization issue described above is resolved. External-session runtime coverage remains pending. The optional external-playback screen is now reached from Settings. Provider engines remain deferred. Private test APKs are supplied in private-test-builds; no GitHub Release or public/store publication is created.
 
 Development signing uses an ignored .local/debug.keystore on this laptop so Android Studio updates remain compatible. The key is never committed. A fresh checkout elsewhere uses Android's normal debug key and may need a separate install if signed differently.
+
+
+## Remote, thermal and sparse-grid verification — 1 October 2026
+
+On the Android 15 emulator, learning virtual F1 as Apps opened the drawer and persisted across force-stop/restart. Holding physical Back invoked the recovery reset. These checks cover the virtual input device; physical remote pairing/device descriptors still need hardware testing.
+
+A temporary emulator thermal-service override to severe displayed the overheating banner. Resetting the override and reopening removed it. The override was cleaned up; no actual overheating was induced and real sensor accuracy is not established.
+
+Sparse portrait grid testing exposed stretched tiles. SquareShortcut now centres square buttons within reserved two-row slots, including empty slots. Three favourites in a six-slot grid each measured 346 × 346 pixels after the fix, rather than stretching to the entire favourites area's height. All three edition builds, lint checks and seven existing tests per edition pass again.
