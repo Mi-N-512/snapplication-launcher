@@ -1,0 +1,3 @@
+b346307a6b39b3b522a4d7ddd16d13118508a1d475da5c8bfbb2b0b20bcf1bfd  snapplication-universal-debug.apk
+0cba4764e6fc63b79a68187fcc4fe7340320696084f383f7f816da20f3317a52  snapplication-ereader-debug.apk
+85572bed501b84b95439e85536c3c63f0ac9aaf2a1ff619598eea192da3ab0b6  snapplication-tv-debug.apk
