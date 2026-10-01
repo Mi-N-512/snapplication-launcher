@@ -22,6 +22,9 @@ class LauncherState(context: Context) {
     var showLabels: Boolean
         get() = prefs.getBoolean("showLabels", true)
         set(value) { prefs.edit().putBoolean("showLabels", value).apply() }
+    var showReaderControls: Boolean
+        get() = prefs.getBoolean("showReaderControls", false)
+        set(value) { prefs.edit().putBoolean("showReaderControls", value).apply() }
     var viewerSource: String
         get() = prefs.getString("viewerSource:$mode", "App")!!
         set(value) { prefs.edit().putString("viewerSource:$mode", value).apply() }
