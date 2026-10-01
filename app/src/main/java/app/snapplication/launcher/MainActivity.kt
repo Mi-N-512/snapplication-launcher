@@ -196,6 +196,10 @@ class MainActivity : Activity() {
         root.addView(ui.row("⌃   ALL APPS") { drawer() }.apply {
             ui.flatFocus(this, ui.textSurface(), outline = false)
             gravity = android.view.Gravity.CENTER; textSize = 11f
+            // The compact footer must not inherit the drawer row's 24 dp vertical padding.
+            setPadding(ui.dp(12), 0, ui.dp(12), 0)
+            minHeight = 0; minimumHeight = 0; includeFontPadding = false
+            setSingleLine(true)
             typeface = android.graphics.Typeface.MONOSPACE
             drawerGestureAreas.add(this)
         }, LinearLayout.LayoutParams(-1, ui.dp(if (landscape) 32 else 40)))
