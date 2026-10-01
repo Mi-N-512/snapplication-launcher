@@ -13,7 +13,7 @@ This is a private development checkpoint, not a completed V1 or a release.
 - Favourite app shortcuts, list/grid choices, 4/6/8 visible items and touch/remote-accessible reorder and removal controls; dark/light/OLED/Material You/custom/e-paper colour choices.
 - Per-device remote button learning for directions, Select, Back, Home and Apps; normal text/dialog input, paired press handling, and a physical hold-Back recovery reset.
 - Visual custom-colour picker with hue/saturation/brightness gradients and preview; Save commits both colours, Cancel preserves the current theme.
-- Optional Android system wallpaper behind Home, with a system picker for static or installed live wallpapers.
+- Optional wallpaper behind Home, drawer and Settings through the shared Transparency toggle, with a system picker for static or installed live wallpapers.
 - Refreshable device diagnostics: Android/device version, battery level and temperature, charging state, supported thermal status, display modes and input-device sources.
 - Foreground thermal notices based on Android severe-to-shutdown statuses, sampled every 15 seconds while the launcher is visible. Monitoring stops when the activity stops.
 - Class responsibility and relationship comments and documented methods.
@@ -22,9 +22,11 @@ This is a private development checkpoint, not a completed V1 or a release.
 
 On the Android 15 emulator on 23 September 2026, a local sample video played visibly inside the home panel and the media session reported PLAYING. A three-page PDF reopened at page two after force-stop and restart. A CBZ containing 1.png, 10.png and 2.png displayed page two before page ten. The first visual check exposed system-bar overlap, which was corrected with window insets; the subsequent screenshots showed the corrected layout. The narrow portrait folder button was subsequently shortened to avoid wrapping.
 
-On 29 September 2026, the favourites layout and arrangement changes passed debug compilation and lint (no errors). Their visual and interaction checks remain pending because the dedicated emulator initially started suspended. Restarting it with approved host permissions restored boot, but adb reports unauthorized even after reconnecting and restarting the server. Emulator and host public keys match. Remote settings compile and pass lint; their interaction behavior is not yet verified.
+On 29 September 2026, the favourites layout and arrangement changes passed debug compilation and lint (no errors). At that checkpoint their visual and interaction checks were pending because the dedicated emulator initially started suspended. Restarting it with approved host permissions restored boot, but adb reports unauthorized even after reconnecting and restarting the server. Emulator and host public keys match. Remote settings compiled and passed lint at that checkpoint; subsequent 1 October entries record successful emulator interaction checks.
 
 Seven unit tests cover numeric page ordering, long numeric filenames, completion thresholds, unknown-duration media and zero/100-percent boundaries, and thermal warning thresholds including unknown/missing readings. These tests do not prove hardware compatibility or every launcher feature.
+
+See [the current requirements audit](requirements-audit.md) for explicit implementation gaps and evidence boundaries.
 
 ## Still required before V1 completion
 
