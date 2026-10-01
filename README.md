@@ -42,3 +42,10 @@ Open **All Apps** and tap the outlined star beside an app. A filled star means i
 ### Get the test APKs
 
 The [private test builds folder](private-test-builds/) contains the three installable debug APKs and checksums. Sign in to the GitHub account with repository access, open an APK, then choose **Download raw file**. No GitHub Release or store publication is created. Android may ask you to allow installation from the browser/files app you use.
+
+
+### Main viewer
+
+Home defaults to **Continue app**. Choose an installed app; launching it records a per-mode return target. Continue reopens its Android task where supported. It is not a live embedded window and does not force Android to retain another app in memory. Android or the app can discard/recreate its state.
+
+Choose **Folder content** in the viewer selector to display a selected local PDF, CBZ, image or video. Fit shows the entire page/video, Fill crops edges to cover the panel, and Stretch fills both dimensions with possible distortion. Sizing changes apply to the current content without reloading it. The viewer now occupies 75% of the portrait body or 80% of landscape width, with divider lines between favourite cells.

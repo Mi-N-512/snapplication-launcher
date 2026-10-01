@@ -35,6 +35,7 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private var watch: WatchPlayer? = null
     private var reader: ReaderPanel? = null
+    private var scaleControl: android.widget.Button? = null
     private var screen = "Home"
     private var pickerMode = "Watch"
     private val worker = Executors.newSingleThreadExecutor()
@@ -91,6 +92,7 @@ class MainActivity : Activity() {
         watch?.pause()
         reader?.close(); reader = null
         screen = title
+        scaleControl = null
         ui = LauncherUi(this, state)
         // Keep real Android status/navigation icons readable on light and e-paper surfaces.
         window.decorView.systemUiVisibility = if (ui.text == Color.BLACK)
@@ -131,21 +133,40 @@ class MainActivity : Activity() {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val body = ui.column(landscape)
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
+        val viewer = ui.column().apply { setBackgroundColor(ui.surface) }
+        val options = ui.column(true)
+        ui.addWeighted(options, ui.button(if (state.viewerSource == "App") "Continue app ▾" else "Folder content ▾") { chooseViewerSource() })
+        if (state.viewerSource == "Folder") {
+            scaleControl = ui.button("${state.contentScale} ▾") { chooseContentScale() }
+            ui.addWeighted(options, scaleControl!!)
+        }
+        viewer.addView(options)
         val panel = FrameLayout(this).apply { setBackgroundColor(ui.surface) }
+        viewer.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
         val favourites = state.favourites().filter { flat ->
             val component = ComponentName.unflattenFromString(flat)
             component != null && runCatching { packageManager.getActivityInfo(component, 0) }.isSuccess
         }.take(if (!state.grid && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) 4 else state.favouriteCount)
         if (landscape) {
-            body.addView(favouriteColumn(favourites.take(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.15f))
-            body.addView(panel, LinearLayout.LayoutParams(0, -1, 0.70f))
-            body.addView(favouriteColumn(favourites.drop(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.15f))
+            body.addView(favouriteColumn(favourites.take(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.10f))
+            body.addView(viewer, LinearLayout.LayoutParams(0, -1, 0.80f))
+            body.addView(favouriteColumn(favourites.drop(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.10f))
         } else {
-            body.addView(panel, LinearLayout.LayoutParams(-1, 0, 0.57f))
-            body.addView(favouriteColumn(favourites, portrait = true), LinearLayout.LayoutParams(-1, 0, 0.43f))
+            body.addView(viewer, LinearLayout.LayoutParams(-1, 0, 0.75f))
+            body.addView(favouriteColumn(favourites, portrait = true), LinearLayout.LayoutParams(-1, 0, 0.25f))
         }
         val last = state.last(state.mode)
-        if (last == null) {
+        if (state.viewerSource == "App") {
+            val content = ui.column().apply { gravity = android.view.Gravity.CENTER }
+            val component = state.lastApp()?.let { ComponentName.unflattenFromString(it) }
+            val info = component?.let { runCatching { packageManager.getActivityInfo(it, 0) }.getOrNull() }
+            content.addView(ui.label(if (info == null) "Continue your ${state.mode.lowercase()} app" else info.loadLabel(packageManager).toString(), 24f))
+            content.addView(ui.label("Return to the app's last screen. Android and the app manage its saved place.", 16f))
+            if (component != null && info != null) content.addView(ui.button("Continue ${info.loadLabel(packageManager)}") { launch(component) })
+            content.addView(ui.button(if (info == null) "Choose app" else "Choose another app") { drawer() })
+            if (state.mode == "Watch") content.addView(ui.button("Playback controls") { externalPlayback() })
+            panel.addView(ScrollView(this).apply { isFillViewport = true; addView(content) }, FrameLayout.LayoutParams(-1, -1))
+        } else if (last == null) {
             val empty = ui.column()
             empty.addView(ui.label(if (state.mode == "Watch") "Your next watch starts here" else "Pick up your next chapter", 24f))
             empty.addView(ui.label("Choose a folder to start. Your place will be saved.", 17f))
@@ -166,11 +187,37 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, ui.dp(48)))
     }
 
+    /** Lets the viewer switch between an app resume entry and user-selected folder media. */
+    private fun chooseViewerSource() {
+        AlertDialog.Builder(this).setTitle("Main viewer").setItems(arrayOf("Continue app", "Folder content")) { _, index ->
+            state.viewerSource = if (index == 0) "App" else "Folder"; home()
+        }.setNegativeButton("Cancel", null).show()
+    }
+
+    /** Persists aspect handling for local reader/video content without changing another app's display. */
+    private fun chooseContentScale() {
+        val values = arrayOf("Fit", "Fill", "Stretch")
+        AlertDialog.Builder(this).setTitle("Content sizing")
+            .setItems(arrayOf("Fit to block · show everything", "Fill block · crop edges", "Stretch · use full block")) { _, index ->
+                state.contentScale = values[index]
+                reader?.applyContentScale(); watch?.applyContentScale()
+                scaleControl?.text = "${state.contentScale} ▾"
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     /** Recreates centred list rows or two grid rows; landscape favourites occupy equal side slots. */
     private fun favouriteColumn(components: List<String>, portrait: Boolean = false): LinearLayout {
-        val shell = ui.column()
+        val shell = ui.column().apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(ui.background); setStroke(ui.dp(1), ui.border)
+            }
+        }
         shell.addView(ui.section(if (portrait) "Favourites" else "Favs"))
-        val column = ui.column().apply { gravity = android.view.Gravity.CENTER }
+        val column = ui.column().apply {
+            gravity = android.view.Gravity.CENTER
+            dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.border); setSize(ui.dp(1), ui.dp(1)) }
+            showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+        }
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(column) }
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         if (components.isEmpty()) column.addView(ui.row("+ Add apps") { drawer() })
@@ -179,7 +226,11 @@ class MainActivity : Activity() {
         val slots: List<String?> = if (state.grid && portrait && components.isNotEmpty())
             List(state.favouriteCount) { components.getOrNull(it) } else components
         slots.chunked(columns).forEach { group ->
-            val row = ui.column(true).apply { gravity = android.view.Gravity.CENTER }
+            val row = ui.column(true).apply {
+                gravity = android.view.Gravity.CENTER
+                dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.border); setSize(ui.dp(1), ui.dp(1)) }
+                showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+            }
             group.forEach { flat ->
                 if (flat == null) {
                     row.addView(View(this), LinearLayout.LayoutParams(0, -1, 1f))
@@ -192,7 +243,10 @@ class MainActivity : Activity() {
                 val icon = info.loadIcon(packageManager).apply { setBounds(0, 0, ui.dp(24), ui.dp(24)) }
                 if (state.grid || !state.showLabels) {
                     // Foreground gravity centres an icon-only shortcut; top compound drawables pin it to the edge.
-                    button.foreground = icon
+                    button.foreground = android.graphics.drawable.LayerDrawable(arrayOf(icon)).apply {
+                        setLayerSize(0, ui.dp(32), ui.dp(32))
+                        setLayerGravity(0, android.view.Gravity.CENTER)
+                    }
                     button.foregroundGravity = android.view.Gravity.CENTER
                 } else if (portrait) button.setCompoundDrawables(icon, null, null, null)
                 else button.setCompoundDrawables(null, icon, null, null)
@@ -200,7 +254,8 @@ class MainActivity : Activity() {
                 button.textSize = if (portrait) 18f else 11f
                 button.gravity = android.view.Gravity.CENTER
                 button.contentDescription = label; button.tooltipText = label
-                if (!state.grid) ui.flatFocus(button)
+                ui.flatFocus(button, if (state.grid) ui.surface else Color.TRANSPARENT)
+                button.stateListAnimator = null
                 button.setOnLongClickListener { favouriteActions(flat, label) { home() }; true }
                 val tile = if (portrait && state.grid) SquareShortcut(this, button) else button
                 row.addView(tile, if (portrait && !state.grid) LinearLayout.LayoutParams(ui.dp(200), -1)
@@ -314,7 +369,12 @@ class MainActivity : Activity() {
 
     /** Launches an installed application without claiming control of its saved session. */
     private fun launch(component: ComponentName) {
-        runCatching { startActivity(Intent.makeMainActivity(component)) }.onFailure { message("This app is unavailable.") }
+        runCatching {
+            startActivity(Intent.makeMainActivity(component))
+            state.rememberApp(component.flattenToString())
+            state.viewerSource = "App"
+            home()
+        }.onFailure { message("This app is unavailable.") }
     }
 
     /** Scans the selected folder off the UI thread, ignoring results from screens already left. */
@@ -345,7 +405,7 @@ class MainActivity : Activity() {
 
     /** Opens a selected item inside the home panel and starts explicitly requested video playback. */
     private fun openItem(item: LibraryItem) {
-        state.remember(item); state.mode = item.mode; home()
+        state.remember(item); state.mode = item.mode; state.viewerSource = "Folder"; home()
         if (item.mode == "Watch") watch?.load(item, true)
     }
 
@@ -536,8 +596,8 @@ class MainActivity : Activity() {
             if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
                 drawerSwipeY = event.y; drawerSwipeX = event.x
                 val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-                drawerSwipeEligible = if (landscape) event.x < root.width * .15f || event.x > root.width * .85f || event.y > root.height - ui.dp(48)
-                    else event.y > root.height * .57f
+                drawerSwipeEligible = if (landscape) event.x < root.width * .10f || event.x > root.width * .90f || event.y > root.height - ui.dp(48)
+                    else event.y > root.height * .75f
             } else if (event.actionMasked == android.view.MotionEvent.ACTION_UP && drawerSwipeEligible &&
                 drawerSwipeY - event.y > ui.dp(48) && kotlin.math.abs(event.x - drawerSwipeX) < ui.dp(80)) {
                 val cancel = android.view.MotionEvent.obtain(event).apply { action = android.view.MotionEvent.ACTION_CANCEL }

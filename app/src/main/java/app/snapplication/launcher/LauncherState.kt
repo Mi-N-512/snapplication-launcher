@@ -22,6 +22,19 @@ class LauncherState(context: Context) {
     var showLabels: Boolean
         get() = prefs.getBoolean("showLabels", true)
         set(value) { prefs.edit().putBoolean("showLabels", value).apply() }
+    var viewerSource: String
+        get() = prefs.getString("viewerSource:$mode", "App")!!
+        set(value) { prefs.edit().putString("viewerSource:$mode", value).apply() }
+    var contentScale: String
+        get() = prefs.getString("contentScale:$mode", "Fit")!!
+        set(value) { require(value in listOf("Fit", "Fill", "Stretch")); prefs.edit().putString("contentScale:$mode", value).apply() }
+
+    /** Saves the external task entry per mode for MainActivity's Continue app panel. */
+    fun rememberApp(component: String) { prefs.edit().putString("lastApp:$mode", component).apply() }
+
+    /** Returns the last app launched through this launcher in the current mode. */
+    fun lastApp(): String? = prefs.getString("lastApp:$mode", null)
+
     var useWallpaper: Boolean
         get() = prefs.getBoolean("useWallpaper", false)
         set(value) { prefs.edit().putBoolean("useWallpaper", value).apply() }
