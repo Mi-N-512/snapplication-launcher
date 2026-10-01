@@ -11,11 +11,17 @@ data class LibraryItem(val uri: String, val title: String, val mime: String, val
 class LauncherState(context: Context) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
     var mode: String
-        get() = prefs.getString("mode", "Watch")!!
+        get() = prefs.getString("mode", if (BuildConfig.FLAVOR == "ereader") "Read" else "Watch")!!
         set(value) { prefs.edit().putString("mode", value).apply() }
     var theme: String
-        get() = prefs.getString("theme", "Dark")!!
+        get() = prefs.getString("theme", if (BuildConfig.FLAVOR == "ereader") "E-paper" else "Dark")!!
         set(value) { prefs.edit().putString("theme", value).apply() }
+    var orientation: String
+        get() = prefs.getString("orientation", if (BuildConfig.FLAVOR == "tv") "Landscape" else "Mode default")!!
+        set(value) { prefs.edit().putString("orientation", value).apply() }
+    var showLabels: Boolean
+        get() = prefs.getBoolean("showLabels", true)
+        set(value) { prefs.edit().putBoolean("showLabels", value).apply() }
     var useWallpaper: Boolean
         get() = prefs.getBoolean("useWallpaper", false)
         set(value) { prefs.edit().putBoolean("useWallpaper", value).apply() }
@@ -86,10 +92,10 @@ class LauncherState(context: Context) {
         List(array.length()) { array.getString(it) }
     }.getOrDefault(emptyList())
 
-    /** Toggles a favourite while preserving the order chosen by the user. */
+    /** Toggles a favourite; new shortcuts go first so they remain visible even when Home is full. */
     fun toggleFavourite(component: String) {
         val items = favourites().toMutableList()
-        if (!items.remove(component)) items.add(component)
+        if (!items.remove(component)) items.add(0, component)
         prefs.edit().putString("favourites", JSONArray(items).toString()).apply()
     }
 

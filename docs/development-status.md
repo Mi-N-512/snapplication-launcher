@@ -66,3 +66,16 @@ An optional Other app playback screen is being added to the app drawer. It uses 
 The external-media checkpoint passes debug compilation, lint and the existing seven unit tests. Those tests do not exercise other apps' sessions. Code review identified toggle-only sessions; paired play/pause media-button support was added and the checks rerun successfully. Runtime verification remains pending. Build tooling can run without escalation by placing the compiler temporary files under the workspace; the command-line override is not committed as a machine-specific project setting.
 
 On 30 September, the authenticated emulator console showed an actual USB debugging approval dialog. Enabling keyboard and directional input on the isolated AVD did not make console key events navigate that dialog. Reopening a visible emulator was not executed because automatic approval review hit its usage limit (retry time 4:33 PM). The latest external-media code is saved locally; GitHub and Downloads synchronization is pending.
+
+
+## Wireframe and editions checkpoint — 1 October 2026
+
+Reworked Home to remove extra toolbars and follow Make's 57% portrait content area and 15/70/15 landscape columns. Added flat app/settings rows, grouped settings, theme previews, separate theme/favourite pages, portrait four-row list, 4/6/8 grid choices, orientation/label preferences and swipe-up navigation from favourite areas. Header, Android and mapped Back now share the same parent routing. Native status-bar icons adapt to light themes. Colour and completion sliders have explicit 48 dp touch areas.
+
+App drawer now has labelled, focusable add/remove stars. New favourites go first to avoid disappearing behind the visible limit. Emulator QA verified add, Home visibility, persistence after force-stop/reopen, removal and re-add. TV edition also passed arrow-key/Select addition and Back-to-Home verification. Existing Universal data survived the update.
+
+Three separate debug editions build: Universal, E-reader and TV. All three pass lint without errors (warnings remain) and seven existing unit tests each. All three installed on the Android 15 phone emulator; E-reader started in Read/high-contrast, TV in Watch/landscape, and TV's LEANBACK entry resolved. These smoke checks do not establish physical TV/e-ink compatibility or full hardware acceptance. Sensor, CEC, refresh, macros and complete source-scope work remain outstanding.
+
+The emulator authorization issue described above is resolved. External-session runtime coverage remains pending. The optional external-playback screen is now reached from Settings. Provider engines remain deferred. Private test APKs are supplied in private-test-builds; no GitHub Release or public/store publication is created.
+
+Development signing uses an ignored .local/debug.keystore on this laptop so Android Studio updates remain compatible. The key is never committed. A fresh checkout elsewhere uses Android's normal debug key and may need a separate install if signed differently.

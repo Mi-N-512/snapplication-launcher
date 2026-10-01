@@ -29,7 +29,7 @@ class ColourPicker(private val activity: Activity, private val state: LauncherSt
         val roleIds = List(2) { android.view.View.generateViewId() }
         listOf("Background", "Accent").forEachIndexed { index, name ->
             roles.addView(RadioButton(activity).apply {
-                id = roleIds[index]; text = name; setTextColor(ui.text)
+                id = roleIds[index]; text = name; setTextColor(ui.text); minHeight = ui.dp(48)
             })
         }
         roles.check(roleIds[0])
@@ -57,7 +57,7 @@ class ColourPicker(private val activity: Activity, private val state: LauncherSt
                     override fun onStopTrackingTouch(bar: SeekBar) {}
                 })
             }
-            sliders.add(slider); content.addView(slider)
+            sliders.add(slider); content.addView(slider, LinearLayout.LayoutParams(-1, ui.dp(48)))
         }
         roles.setOnCheckedChangeListener { _, id ->
             val index = roleIds.indexOf(id)

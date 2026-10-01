@@ -15,12 +15,21 @@ import android.widget.TextView
 class LauncherUi(private val context: Context, state: LauncherState) {
     val background: Int = when (state.theme) {
         "OLED Black" -> Color.BLACK
-        "Light", "E-paper" -> Color.WHITE
+        "Light" -> 0xfffafafa.toInt()
+        "E-paper" -> Color.WHITE
+        "Material You" -> 0xff1c1b1f.toInt()
         "Custom" -> state.background
         else -> 0xff1a1a1a.toInt()
     }
     val text: Int = if (Color.luminance(background) > 0.45) Color.BLACK else Color.WHITE
-    val surface: Int = if (text == Color.BLACK) 0xffeeeeee.toInt() else 0xff292929.toInt()
+    val surface: Int = when (state.theme) {
+        "OLED Black" -> 0xff0d0d0d.toInt()
+        "Material You" -> 0xff2b2930.toInt()
+        "Light", "E-paper" -> Color.WHITE
+        else -> if (text == Color.BLACK) 0xfff0f0f0.toInt() else 0xff252525.toInt()
+    }
+    val border: Int = if (text == Color.BLACK) 0xffe0e0e0.toInt() else 0xff383838.toInt()
+    val muted: Int = if (text == Color.BLACK) 0xff666666.toInt() else 0xffaaaaaa.toInt()
     val accent: Int = when {
         state.theme == "Custom" -> state.accent
         state.theme == "Material You" && Build.VERSION.SDK_INT >= 31 -> context.getColor(android.R.color.system_accent1_200)
@@ -60,6 +69,53 @@ class LauncherUi(private val context: Context, state: LauncherState) {
         setOnClickListener { action() }
         isFocusable = true
         setPadding(dp(12), dp(4), dp(12), dp(4))
+    }
+
+    /** Creates the wireframe's flat row while preserving remote focus feedback. */
+    fun row(value: String, action: () -> Unit): Button = button(value, action).apply {
+        gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        textSize = 16f
+        flatFocus(this, surface)
+        setPadding(dp(20), dp(12), dp(20), dp(12))
+        minHeight = dp(64)
+    }
+
+    /** Preserves flat reference styling through focus changes, with a clear remote outline. */
+    fun flatFocus(view: View, colour: Int = Color.TRANSPARENT) {
+        view.onFocusChangeListener = null
+        view.background = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), GradientDrawable().apply {
+                setColor(colour); setStroke(dp(2), accent)
+            })
+            addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { setColor(surface) })
+            addState(intArrayOf(), GradientDrawable().apply { setColor(colour); setStroke(dp(1), border) })
+        }
+    }
+
+    /** Builds a two-line settings row with the reference's muted subtitle and right-side action. */
+    fun setting(title: String, subtitle: String, value: String = "›", action: () -> Unit): LinearLayout = column(true).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(72)
+        setPadding(dp(16), dp(8), dp(16), dp(8))
+        flatFocus(this, surface)
+        isFocusable = true; isClickable = true
+        contentDescription = "$title, $subtitle, $value"
+        val words = column()
+        words.addView(label(title, 16f).apply { setPadding(0, 0, 0, dp(4)) })
+        words.addView(label(subtitle, 11f).apply {
+            setTextColor(muted); setPadding(0, 0, 0, 0)
+        })
+        addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+        addView(label(value, 17f))
+        setOnClickListener { action() }
+    }
+
+    /** Labels a group using the reference's spaced, small uppercase type. */
+    fun section(value: String): TextView = label(value.uppercase(), 11f).apply {
+        typeface = android.graphics.Typeface.MONOSPACE
+        letterSpacing = 0.12f
+        setTextColor(muted)
+        setPadding(dp(16), dp(20), dp(16), dp(8))
     }
 
     /** Adds equally weighted controls to a toolbar without squeezing vertical touch targets. */
