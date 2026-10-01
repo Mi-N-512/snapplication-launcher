@@ -1,6 +1,6 @@
 # Private test builds — 1 October 2026
 
-Source: `64649835194df1254d526d0b49a677ef0a964e80`. Development builds only; not a release.
+Source: `77b47fa3e0656ec50d2a93a3861ee6e5c31a1c2b`. Development builds only; not a release.
 
 | Edition | Download | Starts with |
 |---|---|---|
