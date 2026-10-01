@@ -12,7 +12,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Builds consistent accessible native controls for MainActivity and ReaderPanel using LauncherState colours. */
-class LauncherUi(private val context: Context, state: LauncherState) {
+class LauncherUi(private val context: Context, state: LauncherState, private val glass: Boolean = false) {
     val background: Int = when (state.theme) {
         "OLED Black" -> Color.BLACK
         "Light" -> 0xfffafafa.toInt()
@@ -36,6 +36,18 @@ class LauncherUi(private val context: Context, state: LauncherState) {
         else -> text
     }
 
+    /** Layers translucent highlights over the live wallpaper; controls remain sharp above the surface. */
+    fun homeSurface(): android.graphics.drawable.Drawable = if (glass) GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        if (text == Color.BLACK) intArrayOf(0x70ffffff, 0x40ffffff, 0x60ffffff)
+        else intArrayOf(0x30ffffff, 0x18181818, 0x38383838)
+    ).apply { setStroke(dp(1), 0x40ffffff) }
+    else android.graphics.drawable.ColorDrawable(surface)
+
+    /** Keeps foreground text readable while revealing wallpaper through labelled controls. */
+    fun textSurface(): Int = if (!glass) Color.TRANSPARENT
+        else if (text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt()
+
     /** Converts design dimensions to device-independent pixels. */
     fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 
@@ -48,6 +60,7 @@ class LauncherUi(private val context: Context, state: LauncherState) {
     /** Creates readable text with generous line spacing for television and touch use. */
     fun label(value: String, size: Float = 20f): TextView = TextView(context).apply {
         text = value; textSize = size; setTextColor(this@LauncherUi.text)
+        if (glass) setBackgroundColor(if (this@LauncherUi.text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt())
         setPadding(dp(12), dp(8), dp(12), dp(8))
         gravity = Gravity.CENTER_VERTICAL
     }
@@ -60,7 +73,7 @@ class LauncherUi(private val context: Context, state: LauncherState) {
         // Outline the active remote target without changing its dimensions.
         fun decorate(focused: Boolean) {
             background = GradientDrawable().apply {
-                setColor(surface); cornerRadius = dp(7).toFloat()
+                setColor(if (glass) (if (this@LauncherUi.text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt()) else surface); cornerRadius = dp(7).toFloat()
                 setStroke(dp(if (focused) 3 else 1), if (focused) accent else surface)
             }
         }
