@@ -22,12 +22,16 @@ class LauncherUi(private val context: Context, state: LauncherState, private val
         else -> 0xff1a1a1a.toInt()
     }
     val text: Int = if (Color.luminance(background) > 0.45) Color.BLACK else Color.WHITE
-    val surface: Int = when (state.theme) {
+    val surface: Int = glassColour(when (state.theme) {
         "OLED Black" -> 0xff0d0d0d.toInt()
         "Material You" -> 0xff2b2930.toInt()
         "Light", "E-paper" -> Color.WHITE
         else -> if (text == Color.BLACK) 0xfff0f0f0.toInt() else 0xff252525.toInt()
-    }
+    })
+    /** Provides a translucent reading surface when the shared Transparency setting is active. */
+    private fun glassColour(colour: Int): Int = if (glass)
+        (colour and 0x00ffffff) or (if (text == Color.BLACK) 0xcc000000.toInt() else 0xaa000000.toInt()) else colour
+
     val border: Int = if (text == Color.BLACK) 0xffe0e0e0.toInt() else 0xff383838.toInt()
     val muted: Int = if (text == Color.BLACK) 0xff666666.toInt() else 0xffaaaaaa.toInt()
     val accent: Int = when {
@@ -101,7 +105,13 @@ class LauncherUi(private val context: Context, state: LauncherState, private val
                 setColor(colour); setStroke(dp(2), accent)
             })
             addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { setColor(surface) })
-            addState(intArrayOf(), GradientDrawable().apply { setColor(colour); if (outline) setStroke(dp(1), border) })
+            addState(intArrayOf(), GradientDrawable().apply {
+                if (glass && colour != Color.TRANSPARENT) {
+                    orientation = GradientDrawable.Orientation.TL_BR
+                    colors = intArrayOf(if (text == Color.BLACK) 0xddffffff.toInt() else 0x99505768.toInt(), colour)
+                } else setColor(colour)
+                if (outline) setStroke(dp(1), if (glass) 0x40ffffff else border)
+            })
         }
     }
 
@@ -114,12 +124,12 @@ class LauncherUi(private val context: Context, state: LauncherState, private val
         isFocusable = true; isClickable = true
         contentDescription = "$title, $subtitle, $value"
         val words = column()
-        words.addView(label(title, 16f).apply { setPadding(0, 0, 0, dp(4)) })
+        words.addView(label(title, 16f).apply { setPadding(0, 0, 0, dp(4)); setBackgroundColor(Color.TRANSPARENT) })
         words.addView(label(subtitle, 11f).apply {
-            setTextColor(muted); setPadding(0, 0, 0, 0)
+            setTextColor(muted); setPadding(0, 0, 0, 0); setBackgroundColor(Color.TRANSPARENT)
         })
         addView(words, LinearLayout.LayoutParams(0, -2, 1f))
-        addView(label(value, 17f))
+        addView(label(value, 17f).apply { setBackgroundColor(Color.TRANSPARENT) })
         setOnClickListener { action() }
     }
 

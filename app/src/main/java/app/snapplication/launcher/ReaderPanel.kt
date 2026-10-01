@@ -36,7 +36,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         val controls = ui.column(true)
         ui.addWeighted(controls, ui.button("Previous") { move(-1) })
         ui.addWeighted(controls, ui.button("Next") { move(1) })
-        if (state.showReaderControls) view.addView(controls)
+        if (state.readInLauncher && state.showReaderControls) view.addView(controls)
     }
 
     /** Resizes the already-decoded page without copying the source or losing reading position. */
