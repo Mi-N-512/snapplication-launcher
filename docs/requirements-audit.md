@@ -36,3 +36,8 @@ Android owns other apps' process lifetimes and private state. A successful task 
 The emulator is evidence for software paths only. Physical CEC, battery bypass, air-mouse behavior, HDMI screen-off continuity and panel refresh cannot be accepted from emulator screenshots or hard-coded prototype data.
 
 The historical development log contains dated findings that later entries supersede. This table summarizes current gaps; it does not replace the original scope or imply completion.
+
+
+## Live-testing handoff
+
+The user elected to test the applications independently and return with feedback. Physical-device testing is now user-owned; do not repeatedly request USB debugging, device attachment or emulator substitutes for that feedback. Preserve the open feasibility items above and prioritize polish and reported real-use problems. The live test instructions are in live-test-guide.md.
