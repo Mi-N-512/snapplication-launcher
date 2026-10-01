@@ -22,6 +22,9 @@ class LauncherState(context: Context) {
     var showLabels: Boolean
         get() = prefs.getBoolean("showLabels", true)
         set(value) { prefs.edit().putBoolean("showLabels", value).apply() }
+    var showFavouriteHeading: Boolean
+        get() = prefs.getBoolean("showFavouriteHeading", false)
+        set(value) { prefs.edit().putBoolean("showFavouriteHeading", value).apply() }
     var showReaderControls: Boolean
         get() = prefs.getBoolean("showReaderControls", false)
         set(value) { prefs.edit().putBoolean("showReaderControls", value).apply() }

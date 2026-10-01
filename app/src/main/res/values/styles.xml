@@ -1,0 +1,7 @@
+<resources>
+    <!-- MainActivity uses a wallpaper-capable window; each non-Home page paints its own opaque surface. -->
+    <style name="LauncherTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+</resources>

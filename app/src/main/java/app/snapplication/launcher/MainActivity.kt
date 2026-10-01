@@ -93,16 +93,17 @@ class MainActivity : Activity() {
         reader?.close(); reader = null
         screen = title
         drawerGestureAreas.clear(); drawerSwipeEligible = false
-        ui = LauncherUi(this, state)
+        ui = LauncherUi(this, state, title == "Home" && state.useWallpaper)
         // Keep real Android status/navigation icons readable on light and e-paper surfaces.
         window.decorView.systemUiVisibility = if (ui.text == Color.BLACK)
             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
         val showWallpaper = title == "Home" && state.useWallpaper
         if (showWallpaper) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+        window.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(if (showWallpaper) Color.TRANSPARENT else ui.background))
         root = ui.column()
-        root.setBackgroundColor(if (showWallpaper) (ui.background and 0xffffff) or 0xb3000000.toInt() else ui.background)
+        root.setBackgroundColor(if (showWallpaper) (ui.background and 0xffffff) or 0x30000000 else ui.background)
         root.setOnApplyWindowInsetsListener { view, insets ->
             view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
                 insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
@@ -127,38 +128,38 @@ class MainActivity : Activity() {
         return root
     }
 
-    /** Builds the Make reference's central content area with side favourites in landscape. */
+    /** Uses the Make layout: a 57 percent portrait viewer and a 70 percent landscape viewer. */
     private fun home() {
         begin("Home")
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val body = ui.column(landscape)
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
-        val viewer = ui.column().apply { setBackgroundColor(ui.surface) }
-        val panel = FrameLayout(this).apply { setBackgroundColor(ui.surface) }
+        val viewer = ui.column().apply { background = ui.homeSurface() }
+        val panel = FrameLayout(this)
         viewer.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
         val favourites = state.favourites().filter { flat ->
             val component = ComponentName.unflattenFromString(flat)
             component != null && runCatching { packageManager.getActivityInfo(component, 0) }.isSuccess
         }.take(if (!state.grid && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) 4 else state.favouriteCount)
         if (landscape) {
-            body.addView(favouriteColumn(favourites.take(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.10f))
-            body.addView(viewer, LinearLayout.LayoutParams(0, -1, 0.80f))
-            body.addView(favouriteColumn(favourites.drop(state.favouriteCount / 2)), LinearLayout.LayoutParams(0, -1, 0.10f))
+            val half = state.favouriteCount / 2
+            body.addView(favouriteColumn(favourites.take(half), slotCount = half), LinearLayout.LayoutParams(0, -1, .15f))
+            body.addView(viewer, LinearLayout.LayoutParams(0, -1, .70f))
+            body.addView(favouriteColumn(favourites.drop(half), slotCount = half), LinearLayout.LayoutParams(0, -1, .15f))
         } else {
-            body.addView(viewer, LinearLayout.LayoutParams(-1, 0, 0.75f))
-            body.addView(favouriteColumn(favourites, portrait = true), LinearLayout.LayoutParams(-1, 0, 0.25f))
+            body.addView(viewer, LinearLayout.LayoutParams(-1, 0, .57f))
+            body.addView(favouriteColumn(favourites, portrait = true, slotCount = if (state.grid) state.favouriteCount else 4), LinearLayout.LayoutParams(-1, 0, .43f))
         }
         val last = state.last(state.mode)
         if (state.viewerSource == "App") {
             val content = ui.column().apply { gravity = android.view.Gravity.CENTER }
             val component = state.lastApp()?.let { ComponentName.unflattenFromString(it) }
             val info = component?.let { runCatching { packageManager.getActivityInfo(it, 0) }.getOrNull() }
-            content.addView(ui.label(if (info == null) "Continue your ${state.mode.lowercase()} app" else info.loadLabel(packageManager).toString(), 24f))
-            content.addView(ui.label("Return to the app's last screen. Android and the app manage its saved place.", 16f))
+            content.addView(ui.label("Snapplication", 16f))
             if (component != null && info != null) content.addView(ui.button("Continue ${info.loadLabel(packageManager)}") { launch(component) })
             content.addView(ui.button(if (info == null) "Choose app" else "Choose another app") { drawer() })
             if (state.mode == "Watch") content.addView(ui.button("Playback controls") { externalPlayback() })
-            panel.addView(ScrollView(this).apply { isFillViewport = true; addView(content) }, FrameLayout.LayoutParams(-1, -1))
+            panel.addView(ScrollView(this).apply { addView(content) }, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM))
         } else if (last == null) {
             val empty = ui.column()
             empty.addView(ui.label(if (state.mode == "Watch") "Your next watch starts here" else "Pick up your next chapter", 24f))
@@ -175,6 +176,7 @@ class MainActivity : Activity() {
             reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }
         }
         root.addView(ui.row("⌃   ALL APPS") { drawer() }.apply {
+            ui.flatFocus(this, ui.textSurface(), outline = false)
             gravity = android.view.Gravity.CENTER; textSize = 11f
             typeface = android.graphics.Typeface.MONOSPACE
             drawerGestureAreas.add(this)
@@ -199,26 +201,19 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancel", null).show()
     }
 
-    /** Recreates centred list rows or two grid rows; landscape favourites occupy equal side slots. */
-    private fun favouriteColumn(components: List<String>, portrait: Boolean = false): LinearLayout {
-        val shell = ui.column().apply {
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(ui.background); setStroke(ui.dp(1), ui.border)
-            }
-        }
-        shell.addView(ui.section(if (portrait) "Favourites" else "Favs"))
+    /** Preserves the configured Make block count; unassigned cells open the app picker. */
+    private fun favouriteColumn(components: List<String>, portrait: Boolean = false, slotCount: Int): LinearLayout {
+        val shell = ui.column().apply { background = ui.homeSurface() }
+        if (state.showFavouriteHeading) shell.addView(ui.section("Favourites"))
         val column = ui.column().apply {
             gravity = android.view.Gravity.CENTER
             dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.border); setSize(ui.dp(1), ui.dp(1)) }
             showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
         }
-        val scroll = ScrollView(this).apply { isFillViewport = true; addView(column) }
-        shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        if (components.isEmpty()) column.addView(ui.row("+ Add apps") { drawer() })
-        val columns = if (state.grid && portrait) state.favouriteCount / 2 else 1
-        column.minimumHeight = ui.dp(((components.size + columns - 1) / columns) * 48)
-        val slots: List<String?> = if (state.grid && portrait && components.isNotEmpty())
-            List(state.favouriteCount) { components.getOrNull(it) } else components
+        shell.addView(column, LinearLayout.LayoutParams(-1, 0, 1f))
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val columns = if (portrait && state.grid) state.favouriteCount / 2 else 1
+        val slots = List(slotCount) { components.getOrNull(it) }
         slots.chunked(columns).forEach { group ->
             val row = ui.column(true).apply {
                 gravity = android.view.Gravity.CENTER
@@ -227,7 +222,9 @@ class MainActivity : Activity() {
             }
             group.forEach { flat ->
                 if (flat == null) {
-                    row.addView(View(this), LinearLayout.LayoutParams(0, -1, 1f))
+                    val add = ui.button("+") { drawer() }.apply { contentDescription = "Add app to Home" }
+                    ui.flatFocus(add, ui.textSurface(), outline = false)
+                    row.addView(add, LinearLayout.LayoutParams(0, -1, 1f))
                     return@forEach
                 }
                 val component = ComponentName.unflattenFromString(flat) ?: return@forEach
@@ -235,27 +232,29 @@ class MainActivity : Activity() {
                 val label = info.loadLabel(packageManager).toString()
                 val button = ui.button(if (state.grid || !state.showLabels) "" else label) { launch(component) }
                 val icon = info.loadIcon(packageManager).apply { setBounds(0, 0, ui.dp(24), ui.dp(24)) }
-                if (state.grid || !state.showLabels) {
-                    // Foreground gravity centres an icon-only shortcut; top compound drawables pin it to the edge.
-                    button.foreground = android.graphics.drawable.LayerDrawable(arrayOf(icon)).apply {
-                        setLayerSize(0, ui.dp(32), ui.dp(32))
-                        setLayerGravity(0, android.view.Gravity.CENTER)
-                    }
-                    button.foregroundGravity = android.view.Gravity.CENTER
-                } else if (portrait) button.setCompoundDrawables(icon, null, null, null)
-                else button.setCompoundDrawables(null, icon, null, null)
+                if (!state.grid && state.showLabels) {
+                    if (portrait) button.setCompoundDrawables(icon, null, null, null)
+                    else button.setCompoundDrawables(null, icon, null, null)
+                }
                 button.compoundDrawablePadding = ui.dp(12)
-                button.textSize = if (portrait) 18f else 11f
+                button.textSize = if (landscape) 12f else 18f
+                button.setSingleLine(true)
+                button.ellipsize = android.text.TextUtils.TruncateAt.END
                 button.gravity = android.view.Gravity.CENTER
                 button.contentDescription = label; button.tooltipText = label
-                ui.flatFocus(button, Color.TRANSPARENT, outline = false)
+                ui.flatFocus(button, if (state.grid || !state.showLabels) Color.TRANSPARENT else ui.textSurface(), outline = false)
                 button.stateListAnimator = null
                 button.setOnLongClickListener { favouriteActions(flat, label) { home() }; true }
-                val tile = if (portrait && state.grid) SquareShortcut(this, button) else button
-                row.addView(tile, if (portrait && !state.grid) LinearLayout.LayoutParams(ui.dp(200), -1)
-                    else LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3)) })
+                val tile = if (state.grid || !state.showLabels) FrameLayout(this).apply {
+                    addView(button, FrameLayout.LayoutParams(-1, -1))
+                    // A separate non-interactive image keeps adaptive icons centred through orientation changes.
+                    addView(android.widget.ImageView(this@MainActivity).apply {
+                        setImageDrawable(info.loadIcon(packageManager))
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    }, FrameLayout.LayoutParams(ui.dp(32), ui.dp(32), android.view.Gravity.CENTER))
+                } else button
+                row.addView(tile, LinearLayout.LayoutParams(0, -1, 1f))
             }
-            repeat(columns - group.size) { row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
             column.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         drawerGestureAreas.add(shell)
@@ -306,6 +305,7 @@ class MainActivity : Activity() {
             setBackgroundColor(ui.surface); minimumHeight = ui.dp(52)
         }
         root.addView(ui.row("⌄   APP DRAWER") { home() }.apply {
+            ui.flatFocus(this, ui.textSurface(), outline = false)
             gravity = android.view.Gravity.CENTER; textSize = 11f
             drawerGestureAreas.add(this)
         })
@@ -461,6 +461,9 @@ class MainActivity : Activity() {
                 .onFailure { message("No wallpaper picker is available on this device.") }
         })
         content.addView(ui.section("Favourites"))
+        content.addView(ui.setting("Favourites heading", "Show the heading above home shortcuts", if (state.showFavouriteHeading) "On" else "Off") {
+            state.showFavouriteHeading = !state.showFavouriteHeading; settings()
+        })
         content.addView(ui.setting("Favourites Style", "${if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
         content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
         content.addView(ui.section("Read & Watch"))

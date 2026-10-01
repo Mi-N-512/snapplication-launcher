@@ -111,3 +111,16 @@ Removed the inner normal-state border/background around Home app icons. Only the
 ## Drawer gesture verification — 1 October 2026
 
 The Make reference's downward drawer gesture was missing. Added close-on-downward-swipe from the drawer handle, and replaced Home's approximate fractional hit regions with actual visible shortcut/footer bounds. Multi-touch and cancelled gestures do not trigger navigation. Emulator checks verified upward Home opening, downward handle closing, and ordinary downward list scrolling staying inside the drawer. All three debug builds, lint checks and existing seven unit tests per edition pass. No visual layout or default control visibility was changed.
+
+
+## Wallpaper and reference-layout correction — 1 October 2026
+
+Android Studio's Downloads project selected Java 25 through `.gradle/config.properties`; changed that ignored local setting to installed Java 21 and successfully built the Downloads project. Source remains compatible with Java 17 bytecode.
+
+Re-read recovered Make source. Home now uses its 57/43 portrait proportions, two grid rows for 4/6/8 blocks, and 15/70/15 landscape columns. Unassigned blocks show an Add app action instead of disappearing. User-requested divider lines remain, without inset icon borders. Favourites heading is hidden by default and can be enabled in Settings. App continuation controls are compact at the bottom of the viewer. They resume an external app, not embed it.
+
+Wallpaper shows through translucent gradient surfaces, with contrast backgrounds behind text. This is a glass-style treatment, not optical refraction or real-time background blur. Wallpaper-capable theme is declared before the window is created. Emulator wallpaper replaced with a blue gradient at the user's request; no wallpaper forced on users' devices. Video content remains opaque so it is readable.
+
+Android 15 emulator: local Big Buck Bunny video played inside Home from 46,869 ms to 66,264 ms and paused through its media session. Screenshot confirmed the video stays in the central panel. The wallpaper was independently checked against Pixel Launcher; the previous screenshot-like background was the selected system wallpaper, not retained rendering. Adaptive shortcut icons now use a centred ImageView instead of Button foreground to survive rotation.
+
+Final checks: all three edition builds/lint and seven tests per edition pass. Heading toggle on/off passed. Portrait shows two rows with three assigned apps and one Add slot. Screen-off retained 66,276 ms; force-stop/relaunch restored exactly 66,276 ms. Near-completion episode advancement and physical-device checks remain open.
