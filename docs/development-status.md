@@ -106,3 +106,8 @@ All edition builds, lint checks and seven unit tests per edition pass. Physical 
 Moved Main viewer source and Content sizing choices into Settings → Read & Watch. Previous/Next reading buttons default to hidden; a persisted Settings toggle enables them. Emulator UI testing verified source selection in Settings, no source/fit/page buttons on the default local-content Home, enabling page buttons, and disabling them again. Continue app remains the default Home source.
 
 Removed the inner normal-state border/background around Home app icons. Only the grid-cell divider lines remain; remote focus still receives a visible outline when selected. Full source and private debug builds are synchronized to the editable Downloads project.
+
+
+## Drawer gesture verification — 1 October 2026
+
+The Make reference's downward drawer gesture was missing. Added close-on-downward-swipe from the drawer handle, and replaced Home's approximate fractional hit regions with actual visible shortcut/footer bounds. Multi-touch and cancelled gestures do not trigger navigation. Emulator checks verified upward Home opening, downward handle closing, and ordinary downward list scrolling staying inside the drawer. All three debug builds, lint checks and existing seven unit tests per edition pass. No visual layout or default control visibility was changed.
