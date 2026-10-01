@@ -190,7 +190,11 @@ class MainActivity : Activity() {
                 val label = info.loadLabel(packageManager).toString()
                 val button = ui.button(if (state.grid || !state.showLabels) "" else label) { launch(component) }
                 val icon = info.loadIcon(packageManager).apply { setBounds(0, 0, ui.dp(24), ui.dp(24)) }
-                if (portrait && !state.grid) button.setCompoundDrawables(icon, null, null, null)
+                if (state.grid || !state.showLabels) {
+                    // Foreground gravity centres an icon-only shortcut; top compound drawables pin it to the edge.
+                    button.foreground = icon
+                    button.foregroundGravity = android.view.Gravity.CENTER
+                } else if (portrait) button.setCompoundDrawables(icon, null, null, null)
                 else button.setCompoundDrawables(null, icon, null, null)
                 button.compoundDrawablePadding = ui.dp(12)
                 button.textSize = if (portrait) 18f else 11f
