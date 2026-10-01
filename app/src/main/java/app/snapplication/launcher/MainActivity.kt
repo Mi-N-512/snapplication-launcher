@@ -93,11 +93,21 @@ class MainActivity : Activity() {
         reader?.close(); reader = null
         screen = title
         drawerGestureAreas.clear(); drawerSwipeEligible = false
-        ui = LauncherUi(this, state, title == "Home" && state.useWallpaper)
-        // Keep real Android status/navigation icons readable on light and e-paper surfaces.
-        window.decorView.systemUiVisibility = if (ui.text == Color.BLACK)
+        ui = LauncherUi(this, state, state.useWallpaper)
+        val immersiveHome = title == "Home" && resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        // Landscape Home fills the display; edge swipes temporarily reveal Android navigation.
+        val lightBars = if (ui.text == Color.BLACK)
             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
-        val showWallpaper = title == "Home" && state.useWallpaper
+        window.decorView.systemUiVisibility = lightBars or if (immersiveHome)
+            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            else 0
+        if (android.os.Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = if (immersiveHome) android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                else android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+        }
+        val showWallpaper = state.useWallpaper
         if (showWallpaper) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         window.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
@@ -105,7 +115,8 @@ class MainActivity : Activity() {
         root = ui.column()
         root.setBackgroundColor(if (showWallpaper) (ui.background and 0xffffff) or 0x30000000 else ui.background)
         root.setOnApplyWindowInsetsListener { view, insets ->
-            view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
+            if (immersiveHome) view.setPadding(0, 0, 0, 0)
+            else view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
                 insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
             insets
         }
@@ -129,6 +140,7 @@ class MainActivity : Activity() {
     }
 
     /** Uses the Make layout: a 57 percent portrait viewer and a 70 percent landscape viewer. */
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     private fun home() {
         begin("Home")
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -172,15 +184,53 @@ class MainActivity : Activity() {
             (player.view.parent as? ViewGroup)?.removeView(player.view)
             panel.addView(player.view, FrameLayout.LayoutParams(-1, -1))
             player.load(last, false)
+            player.view.useController = state.playVideosInLauncher
+            if (!state.playVideosInLauncher) {
+                player.view.hideController()
+                addOpenContentOverlay(panel, last, "▶")
+            } else player.view.showController()
         } else {
             reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }
+            if (!state.readInLauncher) addOpenContentOverlay(panel, last, "Open book")
         }
         root.addView(ui.row("⌃   ALL APPS") { drawer() }.apply {
             ui.flatFocus(this, ui.textSurface(), outline = false)
             gravity = android.view.Gravity.CENTER; textSize = 11f
             typeface = android.graphics.Typeface.MONOSPACE
             drawerGestureAreas.add(this)
-        }, LinearLayout.LayoutParams(-1, ui.dp(48)))
+        }, LinearLayout.LayoutParams(-1, ui.dp(if (landscape) 32 else 40)))
+    }
+
+    /** Makes the preview an accessible launch target while keeping its image visible underneath. */
+    private fun addOpenContentOverlay(panel: FrameLayout, item: LibraryItem, label: String) {
+        panel.addView(ui.button(label) { openContentInApp(item) }.apply {
+            contentDescription = "Open ${item.title} in another app"
+            textSize = if (item.mode == "Watch") 36f else 18f
+            ui.flatFocus(this, Color.TRANSPARENT, outline = false)
+        }, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    /** Hands the exact selected document/link to Android's viewer with a temporary read grant. */
+    private fun openContentInApp(item: LibraryItem) {
+        watch?.pause()
+        val uri = Uri.parse(item.uri)
+        val extension = item.title.substringAfterLast('.', "").lowercase()
+        val mime = if (extension == "cbz") "application/vnd.comicbook+zip"
+            else if (item.mime !in setOf("application/octet-stream", "application/zip", "")) item.mime else when (extension) {
+            "pdf" -> "application/pdf"
+            "cbz" -> "application/vnd.comicbook+zip"
+            else -> if (item.mode == "Watch") "video/*" else "image/*"
+        }
+        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = android.content.ClipData.newRawUri(item.title, uri)
+        }
+        try { startActivity(intent) }
+        catch (_: android.content.ActivityNotFoundException) {
+            message("No installed app can open this content. Install a compatible viewer, or enable in-launcher playback/reading in Settings.")
+        } catch (_: SecurityException) {
+            message("This content is no longer accessible. Choose it again from your folder.")
+        }
     }
 
     /** Lets the viewer switch between an app resume entry and user-selected folder media. */
@@ -402,7 +452,7 @@ class MainActivity : Activity() {
     /** Opens a selected item inside the home panel and starts explicitly requested video playback. */
     private fun openItem(item: LibraryItem) {
         state.remember(item); state.mode = item.mode; state.viewerSource = "Folder"; home()
-        if (item.mode == "Watch") watch?.load(item, true)
+        if (item.mode == "Watch" && state.playVideosInLauncher) watch?.load(item, true)
     }
 
     /** Requests read-only access to a user-chosen folder through Android's system picker. */
@@ -453,7 +503,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Show App Labels", "Display names beside favourites", if (state.showLabels) "On" else "Off") {
             state.showLabels = !state.showLabels; settings()
         })
-        content.addView(ui.setting("Home wallpaper", "Use your Android wallpaper", if (state.useWallpaper) "On" else "Off") {
+        content.addView(ui.setting("Transparency", "Wallpaper through Home, app drawer and Settings", if (state.useWallpaper) "On" else "Off") {
             state.useWallpaper = !state.useWallpaper; settings()
         })
         content.addView(ui.row("Choose Android wallpaper    ›") {
@@ -467,6 +517,12 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Favourites Style", "${if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
         content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
         content.addView(ui.section("Read & Watch"))
+        content.addView(ui.setting("Play videos in launcher", "Off: tap the preview to open a video app", if (state.playVideosInLauncher) "On" else "Off") {
+            state.playVideosInLauncher = !state.playVideosInLauncher; settings()
+        })
+        content.addView(ui.setting("Read in launcher", "Off: tap the preview to open a reading app", if (state.readInLauncher) "On" else "Off") {
+            state.readInLauncher = !state.readInLauncher; settings()
+        })
         content.addView(ui.setting("Main viewer", if (state.viewerSource == "App") "Continue app" else "Folder content") { chooseViewerSource() })
         content.addView(ui.setting("Content sizing", "${state.contentScale} · folder documents and videos") { chooseContentScale() })
         content.addView(ui.setting("Previous / Next buttons", "Show page controls in the reading panel", if (state.showReaderControls) "On" else "Off") {

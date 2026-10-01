@@ -29,6 +29,10 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         player.setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
+            /** Keeps preview-only mode paused even if a hardware/media-session Play command arrives. */
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (playWhenReady && !state.playVideosInLauncher) player.pause()
+            }
             /** Saves both sides of a manual/automatic item transition for independent episode resume. */
             @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
@@ -62,7 +66,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     fun load(selection: LibraryItem, autoplay: Boolean) {
         applyContentScale()
-        if (item?.uri == selection.uri) { if (autoplay) player.play(); return }
+        if (item?.uri == selection.uri) { if (autoplay && state.playVideosInLauncher) player.play(); return }
         save()
         queue = state.watchQueue().takeIf { items -> items.any { it.uri == selection.uri } } ?: listOf(selection)
         val startIndex = queue.indexOfFirst { it.uri == selection.uri }.coerceAtLeast(0)
@@ -71,7 +75,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         val position = state.progress(selection.uri)
         player.setMediaItems(queue.map { MediaItem.Builder().setUri(it.uri).setMediaId(it.uri).build() }, startIndex, position)
         player.prepare()
-        player.playWhenReady = autoplay
+        player.playWhenReady = autoplay && state.playVideosInLauncher
     }
 
     /** Commits current time for restoration after process death or shutdown. */
@@ -84,6 +88,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     fun screenOff() {
         player.pause()
         save()
+        if (!state.playVideosInLauncher) return
         if (player.hasNextMediaItem() && EpisodeResume.shouldAdvance(player.currentPosition, player.duration, state.completion)) {
             player.seekToNextMediaItem()
             player.seekTo(0)

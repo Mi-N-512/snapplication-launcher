@@ -131,3 +131,14 @@ Final checks: all three edition builds/lint and seven tests per edition pass. He
 On source 19605d1 / packaged checkpoint 7e08727, loaded the first local episode at 570,000 ms with a 95 percent threshold. A real emulator screen-off event staged episode two at exactly zero, and a force-stop/relaunch retained episode two at zero. Restored the original content, progress and completion setting afterward. This exercises WatchPlayer and saved preferences, beyond the EpisodeResume predicate unit tests.
 
 A full emulator reboot subsequently restored the original video's saved position to exactly 71,438 ms, confirmed in both preferences and the live media session. The emulator completed boot before this assertion. Physical Huawei/hub behavior remains unverified.
+
+
+## Preview handoff and shared transparency — 1 October 2026
+
+Folder-content Home now launches ACTION_VIEW for the exact selected URI with a temporary read grant and ClipData. CBZ files use the comic-book MIME type even when the provider labels them ZIP. Separate persisted video/reading toggles default off and retain embedded features when enabled. Preview-only mode rejects embedded play requests and does not stage the embedded queue at screen-off. Home app-resume entries continue to reopen the saved app task.
+
+Landscape Home is immersive and fills the full 2400×1080 emulator display; the viewer occupies x=360..2040 and the 32 dp footer occupies y=996..1080. System navigation remains available by edge swipe. Portrait footer reduced to 40 dp.
+
+Transparency replaces the Home-only wallpaper label and reuses its saved preference. Wallpaper-backed surfaces now apply to drawer/settings and their controls; turning it off restores opaque theme surfaces. This is translucent styling, not real-time blur/refraction.
+
+Verification: all three edition builds/lint and seven unit tests per edition pass. Android's activity log confirms video handoff to Google Photos with video/mp4, the selected content URI and read grant; this confirms dispatch, not universal third-party playback/resume. CBZ missing-reader fallback passed. Final build's embedded toggle shows controls and plays. Transparency off/on assertions and visual Settings inspection passed; user's current Read/E-paper choices restored after QA. Physical device and full external-reader compatibility remain unverified.

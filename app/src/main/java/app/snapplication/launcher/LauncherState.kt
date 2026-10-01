@@ -25,6 +25,12 @@ class LauncherState(context: Context) {
     var showFavouriteHeading: Boolean
         get() = prefs.getBoolean("showFavouriteHeading", false)
         set(value) { prefs.edit().putBoolean("showFavouriteHeading", value).apply() }
+    var playVideosInLauncher: Boolean
+        get() = prefs.getBoolean("playVideosInLauncher", false)
+        set(value) { prefs.edit().putBoolean("playVideosInLauncher", value).apply() }
+    var readInLauncher: Boolean
+        get() = prefs.getBoolean("readInLauncher", false)
+        set(value) { prefs.edit().putBoolean("readInLauncher", value).apply() }
     var showReaderControls: Boolean
         get() = prefs.getBoolean("showReaderControls", false)
         set(value) { prefs.edit().putBoolean("showReaderControls", value).apply() }
