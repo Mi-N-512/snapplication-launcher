@@ -30,7 +30,7 @@ Seven unit tests cover numeric page ordering, long numeric filenames, completion
 
 - Final device testing on the Huawei Mate 10 Pro, USB-C HDMI hub and air mouse.
 - End-to-end remote mapping, recovery, directional-navigation and accessibility checks on emulator and physical remote.
-- End-to-end screen-off episode transition and reboot resume tests on the final code.
+- Physical-device validation of screen-off episode transition and reboot resume; emulator transition and process-restart checks passed on 1 October.
 - Emulator verification of favourite reordering and 4/6/8-item layouts, followed by closer final design fidelity.
 - Device/emulator interaction and visual checks for the custom colour picker and static/live wallpaper integration.
 - External-app resume behavior where those apps expose supported APIs; no universal process suspension guarantee.
@@ -124,3 +124,10 @@ Wallpaper shows through translucent gradient surfaces, with contrast backgrounds
 Android 15 emulator: local Big Buck Bunny video played inside Home from 46,869 ms to 66,264 ms and paused through its media session. Screenshot confirmed the video stays in the central panel. The wallpaper was independently checked against Pixel Launcher; the previous screenshot-like background was the selected system wallpaper, not retained rendering. Adaptive shortcut icons now use a centred ImageView instead of Button foreground to survive rotation.
 
 Final checks: all three edition builds/lint and seven tests per edition pass. Heading toggle on/off passed. Portrait shows two rows with three assigned apps and one Add slot. Screen-off retained 66,276 ms; force-stop/relaunch restored exactly 66,276 ms. Near-completion episode advancement and physical-device checks remain open.
+
+
+## Completion-threshold runtime check — 1 October 2026
+
+On source 19605d1 / packaged checkpoint 7e08727, loaded the first local episode at 570,000 ms with a 95 percent threshold. A real emulator screen-off event staged episode two at exactly zero, and a force-stop/relaunch retained episode two at zero. Restored the original content, progress and completion setting afterward. This exercises WatchPlayer and saved preferences, beyond the EpisodeResume predicate unit tests.
+
+A full emulator reboot subsequently restored the original video's saved position to exactly 71,438 ms, confirmed in both preferences and the live media session. The emulator completed boot before this assertion. Physical Huawei/hub behavior remains unverified.
