@@ -88,3 +88,14 @@ On the Android 15 emulator, learning virtual F1 as Apps opened the drawer and pe
 A temporary emulator thermal-service override to severe displayed the overheating banner. Resetting the override and reopening removed it. The override was cleaned up; no actual overheating was induced and real sensor accuracy is not established.
 
 Sparse portrait grid testing exposed stretched tiles. SquareShortcut now centres square buttons within reserved two-row slots, including empty slots. Three favourites in a six-slot grid each measured 346 × 346 pixels after the fix, rather than stretching to the entire favourites area's height. All three edition builds, lint checks and seven existing tests per edition pass again.
+
+
+## Larger viewer and app continuation — 1 October 2026
+
+At the user's request, the prior source/APK checkpoint was pushed and verified at da25cf75127f8ffd8858f35dd3777a331430392e before these edits. Added visible cell dividers, flat square shortcut styling, normalized 32 dp icon sizing, and larger viewer proportions (75% portrait body, 80% landscape width). Local page image area measured 1080 × 1171 pixels versus 1080 × 942 before these changes on the test emulator, despite adding source/scale selectors.
+
+Home defaults to Continue app, saving the last component launched through Snapplication per Read/Watch mode. Folder content is explicit and retains previous folder selections. Opening a local item switches to Folder automatically. No sample comic is bundled in the APK; comic-test.cbz exists only as an emulator folder fixture.
+
+Fit/Fill/Stretch map to native image/video aspect modes and persist per mode. Review caught a reloading implementation; it was corrected to update existing ReaderPanel/WatchPlayer surfaces without rebuilding Home. Emulator interaction cycled through all three document modes. External task resumption was verified using Clock: Stopwatch remained the selected screen after Continue Clock. This does not prove universal third-party state retention or embedded app support.
+
+All edition builds, lint checks and seven unit tests per edition pass. Physical device and broader multimedia checks remain open. Android's [task model](https://developer.android.com/guide/components/activities/tasks-and-back-stack) and [process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle) govern external-app retention; Snapplication does not force suspension or bypass those rules.

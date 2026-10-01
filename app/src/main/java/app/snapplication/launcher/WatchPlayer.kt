@@ -48,8 +48,20 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         handler.postDelayed(checkpoint, 5000)
     }
 
+    /** Changes the live video's aspect handling without pausing or reloading playback. */
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    fun applyContentScale() {
+        view.resizeMode = when (state.contentScale) {
+            "Fill" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            "Stretch" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+            else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+    }
+
     /** Loads a selected item at its saved position; returning home alone does not autoplay it. */
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     fun load(selection: LibraryItem, autoplay: Boolean) {
+        applyContentScale()
         if (item?.uri == selection.uri) { if (autoplay) player.play(); return }
         save()
         queue = state.watchQueue().takeIf { items -> items.any { it.uri == selection.uri } } ?: listOf(selection)

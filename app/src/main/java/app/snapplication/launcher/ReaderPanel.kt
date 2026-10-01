@@ -16,7 +16,7 @@ import java.util.zip.ZipFile
 /** Renders local PDFs, CBZ comics and images inside MainActivity; LauncherState stores the current page. */
 class ReaderPanel(private val context: Context, private val state: LauncherState, private val ui: LauncherUi) {
     val view = ui.column()
-    private val image = ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+    private val image = ImageView(context)
     private val status = ui.label("Choose a PDF, comic or image", 16f)
     private val worker = Executors.newSingleThreadExecutor()
     private var item: LibraryItem? = null
@@ -30,12 +30,22 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
     private var cachedFile: File? = null
 
     init {
+        applyContentScale()
         view.addView(image, LinearLayout.LayoutParams(-1, 0, 1f))
         view.addView(status)
         val controls = ui.column(true)
         ui.addWeighted(controls, ui.button("Previous") { move(-1) })
         ui.addWeighted(controls, ui.button("Next") { move(1) })
         view.addView(controls)
+    }
+
+    /** Resizes the already-decoded page without copying the source or losing reading position. */
+    fun applyContentScale() {
+        image.scaleType = when (state.contentScale) {
+            "Fill" -> ImageView.ScaleType.CENTER_CROP
+            "Stretch" -> ImageView.ScaleType.FIT_XY
+            else -> ImageView.ScaleType.FIT_CENTER
+        }
     }
 
     /** Loads a selected document at its saved page and cancels stale display results. */
