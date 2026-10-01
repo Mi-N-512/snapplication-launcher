@@ -176,9 +176,15 @@ class MainActivity : Activity() {
         if (components.isEmpty()) column.addView(ui.row("+ Add apps") { drawer() })
         val columns = if (state.grid && portrait) state.favouriteCount / 2 else 1
         column.minimumHeight = ui.dp(((components.size + columns - 1) / columns) * 48)
-        components.chunked(columns).forEach { group ->
+        val slots: List<String?> = if (state.grid && portrait && components.isNotEmpty())
+            List(state.favouriteCount) { components.getOrNull(it) } else components
+        slots.chunked(columns).forEach { group ->
             val row = ui.column(true).apply { gravity = android.view.Gravity.CENTER }
             group.forEach { flat ->
+                if (flat == null) {
+                    row.addView(View(this), LinearLayout.LayoutParams(0, -1, 1f))
+                    return@forEach
+                }
                 val component = ComponentName.unflattenFromString(flat) ?: return@forEach
                 val info = runCatching { packageManager.getActivityInfo(component, 0) }.getOrNull() ?: return@forEach
                 val label = info.loadLabel(packageManager).toString()
@@ -192,7 +198,8 @@ class MainActivity : Activity() {
                 button.contentDescription = label; button.tooltipText = label
                 if (!state.grid) ui.flatFocus(button)
                 button.setOnLongClickListener { favouriteActions(flat, label) { home() }; true }
-                row.addView(button, if (portrait && !state.grid) LinearLayout.LayoutParams(ui.dp(200), -1)
+                val tile = if (portrait && state.grid) SquareShortcut(this, button) else button
+                row.addView(tile, if (portrait && !state.grid) LinearLayout.LayoutParams(ui.dp(200), -1)
                     else LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3)) })
             }
             repeat(columns - group.size) { row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
