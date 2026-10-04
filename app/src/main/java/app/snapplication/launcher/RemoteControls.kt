@@ -13,7 +13,7 @@ import org.json.JSONObject
 /** Learns per-device remote buttons for MainActivity; keeps mappings separate from media and library state. */
 class RemoteControls(private val context: Context) {
     private val prefs = context.getSharedPreferences("remoteControls", Context.MODE_PRIVATE)
-    val actions: List<String> get() = listOf("Up", "Down", "Left", "Right", "Select", "Back", "Home", "Apps", "Screen off", "Play/pause", "Record/stop macro") +
+    val actions: List<String> get() = listOf("Up", "Down", "Left", "Right", "Select", "Back", "Home", "Apps", "Screen off", "Play/pause", "Record/stop macro", "Stop action") +
         RemoteActionService.savedMacroNames(context).map { "Macro: $it" }
     private val held = mutableMapOf<Pair<Int, Int>, String?>()
     private val reserved = setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)
@@ -37,10 +37,10 @@ class RemoteControls(private val context: Context) {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             val mapped = action(event)
             // Navigation and launcher escape keys must remain usable while a search field owns focus.
-            held[key] = if (editing && mapped !in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro")) null else mapped
+            held[key] = if (editing && mapped !in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro", "Stop action")) null else mapped
         }
         val releaseOnly = if (event.action == KeyEvent.ACTION_UP && event.keyCode == KeyEvent.KEYCODE_BACK && !event.isCanceled && !held.containsKey(key)) action(event) else null
-        val assigned = held[key] ?: releaseOnly?.takeIf { !editing || it in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro") }
+        val assigned = held[key] ?: releaseOnly?.takeIf { !editing || it in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro", "Stop action") }
         if (event.action == KeyEvent.ACTION_UP) held.remove(key)
         return assigned
     }
