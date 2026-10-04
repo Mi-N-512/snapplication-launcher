@@ -863,7 +863,7 @@ class MainActivity : Activity() {
             when (action) {
                 "Home" -> { RemoteActionService.instance?.recordLauncherNavigation("home"); home() }
                 "Apps" -> drawer()
-                "Screen off", "Record/stop macro" -> RemoteActionService.instance?.performMappedAction(action) ?: explainAccessibility()
+                "Screen off", "Record/stop macro", "Stop action" -> RemoteActionService.instance?.performMappedAction(action) ?: explainAccessibility()
                 "Back" -> navigateBack()
                 "Play/pause" -> {
                     val audio = getSystemService(android.media.AudioManager::class.java)

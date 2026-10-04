@@ -36,6 +36,7 @@ class RemoteActionService : AccessibilityService() {
     private var ignoreClicksUntil = 0L
     private var stopButton: Button? = null
     private var confirmation: AlertDialog? = null
+    private var replayStop: Button? = null
     private var replayGeneration = 0
     private var lastCaptureWindowId: Int? = null
     private var activityPackage: String? = null
@@ -154,10 +155,32 @@ class RemoteActionService : AccessibilityService() {
             // Click events arrive after toggles change wording. Guard stable IDs by widget class instead.
             // A stable ID/class is not a guarantee that the app kept the same semantic action.
             node.className?.toString()?.takeIf { it.isNotBlank() }?.let { put("guardClass", it) }
+            put("guardParents", JSONArray(selectorParents(node)))
         }
         return label
     }
 
+    /** Captures bounded parent IDs/classes without storing text, positions or private field values. */
+    private fun selectorParents(node: AccessibilityNodeInfo): List<String> {
+        val result = mutableListOf<String>()
+        var parent = node.parent
+        while (parent != null && result.size < 8) {
+            val current = parent
+            try {
+                result.add("${current.viewIdResourceName.orEmpty()}|${current.className?.toString().orEmpty()}")
+                parent = current.parent
+            } finally { current.recycle() }
+        }
+        parent?.recycle()
+        return result
+    }
+
+    /** Guards new recordings by their container path; absent guards retain legacy replay behavior. */
+    private fun parentContextMatches(node: AccessibilityNodeInfo, step: JSONObject): Boolean {
+        if (!step.has("guardParents")) return true
+        val expected = step.optJSONArray("guardParents") ?: return false
+        return MacroContext.matches((0 until expected.length()).map { expected.optString(it) }, selectorParents(node))
+    }
     /** Resolves the actual active window, while keeping macro and stricter capture eligibility separate. */
     private fun updateForeground() {
         val root = rootInActiveWindow
@@ -166,7 +189,7 @@ class RemoteActionService : AccessibilityService() {
             val activeWindow = visibleWindows.firstOrNull { it.id == root?.windowId }
             var next = root?.packageName?.toString()
             // A non-focusable recording control must not turn the macro's own app into a new target.
-            if (recordingName != null && next == packageName &&
+            if ((recordingName != null || replayStop != null) && next == packageName &&
                 activeWindow?.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) {
                 val underlying = visibleWindows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
                     .maxByOrNull { it.layer }?.root
@@ -286,6 +309,7 @@ class RemoteActionService : AccessibilityService() {
             "Home" -> { recordNavigation("home"); openRecordedApp(packageName) }
             "Back" -> { recordNavigation("back"); if (!performGlobalAction(GLOBAL_ACTION_BACK)) message("Android could not go back on this screen.") }
             "Record/stop macro" -> toggleRecording()
+            "Stop action" -> finishReplay("Action stopped")
             "Screen off" -> {
                 if (android.os.Build.VERSION.SDK_INT < 28 || !performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN))
                     message("Android could not lock the screen on this device.")
@@ -347,6 +371,7 @@ class RemoteActionService : AccessibilityService() {
     fun beginRecording(name: String, targetPackage: String = ""): Boolean {
         if (name.isBlank() || name.length > 40 || (targetPackage.isNotBlank() && !recordablePackage(targetPackage)) ||
             name.trim() in savedMacroNames()) return false
+        finishReplay()
         stopRecording()
         if (name.trim() in savedMacroNames()) return false
         replayGeneration++
@@ -407,7 +432,7 @@ class RemoteActionService : AccessibilityService() {
 
     /** Removes a selected macro and cancels pending replay so deleted actions cannot continue running. */
     fun deleteMacro(name: String) {
-        replayGeneration++
+        finishReplay()
         val saved = macros(this)
         saved.remove(name)
         getSharedPreferences("remoteMacros", Context.MODE_PRIVATE).edit().putString("macros", saved.toString()).apply()
@@ -415,6 +440,7 @@ class RemoteActionService : AccessibilityService() {
 
     /** Opens the first recorded app from Settings, then replays after its foreground identity is verified. */
     fun openForReplay(name: String) {
+        finishReplay()
         val target = macros(this).optJSONObject(name)?.optString("package") ?: return
         val intent = packageManager.getLaunchIntentForPackage(target)
         if (intent == null) { message("The recorded app is unavailable."); return }
@@ -446,62 +472,89 @@ class RemoteActionService : AccessibilityService() {
             message("Open the recorded app and its starting screen before running $name.")
             return
         }
-        replayGeneration++
-        confirmation?.dismiss()
+        finishReplay()
         val steps = macro.optJSONArray("steps") ?: return
         if (!getSharedPreferences("remoteMacros", MODE_PRIVATE).getBoolean("confirmReplay", false)) {
-            if (steps.length() in 1..20) runStep(target, steps, 0, replayGeneration)
+            if (steps.length() in 1..20) beginReplay(target, steps)
             return
         }
         confirmation = AlertDialog.Builder(this).setTitle("Run $name?")
             .setMessage("Repeat ${macro.optJSONArray("steps")?.length() ?: 0} recorded actions across their saved apps. Check the starting screen first.")
             .setNegativeButton("Cancel", null).setPositiveButton("Run") { _, _ ->
                 val steps = macro.optJSONArray("steps") ?: return@setPositiveButton
-                if (steps.length() in 1..20) runStep(target, steps, 0, ++replayGeneration)
+                if (steps.length() in 1..20) beginReplay(target, steps)
             }.create().apply {
                 window?.setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
                 show()
             }
     }
 
+    /** Keeps a visible cancel control available throughout playback, including transition waits. */
+    private fun beginReplay(target: String, steps: JSONArray) {
+        finishReplay()
+        val stop = Button(this).apply {
+            text = "Stop action"
+            contentDescription = "Stop running action"
+            setOnClickListener { finishReplay("Action stopped") }
+        }
+        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            android.graphics.PixelFormat.TRANSLUCENT).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END }
+        if (runCatching { getSystemService(WindowManager::class.java).addView(stop, params) }.isFailure) {
+            message("The action could not start because its Stop control is unavailable."); return
+        }
+        replayStop = stop
+        runStep(target, steps, 0, replayGeneration)
+    }
+
+    /** Invalidates queued steps and removes replay controls on cancellation, completion or failure. */
+    private fun finishReplay(feedback: String? = null) {
+        replayGeneration++
+        replayStop?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
+        replayStop = null
+        confirmation?.dismiss(); confirmation = null
+        if (feedback != null) message(feedback)
+    }
+
     /** Replays legacy clicks and v2 cross-app actions, waiting for verified app transitions. */
     private fun runStep(target: String, steps: JSONArray, index: Int, generation: Int, attempt: Int = 0) {
-        if (generation != replayGeneration || index >= steps.length()) return
-        val step = steps.optJSONObject(index) ?: return
+        if (generation != replayGeneration) return
+        if (index >= steps.length()) { finishReplay("Action finished"); return }
+        val step = steps.optJSONObject(index) ?: run { finishReplay("Action stopped: invalid step."); return }
         val expected = step.optString("package", target)
         handler.postDelayed({
             if (generation != replayGeneration) return@postDelayed
             updateForeground()
             val kind = step.optString("kind", "click")
-            if (!recordablePackage(expected)) { message("Macro stopped: unavailable or protected app."); return@postDelayed }
+            if (!recordablePackage(expected)) { finishReplay("Macro stopped: unavailable or protected app."); return@postDelayed }
             if (kind == "launch" || kind == "home") {
                 val destination = if (kind == "home") packageName else expected
                 if (kind == "home" && attempt == 0) {
                     // Even when already in this package, reset Settings/Drawer to the recorded Home.
                     if (openRecordedApp(destination)) runStep(target, steps, index, generation, 1)
-                    else message("Macro stopped: Home could not open.")
+                    else finishReplay("Macro stopped: Home could not open.")
                 }
                 else if (currentPackage == destination) runStep(target, steps, index + 1, generation)
                 else if (attempt == 0 && openRecordedApp(destination)) runStep(target, steps, index, generation, 1)
                 else if (attempt in 1..15) runStep(target, steps, index, generation, attempt + 1)
-                else message("Macro stopped: the recorded app did not open.")
+                else finishReplay("Macro stopped: the recorded app did not open.")
                 return@postDelayed
             }
             if (currentPackage != expected) {
                 if (attempt < 15) runStep(target, steps, index, generation, attempt + 1)
-                else message("Macro stopped: the expected app is not visible.")
+                else finishReplay("Macro stopped: the expected app is not visible.")
                 return@postDelayed
             }
             val root = rootInActiveWindow
             if (root == null || containsSensitiveInput(root, blockEditable = false)) {
                 root?.recycle()
-                message("Macro stopped: the screen is unavailable or contains private input.")
+                finishReplay("Macro stopped: the screen is unavailable or contains private input.")
                 return@postDelayed
             }
             if (kind == "back") {
                 root.recycle()
                 if (performGlobalAction(GLOBAL_ACTION_BACK)) runStep(target, steps, index + 1, generation)
-                else message("Macro stopped: Android could not go back.")
+                else finishReplay("Macro stopped: Android could not go back.")
                 return@postDelayed
             }
             val matches = mutableListOf<AccessibilityNodeInfo>()
@@ -509,7 +562,7 @@ class RemoteActionService : AccessibilityService() {
             root.recycle()
             val success = matches.size == 1 && matches[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
             matches.forEach { it.recycle() }
-            if (!success) message("Macro stopped: a recorded button is missing or ambiguous.")
+            if (!success) finishReplay("Macro stopped: a recorded button is missing or ambiguous.")
             else runStep(target, steps, index + 1, generation)
         }, if (attempt > 0) 250 else step.optLong("delay", 350).coerceIn(250, 2000))
     }
@@ -532,7 +585,7 @@ class RemoteActionService : AccessibilityService() {
         val value = if (step.optBoolean("description")) root.contentDescription else root.text
         val labelMatches = !step.has("label") || value?.toString() == step.optString("label")
         val matchesSelector = if (id.isNotBlank()) root.viewIdResourceName == id && labelMatches else labelMatches && step.has("label")
-        if (matchesSelector && (!step.has("guardClass") || root.className?.toString() == step.optString("guardClass")) && root.isVisibleToUser && root.isEnabled && !root.isEditable && !root.isPassword) {
+        if (matchesSelector && parentContextMatches(root, step) && (!step.has("guardClass") || root.className?.toString() == step.optString("guardClass")) && root.isVisibleToUser && root.isEnabled && !root.isEditable && !root.isPassword) {
             var candidate: AccessibilityNodeInfo? = AccessibilityNodeInfo.obtain(root)
             var levels = 0
             while (candidate != null && !candidate.isClickable && step.optBoolean("ancestor") && levels++ < 5) {
@@ -585,6 +638,7 @@ class RemoteActionService : AccessibilityService() {
         if (BuildConfig.DEBUG) android.util.Log.d("SnappMacro", "Service cleanup; recording=${recordingPackage != null}")
         recordingSteps = JSONArray()
         stopRecording()
+        finishReplay()
         confirmation?.dismiss()
         confirmation = null
         replayGeneration++
