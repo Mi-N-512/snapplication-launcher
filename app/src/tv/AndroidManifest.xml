@@ -2,11 +2,18 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <application android:banner="@drawable/tv_banner">
-        <activity android:name=".MainActivity" android:exported="true">
+        <!-- Both switchable icons retain TV launcher discovery; only the selected alias is enabled. -->
+        <activity-alias android:name=".BlueIcon" android:targetActivity=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias android:name=".GoldIcon" android:targetActivity=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>

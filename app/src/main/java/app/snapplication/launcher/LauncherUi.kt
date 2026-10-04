@@ -12,7 +12,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Builds consistent accessible native controls for MainActivity and ReaderPanel using LauncherState colours. */
-class LauncherUi(private val context: Context, state: LauncherState, private val glass: Boolean = false) {
+class LauncherUi(private val context: Context, private val state: LauncherState, private val glass: Boolean = false) {
     val background: Int = when (state.theme) {
         "OLED Black" -> Color.BLACK
         "Light" -> 0xfffafafa.toInt()
@@ -77,7 +77,7 @@ class LauncherUi(private val context: Context, state: LauncherState, private val
         // Outline the active remote target without changing its dimensions.
         fun decorate(focused: Boolean) {
             background = GradientDrawable().apply {
-                setColor(if (glass) (if (this@LauncherUi.text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt()) else surface); cornerRadius = dp(7).toFloat()
+                setColor(if (glass) (if (this@LauncherUi.text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt()) else surface); cornerRadius = if (this@LauncherUi.state.roundedCorners) dp(10).toFloat() else 0f
                 setStroke(dp(if (focused) 3 else 1), if (focused) accent else surface)
             }
         }

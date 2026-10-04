@@ -37,8 +37,11 @@ class LauncherState(context: Context) {
     var viewerSource: String
         get() = prefs.getString("viewerSource:$mode", "App")!!
         set(value) { prefs.edit().putString("viewerSource:$mode", value).apply() }
+    var followMediaApps: Boolean
+        get() = prefs.getBoolean("followMediaApps:$mode", true)
+        set(value) { prefs.edit().putBoolean("followMediaApps:$mode", value).apply() }
     var contentScale: String
-        get() = prefs.getString("contentScale:$mode", "Fit")!!
+        get() = prefs.getString("contentScale:$mode", if (viewerSource == "App") "Fill" else "Fit")!!
         set(value) { require(value in listOf("Fit", "Fill", "Stretch")); prefs.edit().putString("contentScale:$mode", value).apply() }
 
     /** Saves the external task entry per mode for MainActivity's Continue app panel. */
@@ -48,14 +51,35 @@ class LauncherState(context: Context) {
     fun lastApp(): String? = prefs.getString("lastApp:$mode", null)
 
     var useWallpaper: Boolean
-        get() = prefs.getBoolean("useWallpaper", false)
+        get() = prefs.getBoolean("useWallpaper", true)
         set(value) { prefs.edit().putBoolean("useWallpaper", value).apply() }
+    var dynamicBlocks: Boolean
+        get() = prefs.getBoolean("dynamicBlocks", true)
+        set(value) { prefs.edit().putBoolean("dynamicBlocks", value).apply() }
+    var asymmetricBlocks: Boolean
+        get() = prefs.getBoolean("asymmetricBlocks", false)
+        set(value) { prefs.edit().putBoolean("asymmetricBlocks", value).apply() }
+    var experimentalBlocks: Boolean
+        get() = prefs.getBoolean("experimentalBlocks", false)
+        set(value) { prefs.edit().putBoolean("experimentalBlocks", value).apply() }
+    var roundedCorners: Boolean
+        get() = prefs.getBoolean("roundedCorners", false)
+        set(value) { prefs.edit().putBoolean("roundedCorners", value).apply() }
+    var animations: Boolean
+        get() = prefs.getBoolean("animations", BuildConfig.FLAVOR != "ereader")
+        set(value) { prefs.edit().putBoolean("animations", value).apply() }
+    var tutorialSeen: Boolean
+        get() = prefs.getBoolean("tutorialSeen", false)
+        set(value) { prefs.edit().putBoolean("tutorialSeen", value).apply() }
+    var fullscreen: Boolean
+        get() = prefs.getBoolean("fullscreen", true)
+        set(value) { prefs.edit().putBoolean("fullscreen", value).apply() }
     var grid: Boolean
         get() = prefs.getBoolean("grid", false)
         set(value) { prefs.edit().putBoolean("grid", value).apply() }
     var favouriteCount: Int
-        get() = prefs.getInt("favouriteCount", 4).takeIf { it in listOf(4, 6, 8) } ?: 4
-        set(value) { require(value in listOf(4, 6, 8)); prefs.edit().putInt("favouriteCount", value).apply() }
+        get() = prefs.getInt("favouriteCount", 8).coerceIn(4, if (experimentalBlocks) 24 else 8)
+        set(value) { require(value in 4..if (experimentalBlocks) 24 else 8); prefs.edit().putInt("favouriteCount", value).apply() }
     var accent: Int
         get() = prefs.getInt("accent", 0xffd0bcff.toInt())
         set(value) { prefs.edit().putInt("accent", value).apply() }
