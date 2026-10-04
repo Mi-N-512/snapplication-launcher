@@ -9,6 +9,37 @@ import android.content.pm.PackageManager
 object AppIconTheme {
     val choices = listOf("Blue / white", "Gold / black")
 
+    /** Previews both installed icon variants before MainActivity commits the selected alias. */
+    fun showChooser(activity: android.app.Activity, onChanged: () -> Unit) {
+        var selected = currentLabel(activity)
+        val density = activity.resources.displayMetrics.density
+        val body = android.widget.LinearLayout(activity).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(24, 16, 24, 16)
+        }
+        val images = android.widget.LinearLayout(activity)
+        listOf(R.mipmap.ic_launcher, R.mipmap.ic_launcher_gold).forEachIndexed { index, resource ->
+            images.addView(android.widget.ImageView(activity).apply {
+                setImageResource(resource)
+                contentDescription = choices[index] + " icon preview"
+            }, android.widget.LinearLayout.LayoutParams(0, (112 * density).toInt(), 1f))
+        }
+        body.addView(images)
+        val options = android.widget.RadioGroup(activity).apply { orientation = android.widget.RadioGroup.HORIZONTAL }
+        choices.forEach { choice ->
+            options.addView(android.widget.RadioButton(activity).apply {
+                id = android.view.View.generateViewId(); text = choice; isChecked = choice == selected
+                setOnClickListener { selected = choice }
+            }, android.widget.RadioGroup.LayoutParams(0, -2, 1f))
+        }
+        body.addView(options)
+        android.app.AlertDialog.Builder(activity).setTitle("Choose your launcher icon").setView(body)
+            .setNegativeButton("Cancel", null).setPositiveButton("Apply") { _, _ ->
+                if (apply(activity, selected)) onChanged()
+                else android.widget.Toast.makeText(activity, "The icon could not change. Try again.", android.widget.Toast.LENGTH_LONG).show()
+            }.show()
+    }
+
     /** Reads the enabled alias to provide Settings and onboarding with the current icon label. */
     fun currentLabel(context: Context): String = if (
         context.packageManager.getComponentEnabledSetting(alias(context, "GoldIcon")) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED

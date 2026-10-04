@@ -18,9 +18,9 @@ import java.io.StringReader
  * Remote resources remain data only; missing or unsupported icons use the supplied native icon. */
 object IconPacks {
     private val themeActions = listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME", "com.gau.go.launcherex.theme")
-    private const val MAX_BYTES = 2 * 1024 * 1024
-    private const val MAX_ENTRIES = 10_000
-    private const val MAX_TOKENS = 60_000
+    private const val MAX_BYTES = 8 * 1024 * 1024
+    private const val MAX_ENTRIES = 50_000
+    private const val MAX_TOKENS = 300_000
     private val cache = linkedMapOf<String, PackIndex>()
     private val drawableNamePattern = Regex("[a-zA-Z0-9_]{1,160}")
 
@@ -41,6 +41,14 @@ object IconPacks {
             }
         }
         return discovered.entries.map { it.key to it.value }.sortedBy { it.second.lowercase() }
+    }
+
+    /** Names the stored selection so Settings makes fallback versus pack selection visible. */
+    fun selectedLabel(context: Context): String {
+        val selected = context.getSharedPreferences("launcher", Context.MODE_PRIVATE).getString("iconPack", "").orEmpty()
+        if (selected.isBlank()) return "System icons"
+        return runCatching { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(selected, 0)).toString() }
+            .getOrDefault("Selected pack is unavailable")
     }
 
     /** Returns the selected pack's exact component icon or invokes the original native-icon loader. */

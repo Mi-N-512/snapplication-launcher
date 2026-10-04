@@ -36,8 +36,8 @@ class SetupGuide(private val activity: Activity, private val ui: LauncherUi) {
         heading.addView(ui.label("SET UP YOUR SPACE   ${index + 1} / ${pages.size}", 12f),
             LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(heading)
-        body.addView(ui.label(page.title, 27f))
-        body.addView(ui.label(page.explanation, 17f))
+        body.addView(ui.label(page.title, 27f).apply { setBackgroundColor(Color.TRANSPARENT) })
+        body.addView(ui.label(page.explanation, 17f).apply { setBackgroundColor(Color.TRANSPARENT) })
         if (index == 0) {
             val sample = ui.column(true)
             listOf("Your apps", "Last moment  ▶", "Your apps").forEachIndexed { i, label ->
@@ -47,8 +47,13 @@ class SetupGuide(private val activity: Activity, private val ui: LauncherUi) {
             }
             body.addView(sample)
         }
-        body.addView(ui.label(page.status, 13f).apply { setTextColor(ui.muted) })
-        body.addView(ui.button(page.action, page.onAction), LinearLayout.LayoutParams(-1, -2))
+        body.addView(ui.label(page.status, 14f).apply {
+            setTextColor(ui.muted); background = ui.homeSurface()
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(12) })
+        // Keep the permission/setup action reachable without scrolling on a television or small phone.
+        result.addView(ui.button(page.action, page.onAction), LinearLayout.LayoutParams(-1, -2).apply {
+            marginStart = ui.dp(12); marginEnd = ui.dp(12); topMargin = ui.dp(6)
+        })
         val footer = ui.column(true)
         ui.addWeighted(footer, ui.button("Skip setup", onFinish))
         if (index > 0) ui.addWeighted(footer, ui.button("Previous") { onStep(index - 1) })

@@ -135,11 +135,14 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
     }.getOrNull()
 
     /** Old Cloudstream screenshots may contain its catalogue; only the clean-player policy can replace them. */
-    private fun requiresCleanFrame(): Boolean = mode == "Watch" && packageName?.startsWith("com.lagradost.cloudstream") == true
+    private fun requiresCleanFrame(): Boolean = mode == "Watch" &&
+        (packageName?.startsWith("com.lagradost.cloudstream") == true ||
+            packageName in setOf("xyz.Quickdev.Animiru.mi", "com.futo.platformplayer", "com.google.android.youtube"))
 
     /** Requires a frame from the current app and, for supported video apps, the clean-frame policy. */
     private fun hasSavedFrame(): Boolean = prefs.getString("package:$mode", null) == packageName &&
-        prefs.getLong("capturedAt:$mode", 0L) > 0L && (!requiresCleanFrame() || prefs.getInt("cleanPolicy:$mode", 0) >= 1)
+        prefs.getLong("capturedAt:$mode", 0L) > 0L && (!requiresCleanFrame() ||
+            prefs.getInt("cleanPolicy:$mode", 0) >= if (packageName in setOf("com.futo.platformplayer", "com.google.android.youtube")) 2 else 1)
 
     /** Gives explicit captured frames precedence, then caches bounded app-supplied artwork separately. */
     private fun loadImage(): Pair<Bitmap, String>? {
@@ -204,7 +207,8 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         val opened = if (pending != null && runCatching { pending.send() }.isSuccess) true else {
             val selected = component ?: return
             runCatching {
-                activity.startActivity(Intent.makeMainActivity(selected).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
+                // Bring the existing task forward without asking Android to reset its activity stack.
+                activity.startActivity(Intent.makeMainActivity(selected).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }.isSuccess
         }
         if (!opened) {
@@ -216,7 +220,10 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         runCatching {
             val controller = active() ?: return@runCatching
             val playback = controller.playbackState ?: return@runCatching
-            if (playback.state == PlaybackState.STATE_PAUSED && playback.actions and PlaybackState.ACTION_PLAY != 0L) {
+            // Animiru advertises Play but leaves its state at NONE, even with a retained player.
+            // This is an explicit Play request, never a play/pause toggle: do not pause an active stream.
+            if (playback.state in setOf(PlaybackState.STATE_NONE, PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED) &&
+                playback.actions and PlaybackState.ACTION_PLAY != 0L) {
                 controller.transportControls.play()
             }
         }.onFailure { message("The playback session changed. Press play in the app to continue.") }

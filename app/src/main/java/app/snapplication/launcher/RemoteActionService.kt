@@ -37,6 +37,8 @@ class RemoteActionService : AccessibilityService() {
     private var stopButton: Button? = null
     private var confirmation: AlertDialog? = null
     private var replayStop: Button? = null
+    private var runningMacro: String? = null
+    private var replaySpeed = 1.0
     private var replayGeneration = 0
     private var lastCaptureWindowId: Int? = null
     private var activityPackage: String? = null
@@ -228,19 +230,35 @@ class RemoteActionService : AccessibilityService() {
             if (root != null && capture != null && state.viewerSource == "App") {
                 val cloudstream = capture.startsWith("com.lagradost.cloudstream")
                 val animiru = capture == "xyz.Quickdev.Animiru.mi"
-                val players = if (cloudstream) root.findAccessibilityNodeInfosByViewId("$capture:id/player_view") else emptyList()
-                val video = players.any { it.isVisibleToUser } ||
+                val grayjay = capture == "com.futo.platformplayer"
+                val youtube = capture == "com.google.android.youtube"
+                val playerId = when {
+                    cloudstream -> "player_view"
+                    youtube -> "watch_player"
+                    grayjay -> "videodetail_player"
+                    else -> null
+                }
+                val players = if (playerId != null) root.findAccessibilityNodeInfosByViewId("$capture:id/$playerId") else emptyList()
+                val player = players.firstOrNull { it.isVisibleToUser }
+                val video = player != null ||
                     (activityPackage == capture && activityClass?.endsWith(".PlayerActivity") == true)
-                players.forEach { it.recycle() }
+                // Grayjay retains its catalogue beneath the player. Inspect the player subtree only.
+                val chrome = hasPlayerChrome(if ((grayjay || youtube) && player != null) player else root)
+                if ((grayjay || youtube) && player != null) {
+                    val playerBounds = Rect().also { player.getBoundsInScreen(it) }
+                    nextBounds = nextBounds?.let { Rect(it).takeIf { rect -> rect.intersect(playerBounds) && !rect.isEmpty } }
+                    if (nextBounds == null) capture = null
+                }
                 val reading = activityPackage == capture && activityClass?.endsWith(".ReaderActivity") == true
                 // Only an actual player/reader screen can change the target; browsing catalogues cannot.
-                if (state.followMediaApps && ((state.mode == "Watch" && video) || (state.mode == "Read" && reading))) {
+                if (capture != null && state.followMediaApps && ((state.mode == "Watch" && video) || (state.mode == "Read" && reading))) {
                     val entry = packageManager.getLaunchIntentForPackage(capture)?.component
                     if (entry != null && state.lastApp() != entry.flattenToString()) state.rememberApp(entry.flattenToString())
                 }
-                if (state.mode == "Watch" && (cloudstream || animiru) && (!video || hasPlayerChrome(root))) {
+                if (state.mode == "Watch" && (cloudstream || animiru || grayjay || youtube) && (!video || chrome)) {
                     capture = null; nextBounds = null
                 }
+                players.forEach { it.recycle() }
             }
             val captureWindowId = if (capture == null) null else activeWindow?.id
             if (capture != capturePackage || captureWindowId != lastCaptureWindowId || nextBounds != captureBounds) {
@@ -440,13 +458,17 @@ class RemoteActionService : AccessibilityService() {
 
     /** Opens the first recorded app from Settings, then replays after its foreground identity is verified. */
     fun openForReplay(name: String) {
+        if (runningMacro == name) return
         finishReplay()
-        val target = macros(this).optJSONObject(name)?.optString("package") ?: return
+        val macro = macros(this).optJSONObject(name) ?: return
+        if (macro.optBoolean("currentScreen", false)) { replay(name); return }
+        val target = macro.optString("package")
+        runningMacro = name
         val intent = packageManager.getLaunchIntentForPackage(target)
-        if (intent == null) { message("The recorded app is unavailable."); return }
+        if (intent == null) { finishReplay("Open the target screen and choose Run on current screen in Edit action."); return }
         val request = ++replayGeneration
         runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure {
-            message("The recorded app could not open."); return
+            finishReplay("The recorded app could not open."); return
         }
         awaitReplayApp(name, target, request, 0)
     }
@@ -456,14 +478,15 @@ class RemoteActionService : AccessibilityService() {
         handler.postDelayed({
             if (request != replayGeneration) return@postDelayed
             updateForeground()
-            if (currentPackage == target) replay(name)
+            if (currentPackage == target) { runningMacro = null; replay(name) }
             else if (attempt < 15) awaitReplayApp(name, target, request, attempt + 1)
-            else message("Open the recorded app's starting screen, then use its mapped button.")
+            else finishReplay("Open the recorded app's starting screen, then use its mapped button.")
         }, 250)
     }
 
     /** Replays legacy single-app or cross-app macros; optional confirmation remains a user preference. */
     fun replay(name: String) {
+        if (runningMacro == name) return
         if (recordingName != null) { message("Stop recording before running a macro."); return }
         val macro = macros(this).optJSONObject(name) ?: return
         val target = macro.optString("package")
@@ -473,16 +496,25 @@ class RemoteActionService : AccessibilityService() {
             return
         }
         finishReplay()
-        val steps = macro.optJSONArray("steps") ?: return
+        runningMacro = name
+        replaySpeed = macro.optDouble("speed", 1.0).coerceIn(0.25, 4.0)
+        val original = macro.optJSONArray("steps") ?: run { finishReplay(); return }
+        val steps = JSONArray()
+        var skipLaunch = macro.optBoolean("currentScreen", false)
+        for (index in 0 until original.length()) {
+            val step = original.optJSONObject(index) ?: continue
+            if (skipLaunch && step.optString("kind") in setOf("home", "launch")) continue
+            skipLaunch = false; steps.put(step)
+        }
+        if (steps.length() !in 1..20) { finishReplay("This action needs between 1 and 20 steps."); return }
         if (!getSharedPreferences("remoteMacros", MODE_PRIVATE).getBoolean("confirmReplay", false)) {
-            if (steps.length() in 1..20) beginReplay(target, steps)
+            if (steps.length() in 1..20) beginReplay(name, target, steps)
             return
         }
         confirmation = AlertDialog.Builder(this).setTitle("Run $name?")
             .setMessage("Repeat ${macro.optJSONArray("steps")?.length() ?: 0} recorded actions across their saved apps. Check the starting screen first.")
-            .setNegativeButton("Cancel", null).setPositiveButton("Run") { _, _ ->
-                val steps = macro.optJSONArray("steps") ?: return@setPositiveButton
-                if (steps.length() in 1..20) beginReplay(target, steps)
+            .setNegativeButton("Cancel") { _, _ -> finishReplay() }.setOnCancelListener { finishReplay() }.setPositiveButton("Run") { _, _ ->
+                if (steps.length() in 1..20) beginReplay(name, target, steps)
             }.create().apply {
                 window?.setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
                 show()
@@ -490,8 +522,9 @@ class RemoteActionService : AccessibilityService() {
     }
 
     /** Keeps a visible cancel control available throughout playback, including transition waits. */
-    private fun beginReplay(target: String, steps: JSONArray) {
+    private fun beginReplay(name: String, target: String, steps: JSONArray) {
         finishReplay()
+        runningMacro = name
         val stop = Button(this).apply {
             text = "Stop action"
             contentDescription = "Stop running action"
@@ -501,7 +534,7 @@ class RemoteActionService : AccessibilityService() {
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             android.graphics.PixelFormat.TRANSLUCENT).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END }
         if (runCatching { getSystemService(WindowManager::class.java).addView(stop, params) }.isFailure) {
-            message("The action could not start because its Stop control is unavailable."); return
+            finishReplay("The action could not start because its Stop control is unavailable."); return
         }
         replayStop = stop
         runStep(target, steps, 0, replayGeneration)
@@ -510,6 +543,7 @@ class RemoteActionService : AccessibilityService() {
     /** Invalidates queued steps and removes replay controls on cancellation, completion or failure. */
     private fun finishReplay(feedback: String? = null) {
         replayGeneration++
+        runningMacro = null
         replayStop?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         replayStop = null
         confirmation?.dismiss(); confirmation = null
@@ -564,7 +598,7 @@ class RemoteActionService : AccessibilityService() {
             matches.forEach { it.recycle() }
             if (!success) finishReplay("Macro stopped: a recorded button is missing or ambiguous.")
             else runStep(target, steps, index + 1, generation)
-        }, if (attempt > 0) 250 else step.optLong("delay", 350).coerceIn(250, 2000))
+        }, if (attempt > 0) 250 else (step.optLong("delay", 350).coerceIn(0, 10000) / replaySpeed).toLong().coerceIn(40, 10000))
     }
 
     /** Opens only an installed app's public launcher entry; no arbitrary intents or privileged screens. */
