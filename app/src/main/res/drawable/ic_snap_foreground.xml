@@ -1,4 +1,4 @@
 <!-- Thin geometric outline of a thumb crossing the index finger; no filled hand or decorative marks. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#00000000" android:strokeColor="#176BDB" android:strokeWidth="1.3" android:strokeLineJoin="miter" android:strokeLineCap="butt" android:pathData="M40,81 L32,69 L30,55 L34,49 L39,50 L51,62 L60,53 L49,32 L50,26 L55,24 L59,28 L71,49 L73,59 L69,72 L60,81 Z M39,50 L44,45 L50,46 L60,53 L56,59 L51,62 M51,62 L47,68 M60,53 L66,49 M69,72 L59,70" />
+    <path android:fillColor="#00000000" android:strokeColor="#176BDB" android:strokeWidth="1.3" android:strokeLineJoin="miter" android:strokeLineCap="butt" android:pathData="M40,81 L32,69 L30,56 L34,51 L39,52 L46,59 M46,59 L61,43 L66,41 L71,44 L72,49 L52,69 M48,56 L43,34 L45,28 L50,26 L55,30 L62,43 M72,49 L74,60 L69,73 L60,81 L40,81 M39,52 L43,48 L48,49 M52,69 L48,73 M69,73 L59,71" />
 </vector>

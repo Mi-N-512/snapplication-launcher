@@ -195,7 +195,7 @@ class PreviewCaptureService : Service() {
                     catch (error: Exception) { file.failWrite(out); throw error }
                     getSharedPreferences("externalPreview", MODE_PRIVATE).edit().putString("package:$mode", target)
                         .putLong("capturedAt:$mode", System.currentTimeMillis())
-                        .putInt("cleanPolicy:$mode", 1).commit()
+                        .putInt("cleanPolicy:$mode", 2).commit()
                 }
             }
             if (bitmap !== padded) bitmap?.recycle()

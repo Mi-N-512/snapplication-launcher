@@ -465,11 +465,7 @@ class MainActivity : Activity() {
         content.addView(ui.section("Appearance"))
         content.addView(ui.setting("Theme Mode", state.theme) { themeSettings() })
         content.addView(ui.setting("App icon", AppIconTheme.currentLabel(this)) {
-            val choices = AppIconTheme.choices
-            AlertDialog.Builder(this).setTitle("App icon colours").setItems(choices.toTypedArray()) { _, index ->
-                if (!AppIconTheme.apply(this, choices[index])) message("The icon could not change. Please try again.")
-                settings()
-            }.setNegativeButton("Cancel", null).show()
+            AppIconTheme.showChooser(this) { settings() }
         })
         content.addView(ui.setting("Show App Labels", "Display names beside favourites", if (state.showLabels) "On" else "Off") {
             state.showLabels = !state.showLabels; settings()
@@ -483,7 +479,7 @@ class MainActivity : Activity() {
         })
         content.addView(ui.setting("Rounded corners", "Angular by default", if (state.roundedCorners) "On" else "Off") { state.roundedCorners = !state.roundedCorners; settings() })
         content.addView(ui.setting("Animations", "Short page transitions", if (state.animations) "On" else "Off") { state.animations = !state.animations; settings() })
-        content.addView(ui.setting("Icon pack", "Use an installed compatible icon pack") {
+        content.addView(ui.setting("Icon pack", IconPacks.selectedLabel(this)) {
             val packs = listOf("" to "System icons") + IconPacks.listInstalled(this)
             AlertDialog.Builder(this).setTitle("Icon pack").setItems(packs.map { it.second }.toTypedArray()) { _, index ->
                 getSharedPreferences("launcher", MODE_PRIVATE).edit().putString("iconPack", packs[index].first).apply(); settings()
@@ -810,6 +806,7 @@ class MainActivity : Activity() {
         content.addView(ui.button("Stop recording") { RemoteActionService.instance?.stopRecording(); macroSettings() })
         RemoteActionService.savedMacroNames(this).forEach { name ->
             content.addView(ui.section(name))
+            content.addView(ui.button("Edit action: $name") { MacroEditor(this) { macroSettings() }.show(name) })
             content.addView(ui.button("Map button: $name") { remote.learn("Macro: $name") { macroSettings() } })
             content.addView(ui.button("Run: $name") { RemoteActionService.instance?.openForReplay(name) ?: explainAccessibility() })
             content.addView(ui.button("Delete: $name") { RemoteActionService.instance?.deleteMacro(name); macroSettings() })
