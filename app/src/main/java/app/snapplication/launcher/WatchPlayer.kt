@@ -18,6 +18,11 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     private val handler = Handler(Looper.getMainLooper())
     private var item: LibraryItem? = null
     private var queue = emptyList<LibraryItem>()
+    private var stagedNext = false
+    private val nextTitle = android.widget.TextView(context).apply {
+        textSize = 16f; setTextColor(android.graphics.Color.WHITE); setBackgroundColor(0xAA101010.toInt())
+        setPadding(16, 8, 16, 8); visibility = android.view.View.GONE
+    }
     /** Periodic checkpoint owned by this player and cancelled by close. */
     private val checkpoint = object : Runnable {
         /** Periodically persists progress while this player is alive. */
@@ -26,12 +31,19 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
 
     init {
         view.player = player
+        view.addView(nextTitle, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.TOP))
         player.setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
             /** Keeps preview-only mode paused even if a hardware/media-session Play command arrives. */
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (playWhenReady && !state.playVideosInLauncher) player.pause()
+                if (playWhenReady) { nextTitle.visibility = android.view.View.GONE; stagedNext = false }
+            }
+            /** Claims readiness only once the next local file has actually rendered its first frame. */
+            override fun onRenderedFirstFrame() {
+                if (nextTitle.visibility == android.view.View.VISIBLE)
+                    nextTitle.text = "Next ready: ${item?.title.orEmpty()}"
             }
             /** Saves both sides of a manual/automatic item transition for independent episode resume. */
             @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -82,14 +94,22 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     fun save() { item?.let { state.saveProgress(it.uri, player.currentPosition) } }
 
     /** Stops playback when leaving the launcher so it does not consume power invisibly. */
-    fun pause() { player.pause(); save() }
+    fun pause() { player.pause(); save(); prepareNextIfComplete() }
 
     /** Stages the next local episode at its beginning when the screen turns off past the user's threshold. */
     fun screenOff() {
         player.pause()
         save()
-        if (!state.playVideosInLauncher) return
+        prepareNextIfComplete()
+    }
+
+    /** Prepares the next local file, paused at its first frame, when returning Home after the threshold. */
+    private fun prepareNextIfComplete() {
+        if (!state.playVideosInLauncher || stagedNext) return
         if (player.hasNextMediaItem() && EpisodeResume.shouldAdvance(player.currentPosition, player.duration, state.completion)) {
+            stagedNext = true
+            nextTitle.text = "Preparing next: ${queue.getOrNull(player.currentMediaItemIndex + 1)?.title.orEmpty()}"
+            nextTitle.visibility = android.view.View.VISIBLE
             player.seekToNextMediaItem()
             player.seekTo(0)
             save()

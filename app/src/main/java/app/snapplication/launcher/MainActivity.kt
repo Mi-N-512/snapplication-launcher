@@ -38,6 +38,8 @@ class MainActivity : Activity() {
     private val drawerGestureAreas = mutableListOf<View>()
     private var screen = "Home"
     private var pickerMode = "Watch"
+    private var choosingPreview = false
+    private var guideStep = 0
     private val worker = Executors.newSingleThreadExecutor()
     private var scanGeneration = 0
     /** Receives system screen-off events to stage the next episode through WatchPlayer. */
@@ -64,17 +66,19 @@ class MainActivity : Activity() {
             "Theme Mode" -> themeSettings()
             "Favourites Style" -> favouriteSettings()
             "Apps" -> drawer()
+            "Welcome" -> introduction(savedInstanceState?.getInt("guideStep") ?: 0)
             else -> home()
         }
+        if (!state.tutorialSeen) introduction()
     }
 
     /** Preserves picker intent across rotation so a Watch folder cannot become a Read folder accidentally. */
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString("pickerMode", pickerMode); outState.putString("screen", screen); super.onSaveInstanceState(outState)
+        outState.putInt("guideStep", guideStep); outState.putString("pickerMode", pickerMode); outState.putString("screen", screen); super.onSaveInstanceState(outState)
     }
 
     /** Returns HOME intents to the familiar home screen. */
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); home() }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); if (intent.getBooleanExtra("openApps", false)) drawer() else home() }
 
     /** Keeps Watch landscape while allowing reading in the device's preferred orientation. */
     private fun applyOrientation() {
@@ -94,8 +98,8 @@ class MainActivity : Activity() {
         screen = title
         drawerGestureAreas.clear(); drawerSwipeEligible = false
         ui = LauncherUi(this, state, state.useWallpaper)
-        val immersiveHome = title == "Home" && resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        // Landscape Home fills the display; edge swipes temporarily reveal Android navigation.
+        val immersiveHome = state.fullscreen
+        // Edge swipes still reveal Android navigation when fullscreen is enabled.
         val lightBars = if (ui.text == Color.BLACK)
             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
         window.decorView.systemUiVisibility = lightBars or if (immersiveHome)
@@ -136,6 +140,9 @@ class MainActivity : Activity() {
         root.addView(thermalBanner)
         updateThermalBanner()
         setContentView(root)
+        if (state.animations && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            root.alpha = 0f; root.animate().alpha(1f).setDuration(140).start()
+        }
         return root
     }
 
@@ -152,26 +159,23 @@ class MainActivity : Activity() {
         val favourites = state.favourites().filter { flat ->
             val component = ComponentName.unflattenFromString(flat)
             component != null && runCatching { packageManager.getActivityInfo(component, 0) }.isSuccess
-        }.take(if (!state.grid && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) 4 else state.favouriteCount)
+        }.take(state.favouriteCount)
         if (landscape) {
-            val half = state.favouriteCount / 2
-            body.addView(favouriteColumn(favourites.take(half), slotCount = half), LinearLayout.LayoutParams(0, -1, .15f))
+            val total = if (state.dynamicBlocks) favourites.size.coerceAtLeast(2) else state.favouriteCount
+            val left = (total + 1) / 2
+            val right = if (state.dynamicBlocks && state.asymmetricBlocks) (total - left).coerceAtLeast(1) else left
+            body.addView(favouriteColumn(favourites.take(left), slotCount = left), LinearLayout.LayoutParams(0, -1, .15f))
             body.addView(viewer, LinearLayout.LayoutParams(0, -1, .70f))
-            body.addView(favouriteColumn(favourites.drop(half), slotCount = half), LinearLayout.LayoutParams(0, -1, .15f))
+            body.addView(favouriteColumn(favourites.drop(left), slotCount = right), LinearLayout.LayoutParams(0, -1, .15f))
         } else {
             body.addView(viewer, LinearLayout.LayoutParams(-1, 0, .57f))
-            body.addView(favouriteColumn(favourites, portrait = true, slotCount = if (state.grid) state.favouriteCount else 4), LinearLayout.LayoutParams(-1, 0, .43f))
+            body.addView(favouriteColumn(favourites, portrait = true, slotCount = if (state.dynamicBlocks) favourites.size.coerceAtLeast(2) else state.favouriteCount), LinearLayout.LayoutParams(-1, 0, .43f))
         }
         val last = state.last(state.mode)
         if (state.viewerSource == "App") {
-            val content = ui.column().apply { gravity = android.view.Gravity.CENTER }
-            val component = state.lastApp()?.let { ComponentName.unflattenFromString(it) }
-            val info = component?.let { runCatching { packageManager.getActivityInfo(it, 0) }.getOrNull() }
-            content.addView(ui.label("Snapplication", 16f))
-            if (component != null && info != null) content.addView(ui.button("Continue ${info.loadLabel(packageManager)}") { launch(component) })
-            content.addView(ui.button(if (info == null) "Choose app" else "Choose another app") { drawer() })
-            if (state.mode == "Watch") content.addView(ui.button("Playback controls") { externalPlayback() })
-            panel.addView(ScrollView(this).apply { addView(content) }, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM))
+            panel.addView(ExternalPreview(this, state).build(onResumeCapture = { previewSettings() }) {
+                choosingPreview = true; drawer()
+            }, FrameLayout.LayoutParams(-1, -1))
         } else if (last == null) {
             val empty = ui.column()
             empty.addView(ui.label(if (state.mode == "Watch") "Your next watch starts here" else "Pick up your next chapter", 24f))
@@ -244,11 +248,12 @@ class MainActivity : Activity() {
         }.setNegativeButton("Cancel", null).show()
     }
 
-    /** Persists aspect handling for local reader/video content without changing another app's display. */
+    /** Persists preview and local-media sizing without changing another app's display. */
     private fun chooseContentScale() {
         val values = arrayOf("Fit", "Fill", "Stretch")
-        AlertDialog.Builder(this).setTitle("Content sizing")
-            .setItems(arrayOf("Fit to block · show everything", "Fill block · crop edges", "Stretch · use full block")) { _, index ->
+        val labels = arrayOf("Fit · show the whole image", "Crop · fill without distortion", "Stretch · fill all dimensions")
+        AlertDialog.Builder(this).setTitle("Preview sizing")
+            .setItems(labels) { _, index ->
                 state.contentScale = values[index]
                 reader?.applyContentScale(); watch?.applyContentScale()
                 settings()
@@ -266,8 +271,9 @@ class MainActivity : Activity() {
         }
         shell.addView(column, LinearLayout.LayoutParams(-1, 0, 1f))
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val columns = if (portrait && state.grid) state.favouriteCount / 2 else 1
-        val slots = List(slotCount) { components.getOrNull(it) }
+        val columns = if (portrait && (state.grid || state.dynamicBlocks)) minOf(4, (slotCount + 1) / 2).coerceAtLeast(1) else if (!portrait && slotCount > 6) 2 else 1
+        val displayedSlots = if (portrait && state.dynamicBlocks && !state.asymmetricBlocks) ((slotCount + columns - 1) / columns) * columns else slotCount
+        val slots = List(displayedSlots) { components.getOrNull(it) }
         slots.chunked(columns).forEach { group ->
             val row = ui.column(true).apply {
                 gravity = android.view.Gravity.CENTER
@@ -285,7 +291,7 @@ class MainActivity : Activity() {
                 val info = runCatching { packageManager.getActivityInfo(component, 0) }.getOrNull() ?: return@forEach
                 val label = info.loadLabel(packageManager).toString()
                 val button = ui.button(if (state.grid || !state.showLabels) "" else label) { launch(component) }
-                val icon = info.loadIcon(packageManager).apply { setBounds(0, 0, ui.dp(24), ui.dp(24)) }
+                val icon = IconPacks.load(this@MainActivity, component) { info.loadIcon(packageManager) }.apply { setBounds(0, 0, ui.dp(40), ui.dp(40)) }
                 if (!state.grid && state.showLabels) {
                     if (portrait) button.setCompoundDrawables(icon, null, null, null)
                     else button.setCompoundDrawables(null, icon, null, null)
@@ -303,9 +309,9 @@ class MainActivity : Activity() {
                     addView(button, FrameLayout.LayoutParams(-1, -1))
                     // A separate non-interactive image keeps adaptive icons centred through orientation changes.
                     addView(android.widget.ImageView(this@MainActivity).apply {
-                        setImageDrawable(info.loadIcon(packageManager))
+                        setImageDrawable(IconPacks.load(this@MainActivity, component) { info.loadIcon(packageManager) })
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                    }, FrameLayout.LayoutParams(ui.dp(32), ui.dp(32), android.view.Gravity.CENTER))
+                    }, FrameLayout.LayoutParams(ui.dp(if (slotCount > 8) 36 else 56), ui.dp(if (slotCount > 8) 36 else 56), android.view.Gravity.CENTER))
                 } else button
                 row.addView(tile, LinearLayout.LayoutParams(0, -1, 1f))
             }
@@ -349,80 +355,24 @@ class MainActivity : Activity() {
         column.addView(ui.button("Add favourites from Apps") { drawer() })
     }
 
-    /** Lists installed apps with explicit add/remove favourite controls for touch and remote users. */
+    /** Hosts the alphabetical drawer; DrawerPanel owns search, remote focus and favourite editing. */
     private fun drawer() {
         begin("Apps")
-        val search = EditText(this).apply {
-            hint = "Search apps…"; textSize = 16f; setSingleLine()
-            setTextColor(ui.text); setHintTextColor(ui.muted)
-            setPadding(ui.dp(20), ui.dp(12), ui.dp(20), ui.dp(12))
-            setBackgroundColor(ui.surface); minimumHeight = ui.dp(52)
-        }
-        root.addView(ui.row("⌄   APP DRAWER") { home() }.apply {
-            ui.flatFocus(this, ui.textSurface(), outline = false)
-            gravity = android.view.Gravity.CENTER; textSize = 11f
-            drawerGestureAreas.add(this)
-        })
-        root.addView(search)
-        root.addView(ui.label("Tap ☆ to add an app to Home. Tap ★ to remove it.", 12f))
-        val list = ui.column()
-        root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        val phoneApps = packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
-        val tvApps = packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), 0)
-        val apps = (phoneApps + tvApps).distinctBy { "${it.activityInfo.packageName}/${it.activityInfo.name}" }
-            .filter { it.activityInfo.packageName != packageName }.sortedBy { it.loadLabel(packageManager).toString().lowercase() }
-        // Rebuild only the filtered app rows; package discovery is shared across keystrokes.
-        fun populate(query: String) {
-            list.removeAllViews()
-            apps.filter { it.loadLabel(packageManager).contains(query, true) }.forEach { info ->
-                val component = ComponentName(info.activityInfo.packageName, info.activityInfo.name)
-                val button = ui.button(info.loadLabel(packageManager).toString()) { launch(component) }
-                val icon = info.loadIcon(packageManager).apply { setBounds(0, 0, ui.dp(22), ui.dp(22)) }
-                button.setCompoundDrawables(icon, null, null, null)
-                button.compoundDrawablePadding = ui.dp(24)
-
-                button.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-                ui.flatFocus(button)
-                val row = ui.column(true).apply { gravity = android.view.Gravity.CENTER }
-                row.addView(button, LinearLayout.LayoutParams(0, ui.dp(64), 1f))
-                val favourite = ui.button("") {}
-                // Update in place so remote focus and the current search survive a change.
-                fun refreshFavourite() {
-                    val added = component.flattenToString() in state.favourites()
-                    favourite.text = if (added) "★" else "☆"
-                    favourite.contentDescription = "${if (added) "Remove" else "Add"} ${info.loadLabel(packageManager)} ${if (added) "from" else "to"} favourites"
-                }
-                refreshFavourite()
-                favourite.setOnClickListener {
-                    state.toggleFavourite(component.flattenToString()); refreshFavourite()
-                    android.widget.Toast.makeText(this, "Home favourites updated", android.widget.Toast.LENGTH_SHORT).show()
-                }
-                button.setOnLongClickListener { favourite.performClick(); true }
-                row.addView(favourite, LinearLayout.LayoutParams(ui.dp(56), ui.dp(56)))
-                list.addView(row)
-                list.addView(View(this).apply { setBackgroundColor(ui.border) }, LinearLayout.LayoutParams(-1, ui.dp(1)))
-            }
-        }
-        populate("")
-        search.addTextChangedListener(object : TextWatcher {
-            /** Updates the visible app list as the query changes. */
-            override fun afterTextChanged(s: Editable?) { populate(s.toString()) }
-            /** No pre-edit work is required; filtering occurs after edits. */
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            /** Defers filtering until the text change has completed. */
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-        root.addView(ui.row("⚙   Launcher Settings") { settings() }.apply {
-            gravity = android.view.Gravity.CENTER
-        })
+        val panel = DrawerPanel(this, state, ui, { launch(it) }, { settings() }, { home() })
+        root.addView(panel.view, LinearLayout.LayoutParams(-1, 0, 1f))
+        drawerGestureAreas.add((panel.view.getChildAt(0) as ViewGroup).getChildAt(0))
     }
 
     /** Launches an installed application without claiming control of its saved session. */
     private fun launch(component: ComponentName) {
         runCatching {
-            startActivity(Intent.makeMainActivity(component))
-            state.rememberApp(component.flattenToString())
-            state.viewerSource = "App"
+            startActivity(Intent.makeMainActivity(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
+            if (choosingPreview || state.lastApp() == null) {
+                if (choosingPreview) state.followMediaApps = false
+                state.rememberApp(component.flattenToString())
+                state.viewerSource = "App"
+            }
+            choosingPreview = false
             home()
         }.onFailure { message("This app is unavailable.") }
     }
@@ -470,6 +420,13 @@ class MainActivity : Activity() {
     @Deprecated("Legacy Activity result API retained for the minimal native Activity host")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 201) {
+            if (resultCode == RESULT_OK && data != null) {
+                startForegroundService(Intent(this, PreviewCaptureService::class.java).putExtra("consent", data))
+                root.postDelayed({ if (!isFinishing) { if (screen == "Welcome") introduction(guideStep) else home() } }, 150)
+            }
+            return
+        }
         if (requestCode != 100 || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         runCatching {
@@ -498,12 +455,22 @@ class MainActivity : Activity() {
     }
 
     /** Exposes genuine settings; unsupported hardware actions are not presented as working switches. */
-    private fun settings() {
+    private var settingsCategory: String? = null
+
+    private fun settings(category: String? = settingsCategory) {
+        settingsCategory = category
         begin("Settings")
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         content.addView(ui.section("Appearance"))
         content.addView(ui.setting("Theme Mode", state.theme) { themeSettings() })
+        content.addView(ui.setting("App icon", AppIconTheme.currentLabel(this)) {
+            val choices = AppIconTheme.choices
+            AlertDialog.Builder(this).setTitle("App icon colours").setItems(choices.toTypedArray()) { _, index ->
+                if (!AppIconTheme.apply(this, choices[index])) message("The icon could not change. Please try again.")
+                settings()
+            }.setNegativeButton("Cancel", null).show()
+        })
         content.addView(ui.setting("Show App Labels", "Display names beside favourites", if (state.showLabels) "On" else "Off") {
             state.showLabels = !state.showLabels; settings()
         })
@@ -514,6 +481,14 @@ class MainActivity : Activity() {
             runCatching { startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Choose wallpaper")) }
                 .onFailure { message("No wallpaper picker is available on this device.") }
         })
+        content.addView(ui.setting("Rounded corners", "Angular by default", if (state.roundedCorners) "On" else "Off") { state.roundedCorners = !state.roundedCorners; settings() })
+        content.addView(ui.setting("Animations", "Short page transitions", if (state.animations) "On" else "Off") { state.animations = !state.animations; settings() })
+        content.addView(ui.setting("Icon pack", "Use an installed compatible icon pack") {
+            val packs = listOf("" to "System icons") + IconPacks.listInstalled(this)
+            AlertDialog.Builder(this).setTitle("Icon pack").setItems(packs.map { it.second }.toTypedArray()) { _, index ->
+                getSharedPreferences("launcher", MODE_PRIVATE).edit().putString("iconPack", packs[index].first).apply(); settings()
+            }.setNegativeButton("Cancel", null).show()
+        })
         content.addView(ui.section("Favourites"))
         content.addView(ui.setting("Favourites heading", "Show the heading above home shortcuts", if (state.showFavouriteHeading) "On" else "Off") {
             state.showFavouriteHeading = !state.showFavouriteHeading; settings()
@@ -521,6 +496,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Favourites Style", "${if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
         content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
         content.addView(ui.section("Read & Watch"))
+        content.addView(ui.setting("Home preview", "Follow your last video or book; save a still picture locally") { previewSettings() })
         content.addView(ui.setting("Play videos in launcher", "Off: tap the preview to open a video app", if (state.playVideosInLauncher) "On" else "Off") {
             state.playVideosInLauncher = !state.playVideosInLauncher; settings()
         })
@@ -528,7 +504,7 @@ class MainActivity : Activity() {
             state.readInLauncher = !state.readInLauncher; settings()
         })
         content.addView(ui.setting("Main viewer", if (state.viewerSource == "App") "Continue app" else "Folder content") { chooseViewerSource() })
-        content.addView(ui.setting("Content sizing", "${state.contentScale} · folder documents and videos") { chooseContentScale() })
+        content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · preview, documents and videos") { chooseContentScale() })
         content.addView(ui.setting("Previous / Next buttons", "Show page controls in the reading panel", if (state.showReaderControls) "On" else "Off") {
             state.showReaderControls = !state.showReaderControls; settings()
         })
@@ -537,6 +513,9 @@ class MainActivity : Activity() {
         content.addView(ui.row("Choose folder    ›") { pickFolder() })
         content.addView(ui.row("Other app playback    ›") { externalPlayback() })
         content.addView(ui.section("Display & Input"))
+        content.addView(ui.setting("Fullscreen", "Hide system bars; swipe an edge to reveal them", if (state.fullscreen) "On" else "Off") {
+            state.fullscreen = !state.fullscreen; settings()
+        })
         content.addView(ui.setting("Orientation", state.orientation) {
             val choices = arrayOf("Mode default", "Auto", "Landscape", "Portrait")
             AlertDialog.Builder(this).setTitle("Orientation").setItems(choices) { _, index ->
@@ -564,10 +543,70 @@ class MainActivity : Activity() {
                 override fun onStopTrackingTouch(bar: SeekBar) {}
             })
         })
-        content.addView(ui.label("On screen-off, stage the next local episode when this percentage is reached. Playback stays paused until you return.", 16f))
+        content.addView(ui.label("For videos played here: when you leave or turn the screen off after this point, prepare the next file and show its name while paused. Other apps control their own episode loading; a ready next episode cannot be guaranteed unless that app exposes it.", 16f))
+        content.addView(ui.button("Introduction and setup") { introduction() })
+        content.addView(ui.button("Android display settings") { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) })
+        content.addView(ui.label("Mirror / desktop mode is controlled by your phone's projection menu when a compatible display is connected. Screen off locks the phone; an independent desktop display may remain on.", 14f))
         content.addView(ui.button("Device diagnostics") { diagnostics() })
-        content.addView(ui.label("CEC, charging bypass and e-paper refresh need device-specific support. No hardware capability has been assumed.", 16f))
         content.addView(ui.label("Snapplication · Private development\nAll features free. No launcher advertisements or paid feature gates.", 16f))
+        organizeSettings(content)
+
+    }
+
+    /** Presents one category at a time; search spans every category without hiding its matching controls. */
+    private fun organizeSettings(content: LinearLayout) {
+        val groups = linkedMapOf<String, MutableList<View>>()
+        var group = "Appearance"
+        val names = setOf("APPEARANCE", "FAVOURITES", "READ & WATCH", "DISPLAY & INPUT", "PLAYBACK")
+        for (index in 0 until content.childCount) {
+            val child = content.getChildAt(index)
+            if (child is android.widget.TextView && child.text.toString() in names) group = child.text.toString().lowercase().replaceFirstChar { it.uppercase() }
+            groups.getOrPut(group) { mutableListOf() }.add(child)
+        }
+        val categories = ui.column()
+        content.addView(categories, 0, LinearLayout.LayoutParams(-1, -2))
+        val search = EditText(this).apply {
+            hint = "Search all settings"; setTextColor(ui.text); setHintTextColor(ui.muted)
+            setSingleLine(true); setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8)); setBackgroundColor(ui.surface)
+        }
+        root.addView(search, 1, LinearLayout.LayoutParams(-1, ui.dp(52)))
+        // Single-line EditText consumes DPAD_DOWN as cursor movement on some Huawei keyboards.
+        // Give remote users an explicit route into the visible settings, keeping normal text editing.
+        search.setOnKeyListener { _, code, event ->
+            if (code != android.view.KeyEvent.KEYCODE_DPAD_DOWN) false
+            else {
+                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    content.getFocusables(View.FOCUS_DOWN).firstOrNull { it.isShown && it.isEnabled && it !== content }
+                        ?.requestFocus()
+                }
+                true
+            }
+        }
+        val summaries = mapOf("Appearance" to "Theme, transparency, corners and icon packs", "Favourites" to "Add apps, arrange blocks and choose your layout",
+            "Read & watch" to "Last-frame preview, content and playback", "Display & input" to "Fullscreen, orientation and remote buttons",
+            "Playback" to "Episode progress, setup guide and device information")
+        fun words(view: View): String = if (view is android.widget.TextView) view.text.toString() else if (view is ViewGroup)
+            (0 until view.childCount).joinToString(" ") { words(view.getChildAt(it)) } else ""
+        fun update(query: String) {
+            categories.removeAllViews()
+            if (query.isBlank() && settingsCategory == null) {
+                groups.keys.forEach { name -> categories.addView(ui.setting(name, summaries[name].orEmpty()) { settings(name) }) }
+            } else if (query.isBlank()) {
+                categories.addView(ui.row("← All settings") { settings(null) })
+            }
+            groups.forEach { (name, rows) -> rows.forEach { row ->
+                row.visibility = if (if (query.isBlank()) name == settingsCategory else words(row).contains(query, true)) View.VISIBLE else View.GONE
+            } }
+        }
+        search.addTextChangedListener(object : TextWatcher {
+            /** Filters settings across categories as the user types. */
+            override fun afterTextChanged(value: Editable?) { update(value.toString().trim()) }
+            /** No work is needed before an edit. */
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            /** Filtering runs after the completed edit. */
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+        update("")
     }
 
     /** Shows the reference's separate theme selection page with immediate persistent selection. */
@@ -600,9 +639,12 @@ class MainActivity : Activity() {
                 state.grid = grid; favouriteSettings()
             })
         }
-        content.addView(ui.section("Block Count"))
+        content.addView(ui.setting("Dynamic blocks", "Adapt blocks to the number of favourites", if (state.dynamicBlocks) "On" else "Off") { state.dynamicBlocks = !state.dynamicBlocks; favouriteSettings() })
+        content.addView(ui.setting("Dynamic layout", if (state.asymmetricBlocks) "Asymmetrical · merge unused space" else "Symmetrical · equal blocks") { state.asymmetricBlocks = !state.asymmetricBlocks; favouriteSettings() })
+        content.addView(ui.setting("Experimental block limit", "Up to 24; small targets on phones", if (state.experimentalBlocks) "24" else "8") { state.experimentalBlocks = !state.experimentalBlocks; favouriteSettings() })
+        content.addView(ui.section("Maximum blocks"))
         val counts = ui.column(true)
-        listOf(4, 6, 8).forEach { count ->
+        (if (state.experimentalBlocks) listOf(8, 12, 16, 24) else listOf(4, 6, 8)).forEach { count ->
             ui.addWeighted(counts, ui.button("${if (state.favouriteCount == count) "● " else ""}$count blocks") {
                 state.favouriteCount = count; favouriteSettings()
             })
@@ -630,7 +672,7 @@ class MainActivity : Activity() {
         content.addView(refresh)
         values.text = reader.snapshot()
         content.addView(values)
-        content.addView(ui.label("These are Android-reported values at the last refresh. They do not verify CEC, charging bypass, independent display power or e-paper refresh support.", 16f))
+        content.addView(ui.label("These are Android-reported values at the last refresh. Independent display power and e-paper refresh depend on the connected hardware.", 16f))
     }
 
     /** Shows real learned keys and controls for mapping or resetting launcher-only remote actions. */
@@ -639,7 +681,12 @@ class MainActivity : Activity() {
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         content.addView(ui.label("Connect your remote through Android's Bluetooth settings or USB, then choose an action below.", 17f))
-        content.addView(ui.label("Mappings apply to launcher screens. Text fields, dialogs and other apps keep normal controls. Back, power, volume and system Home cannot be reassigned. Hold Back on any launcher screen to reset all mappings if navigation becomes difficult. Assigning an action again replaces its previous button on that remote.", 16f))
+        content.addView(ui.label("Map any key Android delivers, including Back and volume. Optional accessibility support applies mappings in other apps. System Home and Power may be intercepted by Android before this app sees them. Waking a sleeping phone depends on the remote and USB/Bluetooth hardware; a launcher cannot guarantee it. Hold Back inside the launcher to reset mappings.", 16f))
+        content.addView(ui.button("Enable remote and preview support") { explainAccessibility() })
+        content.addView(ui.button("Recorded actions") { macroSettings() })
+        content.addView(ui.button("Screen off now") {
+            RemoteActionService.instance?.performMappedAction("Screen off") ?: explainAccessibility()
+        })
         content.addView(ui.label(remote.summary(), 16f))
         remote.actions.forEach { action ->
             content.addView(ui.button("Map $action") { remote.learn(action) { remoteSettings() } })
@@ -648,6 +695,125 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("Reset remote buttons?").setMessage("Remove all custom assignments and restore normal controls.")
                 .setNegativeButton("Cancel", null).setPositiveButton("Reset") { _, _ -> remote.reset(); remoteSettings() }.show()
         })
+    }
+
+
+
+    /** Presents one clear setup task per page, refreshing permission status when Android returns. */
+    private fun introduction(step: Int = 0) {
+        begin("Welcome")
+        guideStep = step.coerceIn(0, 6)
+        val access = RemoteActionService.instance != null
+        val media = Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty()
+            .split(':').any { ComponentName.unflattenFromString(it)?.packageName == packageName }
+        val pages = listOf(
+            SetupGuide.Page("Pick up where you left off", "Your last video or book lives in the centre. Select its picture to return to the app; your favourite apps sit around it.",
+                "Try Home", "You can revisit this guide from Settings at any time.") { state.tutorialSeen = true; home() },
+            SetupGuide.Page("Put your apps within reach", "Open Favourites mode in All Apps. Tap apps to add them, then drag the preview icons into order. With a remote, select an icon to move it.",
+                "Choose favourites", "Hold an app in the list to open its Android app information.") { state.tutorialSeen = true; drawer() },
+            SetupGuide.Page("Connect your remote and previews", "Accessibility support identifies the app on screen and runs the buttons and actions you choose. Enable Snapplication in Android, then return here.",
+                if (access) "Review accessibility" else "Enable accessibility", if (access) "✓ Accessibility is connected" else "Needed for remote actions and app previews") { explainAccessibility() },
+            SetupGuide.Page("Keep your last moment", "Android asks to share the screen. Snapplication saves only the latest eligible media frame locally. Protected video can appear black. Stop sharing from the capture notification whenever you want.",
+                if (PreviewCaptureService.active) "Previews are on" else if (access) "Enable screen capture" else "Enable accessibility first",
+                if (PreviewCaptureService.active) "✓ Screen capture is running" else "Android may ask again after a restart or an update") {
+                if (!access) explainAccessibility() else if (!PreviewCaptureService.active) requestPreviewCapture()
+            },
+            SetupGuide.Page("Let the app handle playback", "Optional notification access lets Snapplication use an app's media controls. Play, previous and next work only when that app offers them. No notification messages are saved or sent.",
+                if (media) "Review media access" else "Enable media controls", if (media) "✓ Media access is enabled" else "Optional — previews can open apps without this") {
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            },
+            SetupGuide.Page("One button for your routine", "Map Home, Back or Screen off. Map Record/stop macro to record actions across apps, then assign the saved routine to another button. Recording text and protected screens is excluded.",
+                "Set up remote buttons", "Use a key Android delivers. The remote's physical Power key may be handled by the device itself.") { state.tutorialSeen = true; remoteSettings() },
+            SetupGuide.Page("Make this your Home", "Choose Snapplication as your default Home app if you want Android's Home button to return here. Your current launcher stays installed, and you can change back in Android settings.",
+                "Choose default Home", "Optional — all setup choices remain available in Settings") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
+        )
+        root.addView(SetupGuide(this, ui).build(guideStep, pages, { introduction(it) }, {
+            state.tutorialSeen = true; home()
+        }), LinearLayout.LayoutParams(-1, 0, 1f))
+    }
+
+    /** Explains accessibility access before sending the user to Android's own opt-in control. */
+    private fun explainAccessibility() {
+        AlertDialog.Builder(this).setTitle("Remote and preview support")
+            .setMessage("Optional accessibility access identifies the foreground app, maps remote keys and replays actions you record. Screen images require separate screen-sharing consent. Nothing is uploaded. You can disable access in Android settings at any time.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Open Android settings") { _, _ ->
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }.show()
+    }
+
+    /** Offers one preview switch, automatic app following and optional manual selection. */
+    private fun previewSettings() {
+        begin("Home preview")
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val enabled = RemoteActionService.instance != null
+        val running = PreviewCaptureService.active
+        content.addView(ui.label(if (running) "Previews are on" else "Previews are off", 22f))
+        content.addView(ui.label("Keep a still picture of your last video or book. Tap it to return to that app. Pictures stay on this phone. Protected video may be black.", 16f))
+        content.addView(ui.setting("Follow last media app", "Switch between supported players and readers as you use them", if (state.followMediaApps) "On" else "Off") {
+            state.followMediaApps = !state.followMediaApps; previewSettings()
+        })
+        if (!state.followMediaApps) content.addView(ui.button("Choose fixed preview app") { choosingPreview = true; drawer() })
+        content.addView(ui.button(if (running) "Turn previews off" else if (!enabled) "Set up previews" else "Turn previews on") {
+            if (running) {
+                stopService(Intent(this, PreviewCaptureService::class.java))
+                root.postDelayed({ if (!isFinishing) previewSettings() }, 150)
+            } else if (!enabled) explainAccessibility() else requestPreviewCapture()
+        })
+        if (!enabled) content.addView(ui.label("Setup: enable Snapplication in Android accessibility, return here, then turn previews on. Android will ask for screen-sharing permission.", 14f))
+        content.addView(ui.button("Picture sizing: ${if (state.contentScale == "Fill") "Crop" else state.contentScale}") { chooseContentScale() })
+        content.addView(ui.button("Enable episode controls") { externalPlayback() })
+        content.addView(ui.button("Clear saved pictures") {
+            PreviewCaptureService.clearSaved(this)
+            root.postDelayed({ if (!isFinishing) previewSettings() }, 150)
+        })
+    }
+
+    /** Requests Android's screen-sharing consent; capture accepts only the active media target. */
+    private fun requestPreviewCapture() {
+        val manager = getSystemService(android.media.projection.MediaProjectionManager::class.java)
+        val request = if (android.os.Build.VERSION.SDK_INT >= 34)
+            manager.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
+        else manager.createScreenCaptureIntent()
+        startActivityForResult(request, 201)
+    }
+
+    /** Records cross-app routines and offers explicit playback, remote assignment and deletion. */
+    private fun macroSettings() {
+        begin("Recorded actions")
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        content.addView(ui.label("Record up to 20 actions across apps, then assign the routine to a remote button. App changes count as steps. Use Record/stop from your remote at any time. Text entry and protected screens are excluded; replay stops when a target is missing or ambiguous.", 17f))
+        val macroPrefs = getSharedPreferences("remoteMacros", MODE_PRIVATE)
+        content.addView(ui.setting("Confirm before playback", "Off: a mapped button runs the saved action immediately", if (macroPrefs.getBoolean("confirmReplay", false)) "On" else "Off") {
+            macroPrefs.edit().putBoolean("confirmReplay", !macroPrefs.getBoolean("confirmReplay", false)).apply(); macroSettings()
+        })
+        content.addView(ui.button("Record new action") {
+            val service = RemoteActionService.instance
+            if (service == null) explainAccessibility()
+            else {
+                val name = EditText(this).apply { hint = "Action name"; setSingleLine(true) }
+                AlertDialog.Builder(this).setTitle("Record an action").setView(name)
+                    .setMessage("Start at Home, open any app and perform your steps. Use the floating Stop button to save.")
+                    .setNegativeButton("Cancel", null).setPositiveButton("Record") { _, _ ->
+                        val title = name.text.toString().trim()
+                        if (title.isBlank() || title.length > 40 || title in RemoteActionService.savedMacroNames(this)) {
+                            message("Use a unique action name of 1–40 characters.")
+                        } else {
+                            home()
+                            root.postDelayed({ if (!isFinishing && !service.beginRecording(title)) message("Recording could not start. Check accessibility support.") }, 450)
+                        }
+                    }.show()
+            }
+        })
+        content.addView(ui.button("Map a Record/stop button") { remote.learn("Record/stop macro") { macroSettings() } })
+        content.addView(ui.button("Stop recording") { RemoteActionService.instance?.stopRecording(); macroSettings() })
+        RemoteActionService.savedMacroNames(this).forEach { name ->
+            content.addView(ui.section(name))
+            content.addView(ui.button("Map button: $name") { remote.learn("Macro: $name") { macroSettings() } })
+            content.addView(ui.button("Run: $name") { RemoteActionService.instance?.openForReplay(name) ?: explainAccessibility() })
+            content.addView(ui.button("Delete: $name") { RemoteActionService.instance?.deleteMacro(name); macroSettings() })
+        }
     }
 
     private var drawerSwipeY = 0f
@@ -684,8 +850,8 @@ class MainActivity : Activity() {
 
     /** Applies saved remote keys only in this activity, preserving text entry and paired key events. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (!::remote.isInitialized) return super.dispatchKeyEvent(event)
-        // Physical Back is never remapped and offers recovery even when Select has been reassigned.
+        if (!::remote.isInitialized || RemoteControls.learning) return super.dispatchKeyEvent(event)
+        // A long Back press provides recovery when another navigation key has been reassigned.
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_DOWN && event.isLongPress) {
             remote.reset(); remote.clearHeldButtons()
             message("Remote buttons reset. Standard controls restored.")
@@ -695,9 +861,18 @@ class MainActivity : Activity() {
         remote.navigationEvent(event, action)?.let { return super.dispatchKeyEvent(it) }
         if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled) {
             when (action) {
-                "Home" -> home()
+                "Home" -> { RemoteActionService.instance?.recordLauncherNavigation("home"); home() }
                 "Apps" -> drawer()
+                "Screen off", "Record/stop macro" -> RemoteActionService.instance?.performMappedAction(action) ?: explainAccessibility()
                 "Back" -> navigateBack()
+                "Play/pause" -> {
+                    val audio = getSystemService(android.media.AudioManager::class.java)
+                    audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+                    audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+                }
+                else -> if (action.startsWith("Macro: ")) {
+                    RemoteActionService.instance?.openForReplay(action.removePrefix("Macro: ")) ?: explainAccessibility()
+                }
             }
         }
         return true
@@ -721,8 +896,9 @@ class MainActivity : Activity() {
 
     /** Keeps touch, Android Back and mapped remote Back on the same screen hierarchy. */
     private fun navigateBack() {
+        RemoteActionService.instance?.recordLauncherNavigation("back")
         when (screen) {
-            "Settings" -> drawer()
+            "Settings" -> if (settingsCategory != null) settings(null) else drawer()
             "Apps", "Library" -> home()
             "Home" -> Unit
             else -> settings()
@@ -739,6 +915,14 @@ class MainActivity : Activity() {
 
     /** Limits thermal polling to the launcher's visible lifecycle. */
     override fun onStart() { super.onStart(); thermal.start() }
+
+    /** Reloads the newest captured external frame after the source app returns to Home. */
+    override fun onResume() {
+        super.onResume()
+        if (!::state.isInitialized) return
+        if (screen == "Welcome") introduction(guideStep)
+        else if (screen == "Home" && state.viewerSource == "App") home()
+    }
 
     /** Saves and pauses playback whenever another app or the lock screen takes over. */
     override fun onStop() { thermal.stop(); watch?.pause(); super.onStop() }

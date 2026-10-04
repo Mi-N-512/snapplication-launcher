@@ -1,5 +1,7 @@
 # Development status
 
+Latest checkpoint: [4 October handoff](HANDOFF-2026-10-04.md). It supersedes older drawer, preview and macro descriptions below.
+
 This is a private development checkpoint, not a completed V1 or a release.
 
 ## Implemented

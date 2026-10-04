@@ -1,0 +1,3 @@
+<resources>
+    <string name="remote_accessibility_description">Optional remote button mapping and recorded actions. Identifies the selected app for local preview capture. Recording starts only when you choose it; screen capture requires separate Android consent. No screen contents are uploaded. Disable here at any time.</string>
+</resources>

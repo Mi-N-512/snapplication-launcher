@@ -3,18 +3,26 @@ package app.snapplication.launcher
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import android.view.KeyEvent
 import android.widget.TextView
 import org.json.JSONObject
 
 /** Learns per-device remote buttons for MainActivity; keeps mappings separate from media and library state. */
-class RemoteControls(private val activity: Activity) {
-    private val prefs = activity.getSharedPreferences("remoteControls", Context.MODE_PRIVATE)
-    val actions = listOf("Up", "Down", "Left", "Right", "Select", "Back", "Home", "Apps")
+class RemoteControls(private val context: Context) {
+    private val prefs = context.getSharedPreferences("remoteControls", Context.MODE_PRIVATE)
+    val actions: List<String> get() = listOf("Up", "Down", "Left", "Right", "Select", "Back", "Home", "Apps", "Screen off", "Play/pause", "Record/stop macro") +
+        RemoteActionService.savedMacroNames(context).map { "Macro: $it" }
     private val held = mutableMapOf<Pair<Int, Int>, String?>()
-    private val reserved = setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER,
-        KeyEvent.KEYCODE_APP_SWITCH, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
-        KeyEvent.KEYCODE_VOLUME_MUTE, KeyEvent.KEYCODE_UNKNOWN)
+    private val reserved = setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)
+
+    companion object {
+        /** Prevents the global accessibility filter from stealing the button being learned by the dialog. */
+        var learning: Boolean = false
+            private set
+    }
 
     /** Reads the saved assignment for this input device and physical key without altering the event. */
     fun action(event: KeyEvent): String? {
@@ -27,15 +35,21 @@ class RemoteControls(private val activity: Activity) {
     fun assignment(event: KeyEvent, editing: Boolean): String? {
         val key = event.deviceId to event.keyCode
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-            held[key] = if (editing) null else action(event)
+            val mapped = action(event)
+            // Navigation and launcher escape keys must remain usable while a search field owns focus.
+            held[key] = if (editing && mapped !in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro")) null else mapped
         }
-        val assigned = held[key]
+        val releaseOnly = if (event.action == KeyEvent.ACTION_UP && event.keyCode == KeyEvent.KEYCODE_BACK && !event.isCanceled && !held.containsKey(key)) action(event) else null
+        val assigned = held[key] ?: releaseOnly?.takeIf { !editing || it in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro") }
         if (event.action == KeyEvent.ACTION_UP) held.remove(key)
         return assigned
     }
 
     /** Drops incomplete presses when another window takes input ownership. */
     fun clearHeldButtons() { held.clear() }
+
+    /** Keeps an intercepted key release consumed even when its down event switched foreground apps. */
+    fun hasHeldAssignment(event: KeyEvent): Boolean = held[event.deviceId to event.keyCode] != null
 
     /** Converts navigation assignments to native events so focus, key holds and selection still work. */
     fun navigationEvent(event: KeyEvent, action: String): KeyEvent? {
@@ -51,20 +65,23 @@ class RemoteControls(private val activity: Activity) {
             event.metaState, event.deviceId, event.scanCode, event.flags, event.source)
     }
 
-    /** Captures a complete press/release pair; Back cancels and system-reserved keys remain untouched. */
+    /** Captures physical Back and volume keys too; the visible Cancel button exits without saving. */
     fun learn(action: String, onSaved: () -> Unit) {
         require(action in actions)
+        val activity = context as? Activity ?: return
         val status = TextView(activity).apply {
-            text = "Press and release the remote button for $action. Back cancels."
+            text = "Press and release the remote button for $action. Use Cancel below to exit, or wait 30 seconds for this dialog to close without saving. Home and Power are controlled by Android."
             setPadding(32, 24, 32, 24)
         }
         var captured: KeyEvent? = null
         val dialog = AlertDialog.Builder(activity).setTitle("Map $action").setView(status)
             .setNegativeButton("Cancel", null).create()
+        // Back belongs to the learning session, not Android's default dialog-dismiss behavior.
+        dialog.setCancelable(false)
         dialog.setOnKeyListener { _, code, event ->
             if (code in reserved) return@setOnKeyListener false
             val device = event.device
-            if (device == null || device.descriptor.isBlank()) {
+            if (device == null || device.isVirtual || device.descriptor.isBlank()) {
                 status.text = "This input cannot be identified. Try a connected remote."
                 return@setOnKeyListener true
             }
@@ -72,7 +89,8 @@ class RemoteControls(private val activity: Activity) {
                 captured = KeyEvent(event)
                 status.text = "${device.name}: ${KeyEvent.keyCodeToString(code)}. Release to save."
             }
-            val press = captured
+            // Some remotes deliver only a Back release. Accept it when Android identifies the device.
+            val press = captured ?: event.takeIf { it.action == KeyEvent.ACTION_UP && code == KeyEvent.KEYCODE_BACK && !it.isCanceled }
             if (event.action == KeyEvent.ACTION_UP && press?.keyCode == code && press.deviceId == event.deviceId) {
                 if (!event.isCanceled) {
                     save(device.descriptor, device.name, code, action)
@@ -85,7 +103,18 @@ class RemoteControls(private val activity: Activity) {
             }
             true
         }
+        dialog.setCanceledOnTouchOutside(false)
+        val timeoutHandler = Handler(Looper.getMainLooper())
+        val timeout = Runnable {
+            if (dialog.isShowing) {
+                dialog.dismiss()
+                Toast.makeText(activity, "No button saved. Learning timed out after 30 seconds; choose Map to try again.", Toast.LENGTH_LONG).show()
+            }
+        }
+        dialog.setOnDismissListener { learning = false; timeoutHandler.removeCallbacks(timeout) }
+        learning = true
         dialog.show()
+        timeoutHandler.postDelayed(timeout, 30_000)
     }
 
     /** Describes real saved assignments for the settings screen without claiming remote pairing. */
