@@ -1,6 +1,6 @@
-# Private test builds — 1 October 2026
+# Private test builds — 4 October 2026
 
-Source: `e868a33551b4b53cf64d8d10a762640004b28614`. Development builds only; not a release.
+Source: `0839f96130d33d481b1aa002dd514ad0346e3825`. Development builds only; not a release.
 
 | Edition | Download | Starts with |
 |---|---|---|
@@ -10,6 +10,6 @@ Source: `e868a33551b4b53cf64d8d10a762640004b28614`. Development builds only; not
 
 Sign in to GitHub, open the APK, then click **Download raw file**. Install on Android 8 or newer. These three packages can coexist. The Universal build updates this laptop's prior development build. Files are signed with the existing local debug key; the key is not uploaded. Checksums are in SHA256SUMS.txt.
 
-To add apps to Home: All Apps → outlined star beside an app. Filled stars remove favourites. Newly added favourites occupy the first slot.
+To add apps: All Apps → Favourites. Tap an app to add/remove it. Drag icons in the live Home preview to reorder, or select an icon with the remote for move actions. The full-height alphabet rail supports touch scrubbing and remote navigation.
 
-Build/lint and seven unit tests pass per edition. Android 15 emulator checks verified Universal favourite add/remove/restart persistence, E-reader defaults, TV landscape/launcher registration and D-pad favourite addition. Actual TV hardware and vendor e-ink refresh remain unverified. No provider plugins are included.
+Build/lint and seven unit tests pass per edition. Mate 10 Pro Android10 checks verified the alphabet rail, remote navigation, favourites add/remove, live preview drag/drop, tutorial navigation, icon theme switching and a cross-app Clock-to-Calculator macro. Physical remote Android translation, HDMI/TV and e-ink refresh remain unverified. No provider plugins are included. See [developer handoff](../docs/HANDOFF-2026-10-04.md) for evidence and remaining work.
