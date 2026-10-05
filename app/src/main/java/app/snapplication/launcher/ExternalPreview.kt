@@ -203,6 +203,9 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
 
     /** Opens the app first; explicit Watch play requests can then resume its own advertised paused session. */
     private fun openApp(resumePlayback: Boolean = false) {
+        if (state.landscapeApps && activity.window.decorView.width > activity.window.decorView.height) {
+            packageName?.let { RemoteActionService.instance?.prepareLandscape(it) }
+        }
         val pending = runCatching { active()?.sessionActivity }.getOrNull()
         val opened = if (pending != null && runCatching { pending.send() }.isSuccess) true else {
             val selected = component ?: return

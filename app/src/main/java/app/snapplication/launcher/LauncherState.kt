@@ -71,6 +71,11 @@ class LauncherState(context: Context) {
     var tutorialSeen: Boolean
         get() = prefs.getBoolean("tutorialSeen", false)
         set(value) { prefs.edit().putBoolean("tutorialSeen", value).apply() }
+    /** Keeps apps launched from landscape Home wide, through the enabled accessibility bridge. */
+    var landscapeApps: Boolean
+        get() = prefs.getBoolean("landscapeApps", true)
+        set(value) { prefs.edit().putBoolean("landscapeApps", value).apply() }
+
     var fullscreen: Boolean
         get() = prefs.getBoolean("fullscreen", true)
         set(value) { prefs.edit().putBoolean("fullscreen", value).apply() }

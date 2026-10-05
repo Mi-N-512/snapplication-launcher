@@ -148,9 +148,15 @@ class MainActivity : Activity() {
 
     /** Uses the Make layout: a 57 percent portrait viewer and a 70 percent landscape viewer. */
     @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-    private fun home() {
+    private fun home(measuredLandscape: Boolean? = null) {
         begin("Home")
-        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val landscape = measuredLandscape ?: (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+        val homeRoot = root
+        homeRoot.addOnLayoutChangeListener { view, left, top, right, bottom, _, _, _, _ ->
+            if (right > left && bottom > top && ((right - left > bottom - top) != landscape)) {
+                view.post { if (root === homeRoot && screen == "Home") home(right - left > bottom - top) }
+            }
+        }
         val body = ui.column(landscape)
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         val viewer = ui.column().apply { background = ui.homeSurface() }
@@ -366,7 +372,8 @@ class MainActivity : Activity() {
     /** Launches an installed application without claiming control of its saved session. */
     private fun launch(component: ComponentName) {
         runCatching {
-            startActivity(Intent.makeMainActivity(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
+            if (state.landscapeApps && root.width > root.height) RemoteActionService.instance?.prepareLandscape(component.packageName)
+            startActivity(Intent.makeMainActivity(component).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             if (choosingPreview || state.lastApp() == null) {
                 if (choosingPreview) state.followMediaApps = false
                 state.rememberApp(component.flattenToString())
@@ -517,6 +524,11 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("Orientation").setItems(choices) { _, index ->
                 state.orientation = choices[index]; applyOrientation(); settings()
             }.setNegativeButton("Cancel", null).show()
+        })
+        content.addView(ui.setting("Open apps in landscape", "Match landscape Home; request player fullscreen when available. Requires accessibility support.", if (state.landscapeApps) "On" else "Off") {
+            state.landscapeApps = !state.landscapeApps
+            if (!state.landscapeApps) RemoteActionService.instance?.cancelLandscape()
+            settings()
         })
         content.addView(ui.setting("Wireless Remote", "Remap a connected remote control", "Calibrate ›") { remoteSettings() })
         content.addView(ui.setting("Second Screen", "Connected displays and device information") { diagnostics() })
@@ -879,6 +891,12 @@ class MainActivity : Activity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus && ::remote.isInitialized) remote.clearHeldButtons()
+        if (hasFocus && ::state.isInitialized && state.fullscreen) {
+            // External player/PiP windows can reveal the bars after Home was already laid out.
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        }
     }
 
     /** Opens a staged visual picker; cancelling preserves the current theme and colours. */
@@ -916,6 +934,7 @@ class MainActivity : Activity() {
     /** Reloads the newest captured external frame after the source app returns to Home. */
     override fun onResume() {
         super.onResume()
+        RemoteActionService.instance?.cancelLandscape()
         if (!::state.isInitialized) return
         if (screen == "Welcome") introduction(guideStep)
         else if (screen == "Home" && state.viewerSource == "App") home()

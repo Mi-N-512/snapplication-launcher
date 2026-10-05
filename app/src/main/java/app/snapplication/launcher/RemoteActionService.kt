@@ -27,6 +27,16 @@ import org.json.JSONObject
 class RemoteActionService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val controls by lazy { RemoteControls(this) }
+    private val landscapeLaunch by lazy { LandscapeLaunch(this) }
+
+    /** Receives an explicit app launch from landscape Home or its centre preview. */
+    fun prepareLandscape(target: String) {
+        landscapeLaunch.begin(target)
+        handler.postDelayed({ updateForeground() }, 8100)
+    }
+
+    /** Releases the launch orientation immediately when its setting is disabled. */
+    fun cancelLandscape() { landscapeLaunch.clear() }
     private var recordingName: String? = null
     private var recordingPackage: String? = null
     private var recordingStarted = false
@@ -202,6 +212,7 @@ class RemoteActionService : AccessibilityService() {
                 currentPackageSinceNanos = SystemClock.elapsedRealtimeNanos()
                 currentPackage = next
             }
+            landscapeLaunch.update(next, root)
             var capture: String? = null
             var nextBounds: Rect? = null
             if (root != null && activeWindow?.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
@@ -209,7 +220,7 @@ class RemoteActionService : AccessibilityService() {
                 val bounds = Rect().also { activeWindow.getBoundsInScreen(it) }
                 val safe = Rect(bounds)
                 var obscured = false
-                visibleWindows.filter { it.id != activeWindow.id && it.layer > activeWindow.layer }.forEach { window ->
+                visibleWindows.filter { it.id != activeWindow.id && it.layer > activeWindow.layer && !landscapeLaunch.ownsWindow(it.id) }.forEach { window ->
                     val overlay = Rect().also { window.getBoundsInScreen(it) }
                     if (Rect.intersects(bounds, overlay)) {
                         // Huawei exposes invisible edge gesture windows above fullscreen apps. Crop all
@@ -239,12 +250,13 @@ class RemoteActionService : AccessibilityService() {
                     else -> null
                 }
                 val players = if (playerId != null) root.findAccessibilityNodeInfosByViewId("$capture:id/$playerId") else emptyList()
-                val player = players.firstOrNull { it.isVisibleToUser }
+                val generic = if (players.isEmpty() && !animiru) VideoSurface.find(this, root, capture) else null
+                val player = players.firstOrNull { it.isVisibleToUser } ?: generic
                 val video = player != null ||
                     (activityPackage == capture && activityClass?.endsWith(".PlayerActivity") == true)
                 // Grayjay retains its catalogue beneath the player. Inspect the player subtree only.
                 val chrome = hasPlayerChrome(if ((grayjay || youtube) && player != null) player else root)
-                if ((grayjay || youtube) && player != null) {
+                if ((grayjay || youtube || generic != null) && player != null) {
                     val playerBounds = Rect().also { player.getBoundsInScreen(it) }
                     nextBounds = nextBounds?.let { Rect(it).takeIf { rect -> rect.intersect(playerBounds) && !rect.isEmpty } }
                     if (nextBounds == null) capture = null
@@ -255,10 +267,11 @@ class RemoteActionService : AccessibilityService() {
                     val entry = packageManager.getLaunchIntentForPackage(capture)?.component
                     if (entry != null && state.lastApp() != entry.flattenToString()) state.rememberApp(entry.flattenToString())
                 }
-                if (state.mode == "Watch" && (cloudstream || animiru || grayjay || youtube) && (!video || chrome)) {
+                if (state.mode == "Watch" && (!video || chrome)) {
                     capture = null; nextBounds = null
                 }
                 players.forEach { it.recycle() }
+                generic?.recycle()
             }
             val captureWindowId = if (capture == null) null else activeWindow?.id
             if (capture != capturePackage || captureWindowId != lastCaptureWindowId || nextBounds != captureBounds) {
@@ -669,6 +682,7 @@ class RemoteActionService : AccessibilityService() {
 
     /** Clears transient state; recorded clicks are saved only through the explicit Stop action. */
     private fun cleanUp() {
+        landscapeLaunch.clear()
         if (BuildConfig.DEBUG) android.util.Log.d("SnappMacro", "Service cleanup; recording=${recordingPackage != null}")
         recordingSteps = JSONArray()
         stopRecording()
