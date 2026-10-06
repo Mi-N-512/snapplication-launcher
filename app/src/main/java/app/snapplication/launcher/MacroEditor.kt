@@ -48,8 +48,10 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
 
     /** Names a recorded step using its visible label when available. */
     private fun title(step: JSONObject): String = when (step.optString("kind", "click")) {
+        "gesture" -> if ((step.optJSONArray("points")?.length() ?: 0) > 2) "Swipe on screen" else "Tap on screen"
         "home" -> "Go Home"
         "back" -> "Go Back"
+        "scroll" -> if (step.optBoolean("forward", true)) "Scroll forward" else "Scroll back"
         "launch" -> "Open " + runCatching { activity.packageManager.getApplicationLabel(activity.packageManager.getApplicationInfo(step.optString("package"), 0)).toString() }.getOrDefault("app")
         else -> "Tap " + step.optString("label").ifBlank { step.optString("id").substringAfterLast('/').replace('_', ' ').ifBlank { "button" } }
     }

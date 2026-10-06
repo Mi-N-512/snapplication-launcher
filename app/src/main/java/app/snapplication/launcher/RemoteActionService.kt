@@ -43,6 +43,9 @@ class RemoteActionService : AccessibilityService() {
     private var lastRecordedPackage: String? = null
     private var recordingSteps = JSONArray()
     private var lastRecordTime = 0L
+    private var lastScrollKey = ""
+    private var lastScrollTime = 0L
+    private var touchRecorder: TouchMacroRecorder? = null
     private var ignoreClicksUntil = 0L
     private var stopButton: Button? = null
     private var confirmation: AlertDialog? = null
@@ -98,6 +101,9 @@ class RemoteActionService : AccessibilityService() {
         }
         updateForeground()
         if (recordingName == null) return
+        // Touch callbacks persist the mirrored gesture after completion. Accessibility echoes and
+        // intermediate app switches must not insert semantic duplicates before that gesture.
+        if (touchRecorder != null) return
         val active = currentPackage ?: return
         if (!recordablePackage(active)) return
         if (!recordingStarted) {
@@ -117,7 +123,12 @@ class RemoteActionService : AccessibilityService() {
             appendRecordedStep(JSONObject().put("kind", if (active == packageName) "home" else "launch").put("package", active))
             lastRecordedPackage = active
         }
-        if (recordingName == null || SystemClock.uptimeMillis() < ignoreClicksUntil || event?.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED || event.packageName?.toString() != active) return
+        if (recordingName == null || SystemClock.uptimeMillis() < ignoreClicksUntil || event?.packageName?.toString() != active) return
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            recordScroll(event, active)
+            return
+        }
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return
         val node = event.source ?: return
         try {
             if (node.isPassword || node.isEditable || node.window?.let { window -> try { window.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY } finally { window.recycle() } } == true) return
@@ -126,10 +137,32 @@ class RemoteActionService : AccessibilityService() {
         } finally { node.recycle() }
     }
 
+    /** Records one semantic scroll per event burst; no raw touch tracking or inferred coordinates. */
+    private fun recordScroll(event: AccessibilityEvent, owner: String) {
+        if (android.os.Build.VERSION.SDK_INT < 28) return
+        val delta = if (event.scrollDeltaY != 0) event.scrollDeltaY else event.scrollDeltaX
+        if (delta == 0) return
+        val node = event.source ?: return
+        try {
+            val id = node.viewIdResourceName?.takeIf { it.isNotBlank() } ?: return
+            if (!node.isScrollable || node.isPassword || node.isEditable) return
+            val action = if (delta > 0) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            if (node.actionList.none { it.id == action }) return
+            val now = SystemClock.uptimeMillis()
+            val key = "$owner:$id:$action"
+            val duplicate = key == lastScrollKey && now - lastScrollTime < 450
+            lastScrollTime = now; lastScrollKey = key
+            if (duplicate) return
+            appendRecordedStep(JSONObject().put("kind", "scroll").put("package", owner).put("id", id)
+                .put("action", action).put("guardClass", node.className?.toString().orEmpty())
+                .put("guardParents", JSONArray(selectorParents(node))))
+        } finally { node.recycle() }
+    }
+
     /** Adds a bounded action with its original delay and updates the visible recording control. */
     private fun appendRecordedStep(step: JSONObject) {
         if (recordingName == null || !recordingStarted) return
-        step.put("delay", (SystemClock.uptimeMillis() - lastRecordTime).coerceIn(250, 2000))
+        if (!step.has("delay")) step.put("delay", (SystemClock.uptimeMillis() - lastRecordTime).coerceIn(250, 2000))
         recordingSteps.put(step)
         lastRecordTime = SystemClock.uptimeMillis()
         stopButton?.text = "Stop recording (${recordingSteps.length()}/20)"
@@ -261,17 +294,21 @@ class RemoteActionService : AccessibilityService() {
                     nextBounds = nextBounds?.let { Rect(it).takeIf { rect -> rect.intersect(playerBounds) && !rect.isEmpty } }
                     if (nextBounds == null) capture = null
                 }
-                val reading = activityPackage == capture && activityClass?.endsWith(".ReaderActivity") == true
-                // Only an actual player/reader screen can change the target; browsing catalogues cannot.
-                if (capture != null && state.followMediaApps && ((state.mode == "Watch" && video) || (state.mode == "Read" && reading))) {
-                    val entry = packageManager.getLaunchIntentForPackage(capture)?.component
-                    if (entry != null && state.lastApp() != entry.flattenToString()) state.rememberApp(entry.flattenToString())
+                val readerBounds = if (state.mode == "Read") ReaderSurface.find(this, root,
+                    activityClass.takeIf { activityPackage == capture }) else null
+                if (state.mode == "Read") {
+                    nextBounds = readerBounds?.let { page -> nextBounds?.let { Rect(it).takeIf { rect -> rect.intersect(page) && !rect.isEmpty } } }
+                    if (nextBounds == null) capture = null
                 }
+                // Publish eligibility only. Capture commits the app identity together with a clean frame,
+                // so entering another player's controls/catalogue cannot replace the saved resume target.
                 if (state.mode == "Watch" && (!video || chrome)) {
                     capture = null; nextBounds = null
                 }
                 players.forEach { it.recycle() }
                 generic?.recycle()
+            } else {
+                capture = null; nextBounds = null
             }
             val captureWindowId = if (capture == null) null else activeWindow?.id
             if (capture != capturePackage || captureWindowId != lastCaptureWindowId || nextBounds != captureBounds) {
@@ -394,12 +431,19 @@ class RemoteActionService : AccessibilityService() {
 
     /** Starts the quick recorder after any launcher Home transition has settled. */
     private fun startQuickRecording(name: String) {
-        if (beginRecording(name)) message("Recording started. Press the same remote button or Stop to save.")
+        val touch = getSharedPreferences("remoteMacros", MODE_PRIVATE).getBoolean("touchRecording", true)
+        if (touch && !canRecordTouches()) { message("Refresh Snapplication accessibility support: turn it off and on to allow recorded gestures."); return }
+        if (beginRecording(name, touch = touch)) message("Recording started. Press the same remote button or Stop to save.")
         else message("Recording could not start. Enable accessibility support and try again.")
     }
 
+    /** Checks the capability Android actually bound, including devices retaining pre-update permissions. */
+    fun canRecordTouches(): Boolean = (serviceInfo?.capabilities ?: 0) and
+        android.accessibilityservice.AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES != 0
+
     /** Arms up to 20 cross-app actions; an optional first app preserves older launcher integration. */
-    fun beginRecording(name: String, targetPackage: String = ""): Boolean {
+    fun beginRecording(name: String, targetPackage: String = "", touch: Boolean = false): Boolean {
+        if (touch && !canRecordTouches()) return false
         if (name.isBlank() || name.length > 40 || (targetPackage.isNotBlank() && !recordablePackage(targetPackage)) ||
             name.trim() in savedMacroNames()) return false
         finishReplay()
@@ -422,6 +466,25 @@ class RemoteActionService : AccessibilityService() {
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             android.graphics.PixelFormat.TRANSLUCENT).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END }
         return runCatching {
+            if (touch) {
+                val recorder = TouchMacroRecorder(this, { touchGuard() }, { step ->
+                    if (recordingName != null) {
+                        val owner = step.optString("package")
+                        val started = step.optLong("startedAt", SystemClock.uptimeMillis())
+                        val gap = (started - lastRecordTime).coerceIn(0, 10000)
+                        if (owner != lastRecordedPackage) {
+                            appendRecordedStep(JSONObject().put("kind", if (owner == packageName) "home" else "launch")
+                                .put("package", owner).put("delay", gap))
+                            lastRecordedPackage = owner
+                            step.put("delay", 0)
+                        } else step.put("delay", gap)
+                        step.remove("startedAt")
+                        appendRecordedStep(step)
+                    }
+                }, { reason -> stopRecording(); message(reason) })
+                check(recorder.start())
+                touchRecorder = recorder
+            }
             getSystemService(WindowManager::class.java).addView(button, params)
             stopButton = button
             if (recordingStarted) {
@@ -434,6 +497,9 @@ class RemoteActionService : AccessibilityService() {
             }
             true
         }.getOrElse {
+            touchRecorder?.close(); touchRecorder = null
+            stopButton?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
+            stopButton = null
             recordingName = null
             recordingPackage = null
             false
@@ -442,6 +508,7 @@ class RemoteActionService : AccessibilityService() {
 
     /** Ends explicit recording, removes its overlay and saves only a nonempty macro to local preferences. */
     fun stopRecording(): Boolean {
+        touchRecorder?.close(); touchRecorder = null
         stopButton?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         stopButton = null
         val name = recordingName
@@ -453,7 +520,8 @@ class RemoteActionService : AccessibilityService() {
         if (name == null || recordingSteps.length() == 0) return false
         val initial = recordingSteps.optJSONObject(0)?.optString("package").orEmpty().ifBlank { target.orEmpty() }
         val saved = macros(this).put(name, JSONObject().put("version", 2).put("package", initial).put("steps", recordingSteps))
-        getSharedPreferences("remoteMacros", Context.MODE_PRIVATE).edit().putString("macros", saved.toString()).apply()
+        getSharedPreferences("remoteMacros", Context.MODE_PRIVATE).edit().putString("macros", saved.toString())
+            .putString("pendingAssignment", name).apply()
         message("Saved macro: $name")
         return true
     }
@@ -604,14 +672,113 @@ class RemoteActionService : AccessibilityService() {
                 else finishReplay("Macro stopped: Android could not go back.")
                 return@postDelayed
             }
+            if (kind == "gesture") {
+                root.recycle()
+                replayTouch(step, generation) { runStep(target, steps, index + 1, generation) }
+                return@postDelayed
+            }
             val matches = mutableListOf<AccessibilityNodeInfo>()
             collectMatches(root, step, matches)
             root.recycle()
-            val success = matches.size == 1 && matches[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            val action = if (kind == "scroll") step.optInt("action") else AccessibilityNodeInfo.ACTION_CLICK
+            val allowed = kind != "scroll" || action in setOf(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            val success = allowed && matches.size == 1 && matches[0].performAction(action)
             matches.forEach { it.recycle() }
-            if (!success) finishReplay("Macro stopped: a recorded button is missing or ambiguous.")
+            if (!success) finishReplay("Macro stopped: a recorded control is unavailable or ambiguous.")
             else runStep(target, steps, index + 1, generation)
         }, if (attempt > 0) 250 else (step.optLong("delay", 350).coerceIn(0, 10000) / replaySpeed).toLong().coerceIn(40, 10000))
+    }
+
+    /** Describes the visible app layout without text; coordinate macros stop on a different screen,
+     * keyboard, password, lock screen or system dialog. Unfocused search boxes are excluded regions. */
+    private fun touchGuard(): JSONObject? {
+        if (!getSystemService(android.os.PowerManager::class.java).isInteractive ||
+            getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) return null
+        val visible = windows
+        try {
+            val window = visible.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }.maxByOrNull { it.layer } ?: return null
+            val root = window.root ?: return null
+            try {
+                val owner = root.packageName?.toString() ?: return null
+                if (!recordablePackage(owner)) return null
+                val bounds = Rect().also { window.getBoundsInScreen(it) }
+                for (other in visible.filter { it.layer > window.layer }) {
+                    if (other.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) return null
+                    if (other.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) {
+                        if (touchRecorder?.ownsWindow(other.id) == true || landscapeLaunch.ownsWindow(other.id)) continue
+                        val overlayRoot = other.root
+                        val ours = try { overlayRoot?.packageName?.toString() == packageName } finally { overlayRoot?.recycle() }
+                        if (!ours) return null
+                    } else {
+                        val region = Rect().also { other.getBoundsInScreen(it) }
+                        if (Rect.intersects(region, bounds) && region.width() > bounds.width() / 10 && region.height() > bounds.height() / 10) return null
+                    }
+                }
+                val excluded = JSONArray()
+                val structure = StringBuilder()
+                var inspected = 0
+                fun inspect(node: AccessibilityNodeInfo, depth: Int): Boolean {
+                    if (!node.isVisibleToUser) return true
+                    if (depth > 25 || ++inspected > 300) return false
+                    if (node.isPassword || (node.isEditable && (node.isFocused || node.isAccessibilityFocused))) return false
+                    if (node.isEditable) {
+                        val box = Rect().also { node.getBoundsInScreen(it) }
+                        excluded.put(JSONArray().put(box.left).put(box.top).put(box.right).put(box.bottom))
+                    }
+                    structure.append(depth).append(':').append(node.viewIdResourceName.orEmpty()).append(':')
+                        .append(node.className).append(':').append(node.isClickable).append(';')
+                    if (node.isClickable || node.isEditable) {
+                        val location = Rect().also { node.getBoundsInScreen(it) }
+                        structure.append(location.toShortString())
+                    }
+                    for (index in 0 until node.childCount.coerceAtMost(100)) {
+                        val child = node.getChild(index) ?: continue
+                        val allowed = try { inspect(child, depth + 1) } finally { child.recycle() }
+                        if (!allowed) return false
+                    }
+                    return true
+                }
+                if (!inspect(root, 0) || inspected == 0) return null
+                val metrics = android.util.DisplayMetrics()
+                @Suppress("DEPRECATION")
+                val display = getSystemService(WindowManager::class.java).defaultDisplay
+                @Suppress("DEPRECATION")
+                display.getRealMetrics(metrics)
+                val digest = java.security.MessageDigest.getInstance("SHA-256").digest(structure.toString().toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                return JSONObject().put("package", owner).put("screenGuard", digest)
+                    .put("rotation", display.rotation).put("width", metrics.widthPixels).put("height", metrics.heightPixels)
+                    .put("window", JSONArray().put(bounds.left).put(bounds.top).put(bounds.right).put(bounds.bottom))
+                    .put("excluded", excluded)
+            } finally { root.recycle() }
+        } finally { visible.forEach { it.recycle() } }
+    }
+
+    /** Replays a guarded coordinate stroke exactly once; timeout/cancel never retries an uncertain touch. */
+    private fun replayTouch(step: JSONObject, generation: Int, completed: () -> Unit) {
+        val current = touchGuard()
+        if (current == null || !TouchMacroRecorder.sameScreen(step, current)) {
+            finishReplay("Macro stopped: return to the recorded screen and orientation."); return
+        }
+        val gesture = TouchMacroRecorder.description(step, current.optInt("width"), current.optInt("height"), replaySpeed)
+            ?: run { finishReplay("Macro stopped: invalid recorded gesture."); return }
+        var finished = false
+        val accepted = runCatching { dispatchGesture(gesture, object : GestureResultCallback() {
+            /** Advances once only after Android confirms the touch finished. */
+            override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
+                if (generation != replayGeneration || finished) return
+                finished = true; completed()
+            }
+            /** Stops instead of retrying a partially delivered action. */
+            override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
+                if (generation != replayGeneration || finished) return
+                finished = true; finishReplay("Macro stopped: Android cancelled the touch.")
+            }
+        }, handler) }.getOrDefault(false)
+        if (!accepted) { finished = true; finishReplay("Android did not allow the touch. Re-enable accessibility support and try again."); return }
+        handler.postDelayed({
+            if (generation == replayGeneration && !finished) { finished = true; finishReplay("Macro stopped: touch timed out.") }
+        }, 4500)
     }
 
     /** Opens only an installed app's public launcher entry; no arbitrary intents or privileged screens. */
@@ -638,7 +805,9 @@ class RemoteActionService : AccessibilityService() {
             while (candidate != null && !candidate.isClickable && step.optBoolean("ancestor") && levels++ < 5) {
                 val parent = candidate.parent; candidate.recycle(); candidate = parent
             }
-            if (candidate?.isClickable == true && candidate.isEnabled && !candidate.isEditable && !candidate.isPassword) matches.add(candidate) else candidate?.recycle()
+            val supported = if (step.optString("kind") == "scroll") candidate?.isScrollable == true &&
+                candidate.actionList.any { it.id == step.optInt("action") } else candidate?.isClickable == true
+            if (supported && candidate != null && candidate.isEnabled && !candidate.isEditable && !candidate.isPassword) matches.add(candidate) else candidate?.recycle()
         }
         for (i in 0 until root.childCount.coerceAtMost(300)) {
             val child = root.getChild(i) ?: continue

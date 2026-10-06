@@ -32,8 +32,8 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
     private fun glassColour(colour: Int): Int = if (glass)
         (colour and 0x00ffffff) or (if (text == Color.BLACK) 0xcc000000.toInt() else 0xaa000000.toInt()) else colour
 
-    val border: Int = if (text == Color.BLACK) 0xffe0e0e0.toInt() else 0xff383838.toInt()
-    val muted: Int = if (text == Color.BLACK) 0xff666666.toInt() else 0xffaaaaaa.toInt()
+    val border: Int = if (state.theme == "E-paper") 0xff777777.toInt() else if (text == Color.BLACK) 0xffe0e0e0.toInt() else 0xff383838.toInt()
+    val muted: Int = if (state.theme == "E-paper") Color.BLACK else if (text == Color.BLACK) 0xff666666.toInt() else 0xffaaaaaa.toInt()
     val accent: Int = when {
         state.theme == "Custom" -> state.accent
         state.theme == "Material You" && Build.VERSION.SDK_INT >= 31 -> context.getColor(android.R.color.system_accent1_200)
@@ -74,6 +74,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         text = value; textSize = 17f; isAllCaps = false
         minHeight = dp(48); setTextColor(this@LauncherUi.text)
         backgroundTintList = null
+        if (!state.animations || state.theme == "E-paper") { stateListAnimator = null; elevation = 0f }
         // Outline the active remote target without changing its dimensions.
         fun decorate(focused: Boolean) {
             background = GradientDrawable().apply {

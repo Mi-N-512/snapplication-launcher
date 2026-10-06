@@ -24,16 +24,19 @@ android {
         create("universal") {
             dimension = "edition"
             resValue("string", "app_name", "Snapplication")
+            resValue("string", "remote_support_name", "Snapplication remote and preview support")
         }
         create("ereader") {
             dimension = "edition"
             applicationIdSuffix = ".ereader"
             resValue("string", "app_name", "Snapplication E-reader")
+            resValue("string", "remote_support_name", "Snapplication E-reader support")
         }
         create("tv") {
             dimension = "edition"
             applicationIdSuffix = ".tv"
             resValue("string", "app_name", "Snapplication TV")
+            resValue("string", "remote_support_name", "Snapplication TV remote support")
         }
     }
     compileOptions {

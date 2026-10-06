@@ -33,8 +33,9 @@ class PreviewCaptureService : Service() {
             if (stopped) return
             val target = RemoteActionService.capturePackage
             val since = RemoteActionService.capturePackageSinceNanos
-            val selected = LauncherState(this@PreviewCaptureService).lastApp()?.let { ComponentName.unflattenFromString(it)?.packageName }
-            if (target != null && target == selected && since != eligibleSince &&
+            val state = LauncherState(this@PreviewCaptureService)
+            val selected = state.lastApp()?.let { ComponentName.unflattenFromString(it)?.packageName }
+            if (target != null && (state.followMediaApps || target == selected) && since != eligibleSince &&
                 SystemClock.elapsedRealtimeNanos() - since >= 500_000_000L) refreshEligibleSurface(since)
             handler.postDelayed(this, 600)
         }
@@ -162,7 +163,8 @@ class PreviewCaptureService : Service() {
             val state = LauncherState(this)
             val mode = state.mode
             val chosen = state.lastApp()?.let { ComponentName.unflattenFromString(it)?.packageName }
-            if (target != chosen || target == packageName) return
+            if ((!state.followMediaApps && target != chosen) || target == packageName) return
+            val entry = packageManager.getLaunchIntentForPackage(target)?.component ?: return
             if (eligibleSince != since) { refreshEligibleSurface(since); return }
             lastFrame = now
             var padded: Bitmap? = null
@@ -188,14 +190,18 @@ class PreviewCaptureService : Service() {
                     if (stopped || sessionEpoch != cacheEpoch || !power.isInteractive ||
                         getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
                         RemoteActionService.capturePackage != target || RemoteActionService.capturePackageSinceNanos != since ||
-                        latest.mode != mode || latest.lastApp()?.let { ComponentName.unflattenFromString(it)?.packageName } != target) return@synchronized
-                    val file = android.util.AtomicFile(File(filesDir, "preview-$mode.jpg"))
+                        latest.mode != mode || latest.viewerSource != "App" ||
+                        (!latest.followMediaApps && latest.lastApp()?.let { ComponentName.unflattenFromString(it)?.packageName } != target)) return@synchronized
+                    val file = android.util.AtomicFile(frameFile(this, mode, target))
                     val out = file.startWrite()
                     try { out.write(bytes); file.finishWrite(out) }
                     catch (error: Exception) { file.failWrite(out); throw error }
-                    getSharedPreferences("externalPreview", MODE_PRIVATE).edit().putString("package:$mode", target)
-                        .putLong("capturedAt:$mode", System.currentTimeMillis())
-                        .putInt("cleanPolicy:$mode", 2).commit()
+                    getSharedPreferences("externalPreview", MODE_PRIVATE).edit()
+                        .putLong("capturedAt:$mode:$target", System.currentTimeMillis())
+                        .putInt("cleanPolicy:$mode:$target", 2).commit()
+                    // Home reads the identity under this same lock. A target changes only after its
+                    // image exists; retaining each app's frame also makes manual switching reliable.
+                    if (latest.followMediaApps) latest.rememberApp(entry.flattenToString())
                 }
             }
             if (bitmap !== padded) bitmap?.recycle()
@@ -223,6 +229,10 @@ class PreviewCaptureService : Service() {
         internal val cacheLock = Any()
         internal var cacheEpoch = 0L
 
+        /** Names a private per-app frame without interpreting package names as paths. */
+        internal fun frameFile(context: Context, mode: String, owner: String): File =
+            File(context.filesDir, "preview-${if (mode == "Read") "Read" else "Watch"}-${owner.replace(Regex("[^A-Za-z0-9_.]"), "_")}.jpg")
+
         /** Cancels every pending cache write before removing images, AtomicFile sidecars and associated identities. */
         fun clearSaved(context: Context) {
             synchronized(cacheLock) {
@@ -232,6 +242,8 @@ class PreviewCaptureService : Service() {
                     android.util.AtomicFile(File(context.filesDir, "preview-$mode.jpg")).delete()
                     android.util.AtomicFile(File(context.filesDir, "preview-art-$mode.jpg")).delete()
                 }
+                context.filesDir.listFiles()?.filter { it.name.startsWith("preview-Read-") || it.name.startsWith("preview-Watch-") }
+                    ?.forEach { android.util.AtomicFile(it).delete() }
                 context.getSharedPreferences("externalPreview", Context.MODE_PRIVATE).edit().clear().commit()
             }
         }
