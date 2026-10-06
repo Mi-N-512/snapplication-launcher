@@ -23,7 +23,7 @@ import java.util.concurrent.Executors
 /** Presents captured frames or clearly labelled session artwork for MainActivity; uses LauncherState and MediaAccessService without granting permissions. */
 class ExternalPreview(private val activity: Activity, private val state: LauncherState) {
     private val mode = state.mode
-    private val component = state.lastApp()?.let(ComponentName::unflattenFromString)
+    private val component = synchronized(PreviewCaptureService.cacheLock) { state.lastApp()?.let(ComponentName::unflattenFromString) }
     private val packageName = component?.packageName
     private val ui = LauncherUi(activity, state, state.useWallpaper)
     private val prefs = activity.getSharedPreferences("externalPreview", Context.MODE_PRIVATE)
@@ -43,7 +43,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         panel.addView(image, FrameLayout.LayoutParams(-1, -1))
-        val title = ui.label(if (component == null) "Choose your reading or video app" else
+        val title = ui.label(if (component == null) (if (mode == "Read") "Open a book in your reading app" else "Open a video in your player") else
             if (requiresCleanFrame()) "Watch a video to save a clean preview" else "No saved preview yet", 16f)
         panel.addView(title, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         val reveal = ui.button("Show preview controls") { }.apply {
@@ -54,11 +54,14 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         panel.addView(reveal, FrameLayout.LayoutParams(-1, -1))
         val controls = ui.column(true).apply { setBackgroundColor(0x99101010.toInt()) }
         val previous = ui.button("⏮") { skip(PlaybackState.ACTION_SKIP_TO_PREVIOUS) }
-        val play = ui.button("▶") { openApp(resumePlayback = true) }.apply { contentDescription = "Play in app"; textSize = 25f }
+        val play = ui.button(if (mode == "Read") "↗" else "▶") { openApp(resumePlayback = true) }.apply {
+            contentDescription = if (mode == "Read") "Continue reading in app" else "Play in app"; textSize = 25f
+        }
         val next = ui.button("⏭") { skip(PlaybackState.ACTION_SKIP_TO_NEXT) }
         listOf(previous, play, next).forEach {
             controls.addView(it, LinearLayout.LayoutParams(0, ui.dp(56), 1f))
         }
+        if (mode == "Read") { previous.visibility = View.GONE; next.visibility = View.GONE }
         panel.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         val actions = active()?.playbackState?.actions ?: 0L
         previous.isEnabled = actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS != 0L
@@ -72,36 +75,17 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
         reveal.contentDescription = "Open preview app"
         reveal.setOnClickListener { if (component == null) onChoose() else openApp(resumePlayback = true) }
-        // An old saved frame must not silently imply that capture is still updating after reinstall/reboot.
-        val resume = if (component != null) {
-            ui.button("↻  Preview paused") { onResumeCapture() }.apply {
-                textSize = 12f
-                contentDescription = "Preview capture is stopped. Resume last-frame capture"
-                ui.flatFocus(this, 0xBB101010.toInt(), outline = false)
-                setTextColor(android.graphics.Color.WHITE)
-                visibility = if (PreviewCaptureService.active) View.GONE else View.VISIBLE
-                panel.addView(this, FrameLayout.LayoutParams(-2, ui.dp(48), Gravity.TOP or Gravity.END))
-            }
-        } else null
+        // Capture status lives in settings; the saved page/frame stays unobstructed on Home.
         // Disk decoding and artwork compression run away from input/rendering; detaching cancels display delivery.
         val executor = Executors.newSingleThreadExecutor()
         var detached = false
         var started = false
         var displayedBitmap: Bitmap? = null
-        val captureStatus = object : Runnable {
-            /** Refreshes the cheap service-state badge while attached, including notification-initiated stops. */
-            override fun run() {
-                if (detached || !panel.isAttachedToWindow || activity.isDestroyed) return
-                resume?.visibility = if (PreviewCaptureService.active) View.GONE else View.VISIBLE
-                if (resume != null) panel.postDelayed(this, 1500L)
-            }
-        }
         panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             /** Loads a bounded preview once this newly built Home surface becomes visible. */
             override fun onViewAttachedToWindow(v: View) {
                 if (started) return
                 started = true
-                if (resume != null) panel.post(captureStatus)
                 executor.execute {
                     val result = runCatching { loadImage() }.getOrNull()
                     activity.runOnUiThread {
@@ -120,7 +104,6 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
             /** Stops work belonging to the departed Home screen and releases its image reference. */
             override fun onViewDetachedFromWindow(v: View) {
                 detached = true
-                panel.removeCallbacks(captureStatus)
                 executor.shutdownNow()
                 image.setImageDrawable(null)
                 displayedBitmap?.recycle(); displayedBitmap = null
@@ -139,20 +122,27 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         (packageName?.startsWith("com.lagradost.cloudstream") == true ||
             packageName in setOf("xyz.Quickdev.Animiru.mi", "com.futo.platformplayer", "com.google.android.youtube"))
 
-    /** Requires a frame from the current app and, for supported video apps, the clean-frame policy. */
-    private fun hasSavedFrame(): Boolean = prefs.getString("package:$mode", null) == packageName &&
-        prefs.getLong("capturedAt:$mode", 0L) > 0L && (!requiresCleanFrame() ||
-            prefs.getInt("cleanPolicy:$mode", 0) >= if (packageName in setOf("com.futo.platformplayer", "com.google.android.youtube")) 2 else 1)
+    /** Reads only this app's frame; legacy caches remain available until replaced or explicitly cleared. */
+    private fun savedFrame(): File? {
+        val owner = packageName ?: return null
+        val current = PreviewCaptureService.frameFile(activity, mode, owner)
+        if (prefs.getLong("capturedAt:$mode:$owner", 0L) > 0 &&
+            prefs.getInt("cleanPolicy:$mode:$owner", 0) >= 2 && current.isFile) return current
+        // Earlier Read captures did not verify a document surface and may show the app's library.
+        if (mode == "Read") return null
+        val required = if (packageName in setOf("com.futo.platformplayer", "com.google.android.youtube")) 2 else 1
+        return File(activity.filesDir, "preview-$mode.jpg").takeIf {
+            prefs.getString("package:$mode", null) == owner && prefs.getLong("capturedAt:$mode", 0L) > 0 &&
+                (!requiresCleanFrame() || prefs.getInt("cleanPolicy:$mode", 0) >= required)
+        }
+    }
 
     /** Gives explicit captured frames precedence, then caches bounded app-supplied artwork separately. */
     private fun loadImage(): Pair<Bitmap, String>? {
         if (packageName == null) return null
-        val captured = File(activity.filesDir, "preview-$mode.jpg")
         synchronized(PreviewCaptureService.cacheLock) {
             if (epoch != PreviewCaptureService.cacheEpoch || Thread.currentThread().isInterrupted) return null
-            if (hasSavedFrame()) {
-                decode(captured)?.let { return it to "Last captured frame" }
-            }
+            savedFrame()?.let { file -> decode(file)?.let { return it to "Last captured frame" } }
         }
         val metadata = active()?.metadata
         val artwork = metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
@@ -180,9 +170,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         return synchronized(PreviewCaptureService.cacheLock) {
             if (epoch != PreviewCaptureService.cacheEpoch || Thread.currentThread().isInterrupted) return null
             // Capture may have arrived while session artwork was being fetched or compressed.
-            if (hasSavedFrame()) {
-                decode(captured)?.let { return it to "Last captured frame" }
-            }
+            savedFrame()?.let { file -> decode(file)?.let { return it to "Last captured frame" } }
             if (prefs.getString("artworkPackage:$mode", null) != packageName) return null
             val name = prefs.getString("artworkTitle:$mode", "").orEmpty()
             decode(file)?.let { it to (if (name.isBlank()) "App artwork" else "$name · App artwork") }

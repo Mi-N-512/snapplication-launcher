@@ -10,14 +10,49 @@ data class LibraryItem(val uri: String, val title: String, val mime: String, val
 /** Persists launcher preferences and per-item progress for MainActivity, WatchPlayer and ReaderPanel. */
 class LauncherState(context: Context) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    // Start recognised e-paper hardware in a legible reader layout even with the universal APK.
+    private val readerDevice = BuildConfig.FLAVOR == "ereader" ||
+        listOf(android.os.Build.MANUFACTURER, android.os.Build.BRAND, android.os.Build.MODEL)
+            .any { it.contains("meebook", true) || it.contains("boyue", true) }
+    var deviceProfile: String
+        get() = prefs.getString("deviceProfile", if (readerDevice) "Reader" else if (BuildConfig.FLAVOR == "tv") "TV" else "Phone")!!
+        private set(value) { prefs.edit().putString("deviceProfile", value).apply() }
+    var profileSetupComplete: Boolean
+        get() = prefs.getBoolean("profileSetupComplete", false)
+        set(value) { prefs.edit().putBoolean("profileSetupComplete", value).apply() }
+
+    /** Repairs older universal reader installs once, without resetting later theme choices. */
+    fun initializeReaderProfile() {
+        if (readerDevice && !prefs.contains("deviceProfile")) applyDeviceProfile("Reader")
+    }
+
+    /** Applies the chosen device's initial defaults; later settings remain individually editable. */
+    fun applyDeviceProfile(profile: String) {
+        require(profile in listOf("Phone", "TV", "Reader"))
+        deviceProfile = profile
+        val reader = profile == "Reader"
+        prefs.edit().putString("mode", if (reader) "Read" else "Watch")
+            .putString("theme", if (reader) "E-paper" else "Dark")
+            .putString("orientation", if (profile == "TV") "Landscape" else if (reader) "Portrait" else "Mode default")
+            .putBoolean("animations", !reader).putBoolean("useWallpaper", !reader)
+            .putBoolean("landscapeApps", !reader).putBoolean("playVideosInLauncher", false)
+            .putBoolean("roundedCorners", false).apply()
+    }
+
     var mode: String
-        get() = prefs.getString("mode", if (BuildConfig.FLAVOR == "ereader") "Read" else "Watch")!!
+        get() = prefs.getString("mode", if (readerDevice) "Read" else "Watch")!!
         set(value) { prefs.edit().putString("mode", value).apply() }
     var theme: String
-        get() = prefs.getString("theme", if (BuildConfig.FLAVOR == "ereader") "E-paper" else "Dark")!!
-        set(value) { prefs.edit().putString("theme", value).apply() }
+        get() = prefs.getString("theme", if (readerDevice) "E-paper" else "Dark")!!
+        set(value) {
+            val change = prefs.edit().putString("theme", value)
+            // Choosing E-paper is also a safe rendering preset, not just a colour change.
+            if (value == "E-paper") change.putBoolean("animations", false)
+                .putBoolean("useWallpaper", false).putBoolean("landscapeApps", false)
+            change.apply()
+        }
     var orientation: String
-        get() = prefs.getString("orientation", if (BuildConfig.FLAVOR == "tv") "Landscape" else "Mode default")!!
+        get() = prefs.getString("orientation", if (BuildConfig.FLAVOR == "tv") "Landscape" else if (readerDevice) "Portrait" else "Mode default")!!
         set(value) { prefs.edit().putString("orientation", value).apply() }
     var showLabels: Boolean
         get() = prefs.getBoolean("showLabels", true)
@@ -51,7 +86,7 @@ class LauncherState(context: Context) {
     fun lastApp(): String? = prefs.getString("lastApp:$mode", null)
 
     var useWallpaper: Boolean
-        get() = prefs.getBoolean("useWallpaper", true)
+        get() = prefs.getBoolean("useWallpaper", !readerDevice && theme != "E-paper")
         set(value) { prefs.edit().putBoolean("useWallpaper", value).apply() }
     var dynamicBlocks: Boolean
         get() = prefs.getBoolean("dynamicBlocks", true)
@@ -66,14 +101,14 @@ class LauncherState(context: Context) {
         get() = prefs.getBoolean("roundedCorners", false)
         set(value) { prefs.edit().putBoolean("roundedCorners", value).apply() }
     var animations: Boolean
-        get() = prefs.getBoolean("animations", BuildConfig.FLAVOR != "ereader")
+        get() = prefs.getBoolean("animations", !readerDevice && theme != "E-paper")
         set(value) { prefs.edit().putBoolean("animations", value).apply() }
     var tutorialSeen: Boolean
         get() = prefs.getBoolean("tutorialSeen", false)
         set(value) { prefs.edit().putBoolean("tutorialSeen", value).apply() }
     /** Keeps apps launched from landscape Home wide, through the enabled accessibility bridge. */
     var landscapeApps: Boolean
-        get() = prefs.getBoolean("landscapeApps", true)
+        get() = prefs.getBoolean("landscapeApps", !readerDevice && theme != "E-paper")
         set(value) { prefs.edit().putBoolean("landscapeApps", value).apply() }
 
     var fullscreen: Boolean

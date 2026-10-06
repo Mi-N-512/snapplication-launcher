@@ -193,6 +193,9 @@ class DrawerPanel(
     }
 
     /** Switches Select between launching and Home membership without rebuilding rows or losing scroll. */
+    /** Opens Settings' favourites entry in the same selection and drag-reorder mode. */
+    fun beginFavouriteEditing() { if (!editing) toggleEditing() }
+
     private fun toggleEditing() {
         editing = !editing
         editButton.text = if (editing) "Done" else "Favourites"

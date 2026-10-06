@@ -12,6 +12,11 @@ import org.json.JSONObject
 
 /** Learns per-device remote buttons for MainActivity; keeps mappings separate from media and library state. */
 class RemoteControls(private val context: Context) {
+    /** Stable saved-button identity used by RemoteMappingPanel for per-button changes and deletion. */
+    data class Mapping(val descriptor: String, val keyCode: Int, val deviceName: String, val action: String) {
+        /** Formats the Android-delivered key independently of the user's assigned action. */
+        val keyLabel: String get() = KeyEvent.keyCodeToString(keyCode).removePrefix("KEYCODE_").replace('_', ' ')
+    }
     private val prefs = context.getSharedPreferences("remoteControls", Context.MODE_PRIVATE)
     val actions: List<String> get() = listOf("Up", "Down", "Left", "Right", "Select", "Back", "Home", "Apps", "Screen off", "Play/pause", "Record/stop macro", "Stop action") +
         RemoteActionService.savedMacroNames(context).map { "Macro: $it" }
@@ -70,7 +75,7 @@ class RemoteControls(private val context: Context) {
         require(action in actions)
         val activity = context as? Activity ?: return
         val status = TextView(activity).apply {
-            text = "Press and release the remote button for $action. Use Cancel below to exit, or wait 30 seconds for this dialog to close without saving. Home and Power are controlled by Android."
+            text = "Press and release the remote button for $action.\n\nAny existing assignment on that button will be replaced. Use Cancel to exit. Some physical Home and Power keys are handled by Android; try another button if nothing appears."
             setPadding(32, 24, 32, 24)
         }
         var captured: KeyEvent? = null
@@ -132,7 +137,39 @@ class RemoteControls(private val context: Context) {
     }
 
     /** Restores normal keys after explicit confirmation in MainActivity's remote settings. */
-    fun reset() { prefs.edit().remove("mappings").apply() }
+    fun reset() { prefs.edit().remove("mappings").apply(); clearHeldButtons() }
+
+    /** Lists every persisted key, including assignments to actions that have since been deleted. */
+    fun savedMappings(): List<Mapping> {
+        val root = mappings()
+        val result = mutableListOf<Mapping>()
+        root.keys().forEach { descriptor ->
+            val device = root.optJSONObject(descriptor) ?: return@forEach
+            for (key in device.keys()) {
+                val code = key.toIntOrNull() ?: continue
+                val entry = device.optJSONObject(key) ?: continue
+                result.add(Mapping(descriptor, code, entry.optString("name", "Remote"), entry.optString("action")))
+            }
+        }
+        return result.sortedWith(compareBy({ it.deviceName }, { it.keyCode }))
+    }
+
+    /** Deletes only this physical button's assignment, preserving all other devices and buttons. */
+    fun remove(mapping: Mapping) {
+        val root = mappings()
+        val device = root.optJSONObject(mapping.descriptor) ?: return
+        device.remove(mapping.keyCode.toString())
+        if (device.length() == 0) root.remove(mapping.descriptor)
+        prefs.edit().putString("mappings", root.toString()).apply()
+        clearHeldButtons()
+    }
+
+    /** Changes an already identified key without asking the user to learn that key again. */
+    fun reassign(mapping: Mapping, action: String) {
+        require(action in actions)
+        save(mapping.descriptor, mapping.deviceName, mapping.keyCode, action)
+        clearHeldButtons()
+    }
 
     /** Restores valid JSON or recovers safely from unreadable preferences. */
     private fun mappings(): JSONObject = runCatching {
@@ -148,5 +185,6 @@ class RemoteControls(private val context: Context) {
         device.put(key.toString(), JSONObject().put("action", action).put("name", name))
         root.put(descriptor, device)
         prefs.edit().putString("mappings", root.toString()).apply()
+        clearHeldButtons()
     }
 }
