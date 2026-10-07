@@ -2,6 +2,9 @@ package app.snapplication.launcher
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.os.Handler
@@ -21,17 +24,31 @@ class TouchMacroRecorder(
     private val service: AccessibilityService,
     private val guard: () -> JSONObject?,
     private val recorded: (JSONObject) -> Unit,
-    private val failed: (String) -> Unit
+    private val failed: (String) -> Unit,
+    private val pausedChanged: (Boolean) -> Unit = {}
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val manager = service.getSystemService(WindowManager::class.java)
-    private var overlay: View? = null
+    private var overlay: RecordingSurface? = null
     private var points = JSONArray()
     private var context: JSONObject? = null
     private var startedAt = 0L
     private var busy = false
     private var closed = false
     private var generation = 0
+    private var paused = false
+    private val availability = object : Runnable {
+        /** Leaves protected screens usable and resumes interception only after the guard approves. */
+        override fun run() {
+            if (closed) return
+            if (!busy && context == null) {
+                val available = guard() != null
+                if (!available && !paused) pauseRecording()
+                else if (available && paused) resumeRecording()
+            }
+            if (!closed) handler.postDelayed(this, 250)
+        }
+    }
     private val params = WindowManager.LayoutParams(-1, -1,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -39,27 +56,29 @@ class TouchMacroRecorder(
 
     /** Installs the recorder before the service installs its smaller Stop overlay. */
     fun start(): Boolean = runCatching {
-        val surface = View(service).apply {
+        val surface = RecordingSurface().apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setOnTouchListener { _, event -> touch(event) }
         }
         manager.addView(surface, params)
         overlay = surface
+        handler.post(availability)
         true
     }.getOrDefault(false)
 
     /** Accepts only bounded one-finger paths in the current app's verified window. */
     private fun touch(event: MotionEvent): Boolean {
-        if (closed || busy) return true
+        if (closed || busy || paused) return true
         if (event.pointerCount != 1 || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
             fail("Touch recording supports one finger at a time."); return true
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 context = guard()
-                if (context == null) { fail("Recording stopped: this screen is unavailable or contains private input."); return true }
+                if (context == null) { pauseRecording(); return true }
                 points = JSONArray(); startedAt = SystemClock.uptimeMillis()
+                overlay?.clearMarker()
                 addPoint(event.rawX, event.rawY)
             }
             MotionEvent.ACTION_MOVE -> {
@@ -76,16 +95,17 @@ class TouchMacroRecorder(
                     fail("Recording stopped: keep each gesture under three seconds."); return true
                 }
                 addPoint(event.rawX, event.rawY)
+                if (closed || paused || context == null) return true
                 val after = guard()
                 if (after == null || !sameScreen(before, after)) {
-                    fail("Recording stopped: the screen changed during the gesture."); return true
+                    pauseRecording(); return true
                 }
                 val duration = (SystemClock.uptimeMillis() - startedAt).coerceIn(40, MAX_DURATION)
                 val step = JSONObject(before.toString()).put("kind", "gesture").put("points", points)
                     .put("duration", duration).put("startedAt", startedAt)
                 mirror(step)
             }
-            MotionEvent.ACTION_CANCEL -> { context = null; points = JSONArray() }
+            MotionEvent.ACTION_CANCEL -> { context = null; points = JSONArray(); overlay?.clearMarker() }
         }
         return true
     }
@@ -95,18 +115,21 @@ class TouchMacroRecorder(
         val current = context ?: return
         val bounds = current.optJSONArray("window") ?: return
         if (x < bounds.optDouble(0) || y < bounds.optDouble(1) || x >= bounds.optDouble(2) || y >= bounds.optDouble(3)) {
-            fail("Recording stopped: the gesture left the app window."); return
+            pauseRecording(); return
         }
         val excluded = current.optJSONArray("excluded") ?: JSONArray()
         for (index in 0 until excluded.length()) {
             val area = excluded.optJSONArray(index) ?: continue
             if (x >= area.optDouble(0) && x < area.optDouble(2) && y >= area.optDouble(1) && y < area.optDouble(3)) {
-                fail("Recording stopped: text input is not recorded."); return
+                pauseRecording(); return
             }
         }
         val width = current.optInt("width").coerceAtLeast(1)
         val height = current.optInt("height").coerceAtLeast(1)
-        if (points.length() < MAX_POINTS) points.put(JSONArray().put((x / width).toDouble()).put((y / height).toDouble()))
+        if (points.length() < MAX_POINTS) {
+            points.put(JSONArray().put((x / width).toDouble()).put((y / height).toDouble()))
+            overlay?.addMarker(x, y)
+        }
     }
 
     /** Temporarily removes interception before injecting once, preventing the recorder from recording itself. */
@@ -126,7 +149,7 @@ class TouchMacroRecorder(
             if (closed || request != generation) return@postDelayed
             val current = guard()
             if (current == null || !sameScreen(step, current)) {
-                fail("Recording stopped: the screen changed before the touch could run."); return@postDelayed
+                pauseRecording(); return@postDelayed
             }
             val accepted = runCatching { service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
                 /** Saves only gestures Android confirms completed; the next gesture cannot begin until then. */
@@ -135,17 +158,43 @@ class TouchMacroRecorder(
                     recorded(step)
                     if (closed || request != generation) return
                     busy = false; context = null
+                    handler.postDelayed({ if (!closed && request == generation && context == null) surface.clearMarker() }, 450)
                     params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
                     if (runCatching { manager.updateViewLayout(surface, params) }.isFailure) fail("Recording stopped: overlay unavailable.")
                 }
                 /** Cancellation never retries or produces another touch. */
                 override fun onCancelled(gestureDescription: GestureDescription?) {
-                    if (!closed && request == generation) fail("Recording stopped: Android cancelled the gesture.")
+                    if (!closed && request == generation) pauseRecording()
                 }
             }, handler) }.getOrDefault(false)
             if (!accepted) fail("Android did not allow touch forwarding. Re-enable Snapplication accessibility support, then try again.")
         }, 80)
         handler.postDelayed({ if (!closed && request == generation && busy) fail("Recording stopped: touch forwarding timed out.") }, step.optLong("duration") + 1500)
+    }
+
+    /** Discards an interrupted gesture without injecting it or ending the recording session.
+     * The service-owned Stop button stays available above this non-touchable overlay. */
+    private fun pauseRecording() {
+        if (closed) return
+        generation++; busy = false; context = null; points = JSONArray(); overlay?.clearMarker()
+        paused = true
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        val surface = overlay ?: return
+        if (runCatching { manager.updateViewLayout(surface, params) }.isFailure) {
+            fail("Recording stopped: overlay unavailable."); return
+        }
+        pausedChanged(true)
+    }
+
+    /** Re-enables recording after leaving a protected screen; discarded gestures are never retried. */
+    private fun resumeRecording() {
+        if (closed || !paused) return
+        val surface = overlay ?: return
+        params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        if (runCatching { manager.updateViewLayout(surface, params) }.isFailure) {
+            fail("Recording stopped: overlay unavailable."); return
+        }
+        paused = false; pausedChanged(false)
     }
 
     /** Removes the intercepting window on every finish/failure path and invalidates queued callbacks. */
@@ -165,6 +214,40 @@ class TouchMacroRecorder(
 
     /** Restores the normal screen before reporting an error to the service's visible recorder. */
     private fun fail(message: String) { close(); failed(message) }
+
+    /** Visible, non-interactive ink on the existing recording overlay; never creates extra gestures.
+     * RemoteActionService still owns Stop, while TouchMacroRecorder owns this view's lifetime. */
+    private inner class RecordingSurface : View(service) {
+        private val trail = Path()
+        private val ink = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var markerX = 0f
+        private var markerY = 0f
+        private var visibleMarker = false
+        private val density = resources.displayMetrics.density
+
+        /** Appends only points that already passed the recorder's privacy/window guard. */
+        fun addMarker(screenX: Float, screenY: Float) {
+            val location = IntArray(2); getLocationOnScreen(location)
+            markerX = screenX - location[0]; markerY = screenY - location[1]
+            if (!visibleMarker) trail.moveTo(markerX, markerY) else trail.lineTo(markerX, markerY)
+            visibleMarker = true; invalidate()
+        }
+
+        /** Removes a completed or cancelled trace without leaving a persistent overlay animation. */
+        fun clearMarker() { visibleMarker = false; trail.reset(); invalidate() }
+
+        /** White edging keeps the blue tap target legible over both light and dark apps. */
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (!visibleMarker) return
+            ink.style = Paint.Style.STROKE; ink.strokeCap = Paint.Cap.ROUND
+            ink.color = Color.WHITE; ink.strokeWidth = 7 * density; canvas.drawPath(trail, ink)
+            ink.color = Color.rgb(30, 96, 210); ink.strokeWidth = 3 * density; canvas.drawPath(trail, ink)
+            ink.color = Color.WHITE; ink.strokeWidth = 6 * density; canvas.drawCircle(markerX, markerY, 15 * density, ink)
+            ink.color = Color.rgb(30, 96, 210); ink.strokeWidth = 3 * density; canvas.drawCircle(markerX, markerY, 15 * density, ink)
+            ink.style = Paint.Style.FILL; canvas.drawCircle(markerX, markerY, 4 * density, ink)
+        }
+    }
 
     companion object {
         private const val MAX_POINTS = 128

@@ -298,7 +298,7 @@ class MainActivity : Activity() {
             }
             group.forEach { flat ->
                 if (flat == null) {
-                    val add = ui.button("+") { drawer() }.apply { contentDescription = "Add app to Home" }
+                    val add = ui.button("+") { drawer(editFavourites = true) }.apply { contentDescription = "Add app to Home" }
                     ui.flatFocus(add, ui.textSurface(), outline = false)
                     row.addView(add, LinearLayout.LayoutParams(0, -1, 1f))
                     return@forEach
@@ -498,6 +498,7 @@ class MainActivity : Activity() {
                 .addCategory(Intent.CATEGORY_OPENABLE)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 202)
         })
+        content.addView(ui.label("Choose an image here for reliable landscape cropping. Android may restrict access to its system wallpaper.", 14f))
         if (getSharedPreferences("launcher", MODE_PRIVATE).contains("wallpaperUri")) content.addView(ui.row("Use system wallpaper    ›") {
             getSharedPreferences("launcher", MODE_PRIVATE).edit().remove("wallpaperUri").apply(); settings()
         })
@@ -714,7 +715,8 @@ class MainActivity : Activity() {
             onAccessibility = { explainAccessibility() },
             onRecordAction = { recordMacro() },
             onManageActions = { macroSettings() },
-            onChanged = { remoteSettings() })
+            onChanged = { remoteSettings() },
+            onHome = { home() })
         root.addView(ScrollView(this).apply { addView(panel) }, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
@@ -745,7 +747,7 @@ class MainActivity : Activity() {
             },
             SetupGuide.Page("Let the app handle playback", "Optional notification access lets Snapplication use an app's media controls. Play, previous and next work only when that app offers them. No notification messages are saved or sent.",
                 if (media) "Review media access" else "Enable media controls", if (media) "✓ Media access is enabled" else "Optional — previews can open apps without this") {
-                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                ExternalPlaybackPanel(this, ui).explainAccess()
             },
             SetupGuide.Page("One button for your routine", "Map Home, Back or Screen off. Map Record/stop macro to record actions across apps, then assign the saved routine to another button. Recording text and protected screens is excluded.",
                 "Set up remote buttons", "Use a key Android delivers. The remote's physical Power key may be handled by the device itself.") { state.tutorialSeen = true; remoteSettings() },
@@ -762,7 +764,7 @@ class MainActivity : Activity() {
     /** Explains accessibility access before sending the user to Android's own opt-in control. */
     private fun explainAccessibility() {
         AlertDialog.Builder(this).setTitle("Remote and preview support")
-            .setMessage("Optional accessibility access identifies the foreground app, maps remote keys and replays actions you record. Screen images require separate screen-sharing consent. Nothing is uploaded. You can disable access in Android settings at any time.")
+            .setMessage("This optional Android permission can read on-screen text and controls and perform actions in other apps. Snapplication uses it to identify reading/video screens, intercept your mapped remote keys, and record or replay actions only when you start them. Recorded steps and preview images stay on this device and are not uploaded. Screen images require separate screen-sharing consent. You can skip this permission and still use the launcher, or disable access in Android settings at any time.")
             .setNegativeButton("Cancel", null).setPositiveButton("Open Android settings") { _, _ ->
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }.show()
@@ -891,6 +893,16 @@ class MainActivity : Activity() {
     /** Applies saved remote keys only in this activity, preserving text entry and paired key events. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (!::remote.isInitialized || RemoteControls.learning) return super.dispatchKeyEvent(event)
+        RemoteControls.observeKey(event)
+        // On the mapping page non-navigation keys are diagnostic: do not lock, leave or run a macro.
+        if (screen == "Remote buttons" && event.device?.isVirtual == false) {
+            val assigned = remote.action(event)
+            val navigation = if (assigned != null) assigned in setOf("Up", "Down", "Left", "Right", "Select")
+                else event.keyCode in setOf(android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                    android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+                    android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER)
+            if (!navigation) return true
+        }
         // A long Back press provides recovery when another navigation key has been reassigned.
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_DOWN && event.isLongPress) {
             remote.reset(); remote.clearHeldButtons()
@@ -898,6 +910,11 @@ class MainActivity : Activity() {
             return true
         }
         val action = remote.assignment(event, currentFocus is EditText) ?: return super.dispatchKeyEvent(event)
+        if (action == "Screen off") {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0)
+                RemoteActionService.instance?.performMappedAction(action) ?: explainAccessibility()
+            return true
+        }
         remote.navigationEvent(event, action)?.let { return super.dispatchKeyEvent(it) }
         if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled) {
             when (action) {
@@ -973,8 +990,9 @@ class MainActivity : Activity() {
     /** Reloads the newest captured external frame after the source app returns to Home. */
     override fun onResume() {
         super.onResume()
-        RemoteActionService.instance?.cancelLandscape()
         if (!::state.isInitialized) return
+        RemoteActionService.instance?.onLauncherResume(state.orientation == "Landscape" ||
+            (state.orientation == "Mode default" && state.mode == "Watch" && state.theme != "E-paper"))
         if (screen == "Welcome") introduction(guideStep)
         else if (screen == "Home" && state.viewerSource == "App") home()
         offerSavedMacro()

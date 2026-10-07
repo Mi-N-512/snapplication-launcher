@@ -25,6 +25,15 @@ class RemoteControls(private val context: Context) {
 
     companion object {
         /** Prevents the global accessibility filter from stealing the button being learned by the dialog. */
+        /** Exists only while RemoteMappingPanel is attached; callers may report keys without changing them. */
+        var keyObserver: ((KeyEvent) -> Unit)? = null
+
+        /** Keeps the stored Screen off identifier compatible with existing remote assignments. */
+        fun displayLabel(action: String): String = if (action == "Screen off") "Screen on/off" else action.removePrefix("Macro: ")
+
+        /** Reports a physical key to the visible remote diagram without consuming or remapping it. */
+        fun observeKey(event: KeyEvent) { if (!learning) keyObserver?.invoke(event) }
+
         var learning: Boolean = false
             private set
     }
@@ -75,11 +84,11 @@ class RemoteControls(private val context: Context) {
         require(action in actions)
         val activity = context as? Activity ?: return
         val status = TextView(activity).apply {
-            text = "Press and release the remote button for $action.\n\nAny existing assignment on that button will be replaced. Use Cancel to exit. Some physical Home and Power keys are handled by Android; try another button if nothing appears."
+            text = "Press and release the remote button for ${displayLabel(action)}.\n\nAny existing assignment on that button will be replaced. Use Cancel to exit. Android receives remote keys first. It may reserve Home, Power or other keys so the launcher never receives them. If nothing appears, try a different physical button."
             setPadding(32, 24, 32, 24)
         }
         var captured: KeyEvent? = null
-        val dialog = AlertDialog.Builder(activity).setTitle("Map $action").setView(status)
+        val dialog = AlertDialog.Builder(activity).setTitle("Map ${displayLabel(action)}").setView(status)
             .setNegativeButton("Cancel", null).create()
         // Back belongs to the learning session, not Android's default dialog-dismiss behavior.
         dialog.setCancelable(false)
@@ -113,7 +122,7 @@ class RemoteControls(private val context: Context) {
         val timeout = Runnable {
             if (dialog.isShowing) {
                 dialog.dismiss()
-                Toast.makeText(activity, "No button saved. Learning timed out after 30 seconds; choose Map to try again.", Toast.LENGTH_LONG).show()
+                Toast.makeText(activity, "No button received. Android may reserve this key. Tap the action and try another remote button.", Toast.LENGTH_LONG).show()
             }
         }
         dialog.setOnDismissListener { learning = false; timeoutHandler.removeCallbacks(timeout) }

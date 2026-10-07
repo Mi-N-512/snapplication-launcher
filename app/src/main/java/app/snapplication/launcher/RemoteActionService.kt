@@ -37,6 +37,8 @@ class RemoteActionService : AccessibilityService() {
 
     /** Releases the launch orientation immediately when its setting is disabled. */
     fun cancelLandscape() { landscapeLaunch.clear() }
+    /** Avoids rotating a retained player when the launcher explicitly uses the same landscape layout. */
+    fun onLauncherResume(keepLandscape: Boolean) { landscapeLaunch.onLauncherResume(keepLandscape) }
     private var recordingName: String? = null
     private var recordingPackage: String? = null
     private var recordingStarted = false
@@ -114,8 +116,7 @@ class RemoteActionService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         val sensitive = try { containsSensitiveInput(root, blockEditable = false) } finally { root.recycle() }
         if (sensitive) {
-            stopRecording()
-            message("Recording stopped on a private input screen.")
+            // Keep the explicit recording session available, but never save private input actions.
             return
         }
         if (lastRecordedPackage != active) {
@@ -236,7 +237,8 @@ class RemoteActionService : AccessibilityService() {
             // A non-focusable recording control must not turn the macro's own app into a new target.
             if ((recordingName != null || replayStop != null) && next == packageName &&
                 activeWindow?.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) {
-                val underlying = visibleWindows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+                val underlying = visibleWindows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION ||
+                    (it.type == AccessibilityWindowInfo.TYPE_SYSTEM && (it.isActive || it.isFocused)) }
                     .maxByOrNull { it.layer }?.root
                 next = underlying?.packageName?.toString()
                 underlying?.recycle()
@@ -352,6 +354,13 @@ class RemoteActionService : AccessibilityService() {
         // Learned hybrid remotes can report mouse sources for their buttons; the saved descriptor/key
         // is the authority. Avoid a full window-tree scan here: Android's key-filter deadline is short.
         if (device.isVirtual || event.keyCode in setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)) return false
+        // Screen off is permitted even during text entry. Avoid a slow cross-process tree request
+        // before this time-sensitive action; latch and consume its release as with other mappings.
+        if (controls.action(event) == "Screen off") {
+            controls.assignment(event, false)
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) performMappedAction("Screen off")
+            return true
+        }
         val root = rootInActiveWindow
         val editing = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { focused ->
             val sensitive = focused.isEditable || focused.isPassword
@@ -481,7 +490,10 @@ class RemoteActionService : AccessibilityService() {
                         step.remove("startedAt")
                         appendRecordedStep(step)
                     }
-                }, { reason -> stopRecording(); message(reason) })
+                }, { reason -> stopRecording(); message(reason) }, { paused ->
+                    stopButton?.text = if (paused) "Paused on this screen · Stop (${recordingSteps.length()}/20)"
+                        else "Stop recording (${recordingSteps.length()}/20)"
+                })
                 check(recorder.start())
                 touchRecorder = recorder
             }
@@ -690,13 +702,15 @@ class RemoteActionService : AccessibilityService() {
     }
 
     /** Describes the visible app layout without text; coordinate macros stop on a different screen,
-     * keyboard, password, lock screen or system dialog. Unfocused search boxes are excluded regions. */
+     * keyboard, password or lock screen. Vendor dialogs are eligible; Android permission surfaces are not. */
     private fun touchGuard(): JSONObject? {
         if (!getSystemService(android.os.PowerManager::class.java).isInteractive ||
             getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) return null
         val visible = windows
         try {
-            val window = visible.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }.maxByOrNull { it.layer } ?: return null
+            val window = visible.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION ||
+                (it.type == AccessibilityWindowInfo.TYPE_SYSTEM && (it.isActive || it.isFocused)) }
+                .maxByOrNull { it.layer } ?: return null
             val root = window.root ?: return null
             try {
                 val owner = root.packageName?.toString() ?: return null

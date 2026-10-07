@@ -25,7 +25,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
     fun show(name: String) {
         val macro = all().optJSONObject(name) ?: return
         val choices = arrayOf("Speed: ${macro.optDouble("speed", 1.0)}×", "Start: ${if (macro.optBoolean("currentScreen")) "current screen" else "open recorded app"}",
-            "Edit steps (${macro.optJSONArray("steps")?.length() ?: 0})", "Rename", "Delete action")
+            "Edit steps (${macro.optJSONArray("steps")?.length() ?: 0})", "Rename", "Delete action", "Preview timing and touches")
         AlertDialog.Builder(activity).setTitle(name).setItems(choices) { _, index ->
             when (index) {
                 0 -> AlertDialog.Builder(activity).setTitle("Playback speed").setItems(arrayOf("0.5× — slower", "1× — recorded timing", "2× — faster", "4× — fastest")) { _, choice ->
@@ -36,6 +36,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
                         save(name, macro.put("currentScreen", choice == 1)); show(name)
                     }.setNegativeButton("Cancel", null).show()
                 2 -> steps(name)
+                5 -> MacroPreviewView.show(activity, name, macro, ::title)
                 3 -> rename(name)
                 4 -> AlertDialog.Builder(activity).setTitle("Delete $name?").setMessage("Its remote assignment will no longer run an action.")
                     .setNegativeButton("Cancel", null).setPositiveButton("Delete") { _, _ ->

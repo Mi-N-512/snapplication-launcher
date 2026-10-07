@@ -1,6 +1,7 @@
 package app.snapplication.launcher
 
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.SystemClock
 import android.view.View
@@ -17,6 +18,12 @@ class LandscapeLaunch(private val service: RemoteActionService) {
 
     /** Starts a non-touchable orientation request; never changes the phone's saved rotation settings. */
     fun begin(packageName: String) {
+        if (target == packageName && overlay != null) {
+            // Reuse the same window across a landscape Home visit instead of briefly removing
+            // its orientation request and potentially recreating the retained player activity.
+            expires = SystemClock.uptimeMillis() + 8000
+            return
+        }
         clear()
         target = packageName; expires = SystemClock.uptimeMillis() + 8000
         val view = View(service)
@@ -39,7 +46,16 @@ class LandscapeLaunch(private val service: RemoteActionService) {
             if (!fullscreenRequested && SystemClock.uptimeMillis() <= expires && root != null) {
                 fullscreenRequested = clickFullscreen(root)
             }
+        } else if (packageName == service.packageName && entered &&
+            service.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            // Home already wants landscape. Keep the request until the player resumes, a different
+            // app opens, or MainActivity reports that Home now wants portrait/automatic rotation.
         } else if (entered || SystemClock.uptimeMillis() > expires) clear()
+    }
+
+    /** Keeps a retained player's request only while Home explicitly wants landscape too. */
+    fun onLauncherResume(keepLandscape: Boolean) {
+        if (!keepLandscape || !LauncherState(service).landscapeApps) clear()
     }
 
     /** Uses semantic labels instead of coordinates, avoiding exit/fullscreen toggles with unknown state. */
