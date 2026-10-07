@@ -34,7 +34,7 @@ class ExternalPlaybackPanel(private val activity: Activity, private val ui: Laun
     }
 
     /** Explains Android's broad permission before opening its opt-in settings; never grants access automatically. */
-    private fun explainAccess() {
+    fun explainAccess() {
         AlertDialog.Builder(activity).setTitle("Optional media access")
             .setMessage("Android requires notification access to list other apps' media sessions. This is a broad system permission. Snapplication uses media-session information for these controls; it does not read, save or send notification messages. You can turn access off in the same Android settings screen.")
             .setNegativeButton("Cancel", null).setPositiveButton("Open Android settings") { _, _ ->
