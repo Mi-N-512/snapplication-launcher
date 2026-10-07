@@ -13,9 +13,17 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import java.util.concurrent.Executors
 
-/** Places a user-selected wallpaper behind MainActivity; portrait and landscape use centre cropping without stretching. */
+/*
+ * Places a user-selected wallpaper behind MainActivity; portrait and landscape use centre cropping without
+ * stretching.
+ *
+ * Related classes: MainActivity wraps its page content with this wallpaper layer.
+ * UI: A non-interactive image behind foreground controls, cropped to the measured screen.
+ * Edit or extend: Edit image decoding, EXIF handling and crop behaviour here; wallpaper selection remains in
+ * MainActivity and URI preferences.
+ */
 object LauncherWallpaper {
-    /** Loads a bounded image off the UI thread and releases it when this screen is detached. */
+    // Loads a bounded image off the UI thread and releases it when this screen is detached.
     fun wrap(activity: Activity, content: View): View {
         val saved = activity.getSharedPreferences("launcher", 0).getString("wallpaperUri", null)
         val image = ImageView(activity).apply {
@@ -30,7 +38,7 @@ object LauncherWallpaper {
         var bitmap: android.graphics.Bitmap? = null
         val executor = Executors.newSingleThreadExecutor()
         shell.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            /** Starts decoding only when this wallpaper becomes visible. */
+            // Starts decoding only when this wallpaper becomes visible.
             override fun onViewAttachedToWindow(v: View) {
                 if (detached) return
                 executor.execute {
@@ -43,7 +51,7 @@ object LauncherWallpaper {
                     }
                 }
             }
-            /** Prevents old screens from retaining wallpaper memory or updating a new screen. */
+            // Prevents old screens from retaining wallpaper memory or updating a new screen.
             override fun onViewDetachedFromWindow(v: View) {
                 detached = true; executor.shutdownNow()
                 image.setImageDrawable(null); bitmap?.recycle(); bitmap = null
@@ -52,7 +60,7 @@ object LauncherWallpaper {
         return shell
     }
 
-    /** Reads a chosen image with its camera rotation, then lets the measured screen crop it without stretching. */
+    // Reads a chosen image with its camera rotation, then lets the measured screen crop it without stretching.
     private fun decodeImage(activity: Activity, uri: Uri): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         activity.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -84,7 +92,7 @@ object LauncherWallpaper {
         } catch (error: Exception) { decoded.recycle(); throw error }
     }
 
-    /** Crops a readable static system wallpaper locally; protected or live wallpapers remain Android-owned. */
+    // Crops a readable static system wallpaper locally; protected or live wallpapers remain Android-owned.
     @android.annotation.SuppressLint("MissingPermission") // Optional read; denial is caught by the caller without requesting broad storage access.
     @Suppress("DEPRECATION")
     private fun systemImage(activity: Activity): Bitmap? {

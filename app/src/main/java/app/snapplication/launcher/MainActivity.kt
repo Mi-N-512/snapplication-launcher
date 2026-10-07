@@ -24,7 +24,44 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import java.util.concurrent.Executors
 
-/** Hosts Home, App Drawer, Library and Settings; delegates media to WatchPlayer/ReaderPanel, state to LauncherState and input mapping to RemoteControls. */
+/*
+ * MainActivity puts the launcher's screens together and connects their buttons to actions.
+ * Think of it as a toy shelf: this class chooses which tray you see, and the other classes
+ * look after the toys in each tray. You can change one tray without rebuilding the whole shelf.
+ * Android opens this class when the launcher starts or receives a Home request.
+ *
+ * Where to find things (the names below are the exact class and method names):
+ * - Home layout and favourite blocks: MainActivity.home() and favouriteColumn().
+ * - The centre's saved picture and return-to-app action: ExternalPreview.
+ *   PreviewCaptureService saves pictures; ExternalPreview displays them.
+ * - Video playing inside Home: WatchPlayer. Pages shown inside Home: ReaderPanel.
+ * - Folder items and saved places: LocalLibrary, LibraryItem and LauncherState.
+ * - All Apps, A-Z navigation and changing favourite order: DrawerPanel.
+ *   MainActivity.drawer() opens it; manageFavourites() opens its favourite editor.
+ * - Settings pages and search: MainActivity.settings() and organizeSettings().
+ * - First setup and the introduction: DeviceProfileSetup and SetupGuide,
+ *   opened by MainActivity.introduction().
+ * - Colours and reusable buttons: LauncherUi and ColourPicker.
+ * - Wallpaper: LauncherWallpaper. App icons: IconPacks and AppIconTheme.
+ * - Remote screen: RemoteMappingPanel, opened by MainActivity.remoteSettings().
+ *   RemoteControls stores button choices; RemoteActionService handles actions across apps.
+ * - Recorded actions: MainActivity.macroSettings(), MacroEditor and TouchMacroRecorder.
+ *   MacroPreviewView shows a blank-screen rehearsal without pressing real app buttons.
+ * - Other apps' media controls: ExternalPlaybackPanel. Heat notice: ThermalMonitor.
+ *
+ * Buttons and controls connected here include ALL APPS, empty favourite slots, Home/Back,
+ * content opening, folder/link selection, Read/Watch selection, settings switches, permission
+ * setup and macro commands. DrawerPanel and RemoteMappingPanel build their own controls.
+ * To change screen layout, start with home() or begin(). To add a setting, edit settings()
+ * and its organizeSettings() grouping, then save its value in LauncherState when needed.
+ * To add behaviour inside one panel, follow the class map above to that panel first.
+ *
+ * Planned, not implemented: a future Gaming mode needs more than another mode button.
+ * Start at chooseMode(), home(), library() and applyOrientation(); add matching saved state
+ * in LauncherState and a dedicated game panel/launch flow. Read and Watch are the current
+ * modes. No game session capture or game suspension is provided by this class.
+ * This map helps you find the right file before changing how the launcher looks or works.
+ */
 class MainActivity : Activity() {
     private lateinit var thermal: ThermalMonitor
     private var thermalText: String? = null
@@ -42,15 +79,15 @@ class MainActivity : Activity() {
     private var guideStep = 0
     private val worker = Executors.newSingleThreadExecutor()
     private var scanGeneration = 0
-    /** Receives system screen-off events to stage the next episode through WatchPlayer. */
+    // Receives system screen-off events to stage the next episode through WatchPlayer.
     private val screenReceiver = object : BroadcastReceiver() {
-        /** Applies completion behavior only when the device screen actually turns off. */
+        // Applies completion behavior only when the device screen actually turns off.
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_SCREEN_OFF) watch?.screenOff()
         }
     }
 
-    /** Restores launcher preferences and builds the appropriate mode without requesting root privileges. */
+    // Restores launcher preferences and builds the appropriate mode without requesting root privileges.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         state = LauncherState(this)
@@ -73,15 +110,15 @@ class MainActivity : Activity() {
         if (!state.tutorialSeen && screen != "Welcome") introduction()
     }
 
-    /** Preserves picker intent across rotation so a Watch folder cannot become a Read folder accidentally. */
+    // Preserves picker intent across rotation so a Watch folder cannot become a Read folder accidentally.
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("guideStep", guideStep); outState.putString("pickerMode", pickerMode); outState.putString("screen", screen); super.onSaveInstanceState(outState)
     }
 
-    /** Returns HOME intents to the familiar home screen. */
+    // Returns HOME intents to the familiar home screen.
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); if (intent.getBooleanExtra("openApps", false)) drawer() else home() }
 
-    /** Keeps Watch landscape while allowing reading in the device's preferred orientation. */
+    // Keeps Watch landscape while allowing reading in the device's preferred orientation.
     private fun applyOrientation() {
         requestedOrientation = when (state.orientation) {
             "Landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -91,7 +128,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Creates a page shell with persistent visible navigation and a readable title. */
+    // Creates a page shell with persistent visible navigation and a readable title.
     private fun begin(title: String): LinearLayout {
         scanGeneration++
         watch?.pause()
@@ -147,7 +184,7 @@ class MainActivity : Activity() {
         return root
     }
 
-    /** Uses the Make layout: a 57 percent portrait viewer and a 70 percent landscape viewer. */
+    // Uses the Make layout: a 57 percent portrait viewer and a 70 percent landscape viewer.
     @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     private fun home(measuredLandscape: Boolean? = null) {
         begin("Home")
@@ -219,7 +256,7 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, ui.dp(if (landscape) 32 else 40)))
     }
 
-    /** Makes the preview an accessible launch target while keeping its image visible underneath. */
+    // Makes the preview an accessible launch target while keeping its image visible underneath.
     private fun addOpenContentOverlay(panel: FrameLayout, item: LibraryItem, label: String) {
         panel.addView(ui.button(label) { openContentInApp(item) }.apply {
             contentDescription = "Open ${item.title} in another app"
@@ -228,7 +265,7 @@ class MainActivity : Activity() {
         }, FrameLayout.LayoutParams(-1, -1))
     }
 
-    /** Hands the exact selected document/link to Android's viewer with a temporary read grant. */
+    // Hands the exact selected document/link to Android's viewer with a temporary read grant.
     private fun openContentInApp(item: LibraryItem) {
         watch?.pause()
         val uri = Uri.parse(item.uri)
@@ -257,14 +294,14 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Lets the viewer switch between an app resume entry and user-selected folder media. */
+    // Lets the viewer switch between an app resume entry and user-selected folder media.
     private fun chooseViewerSource() {
         AlertDialog.Builder(this).setTitle("Main viewer").setItems(arrayOf("Continue app", "Folder content")) { _, index ->
             state.viewerSource = if (index == 0) "App" else "Folder"; settings()
         }.setNegativeButton("Cancel", null).show()
     }
 
-    /** Persists preview and local-media sizing without changing another app's display. */
+    // Persists preview and local-media sizing without changing another app's display.
     private fun chooseContentScale() {
         val values = arrayOf("Fit", "Fill", "Stretch")
         val labels = arrayOf("Fit · show the whole image", "Crop · fill without distortion", "Stretch · fill all dimensions")
@@ -276,7 +313,7 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancel", null).show()
     }
 
-    /** Preserves the configured Make block count; unassigned cells open the app picker. */
+    // Preserves the configured Make block count; unassigned cells open the app picker.
     private fun favouriteColumn(components: List<String>, portrait: Boolean = false, slotCount: Int): LinearLayout {
         val shell = ui.column().apply { background = ui.homeSurface() }
         if (state.showFavouriteHeading) shell.addView(ui.section("Favourites"))
@@ -337,7 +374,7 @@ class MainActivity : Activity() {
         return shell
     }
 
-    /** Offers explicit reorder/remove actions without requiring drag gestures or accidental removal. */
+    // Offers explicit reorder/remove actions without requiring drag gestures or accidental removal.
     private fun favouriteActions(flat: String, label: String, refresh: () -> Unit) {
         val items = state.favourites()
         val index = items.indexOf(flat)
@@ -356,10 +393,10 @@ class MainActivity : Activity() {
         }.setNegativeButton("Cancel", null).show()
     }
 
-    /** Opens the same live favourite editor used by the app drawer. */
+    // Opens the same live favourite editor used by the app drawer.
     private fun manageFavourites() { drawer(editFavourites = true) }
 
-    /** Hosts the alphabetical drawer; DrawerPanel owns search, remote focus and favourite editing. */
+    // Hosts the alphabetical drawer; DrawerPanel owns search, remote focus and favourite editing.
     private fun drawer(editFavourites: Boolean = false) {
         begin("Apps")
         val panel = DrawerPanel(this, state, ui, { launch(it) }, { settings() }, { home() })
@@ -368,7 +405,7 @@ class MainActivity : Activity() {
         drawerGestureAreas.add((panel.view.getChildAt(0) as ViewGroup).getChildAt(0))
     }
 
-    /** Launches an installed application without claiming control of its saved session. */
+    // Launches an installed application without claiming control of its saved session.
     private fun launch(component: ComponentName) {
         runCatching {
             if (state.landscapeApps && root.width > root.height) RemoteActionService.instance?.prepareLandscape(component.packageName)
@@ -383,7 +420,7 @@ class MainActivity : Activity() {
         }.onFailure { message("This app is unavailable.") }
     }
 
-    /** Scans the selected folder off the UI thread, ignoring results from screens already left. */
+    // Scans the selected folder off the UI thread, ignoring results from screens already left.
     private fun library() {
         begin("Library")
         root.addView(ui.button("Choose ${state.mode.lowercase()} folder") { pickFolder() })
@@ -409,20 +446,20 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Opens a selected item inside the home panel and starts explicitly requested video playback. */
+    // Opens a selected item inside the home panel and starts explicitly requested video playback.
     private fun openItem(item: LibraryItem) {
         state.remember(item); state.mode = item.mode; state.viewerSource = "Folder"; home()
         if (item.mode == "Watch" && state.playVideosInLauncher) watch?.load(item, true)
     }
 
-    /** Requests read-only access to a user-chosen folder through Android's system picker. */
+    // Requests read-only access to a user-chosen folder through Android's system picker.
     private fun pickFolder() {
         pickerMode = state.mode
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 100)
     }
 
-    /** Persists only the grant actually returned by the system and handles cancellation safely. */
+    // Persists only the grant actually returned by the system and handles cancellation safely.
     @Deprecated("Legacy Activity result API retained for the minimal native Activity host")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -453,7 +490,7 @@ class MainActivity : Activity() {
         }.onFailure { message("Folder access could not be saved. Please choose another folder.") }
     }
 
-    /** Accepts HTTPS media URLs; web page links need a compatible provider instead. */
+    // Accepts HTTPS media URLs; web page links need a compatible provider instead.
     private fun directLink() {
         val input = EditText(this).apply { hint = "https://…/video.mp4"; inputType = 17 }
         AlertDialog.Builder(this).setTitle("Open direct video link").setView(input)
@@ -464,14 +501,14 @@ class MainActivity : Activity() {
             }.show()
     }
 
-    /** Switches between the two user-selected modes while keeping independent resume positions. */
+    // Switches between the two user-selected modes while keeping independent resume positions.
     private fun chooseMode() {
         AlertDialog.Builder(this).setTitle("Mode").setItems(arrayOf("Watch", "Read")) { _, index ->
             state.mode = if (index == 0) "Watch" else "Read"; applyOrientation(); home()
         }.show()
     }
 
-    /** Exposes genuine settings; unsupported hardware actions are not presented as working switches. */
+    // Exposes genuine settings; unsupported hardware actions are not presented as working switches.
     private var settingsCategory: String? = null
 
     private fun settings(category: String? = settingsCategory) {
@@ -564,13 +601,13 @@ class MainActivity : Activity() {
             max = 100; progress = state.completion
             contentDescription = "Episode completion threshold"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                /** Updates the threshold preview while dragging or using directional controls. */
+                // Updates the threshold preview while dragging or using directional controls.
                 override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
                     state.completion = value; threshold.text = "Next episode after $value%"
                 }
-                /** The slider needs no special start behavior. */
+                // The slider needs no special start behavior.
                 override fun onStartTrackingTouch(bar: SeekBar) {}
-                /** Changes are already persisted as the slider moves. */
+                // Changes are already persisted as the slider moves.
                 override fun onStopTrackingTouch(bar: SeekBar) {}
             })
         })
@@ -586,7 +623,7 @@ class MainActivity : Activity() {
 
     }
 
-    /** Presents one category at a time; search spans every category without hiding its matching controls. */
+    // Presents one category at a time; search spans every category without hiding its matching controls.
     private fun organizeSettings(content: LinearLayout) {
         val groups = linkedMapOf<String, MutableList<View>>()
         var group = "Appearance"
@@ -632,17 +669,17 @@ class MainActivity : Activity() {
             } }
         }
         search.addTextChangedListener(object : TextWatcher {
-            /** Filters settings across categories as the user types. */
+            // Filters settings across categories as the user types.
             override fun afterTextChanged(value: Editable?) { update(value.toString().trim()) }
-            /** No work is needed before an edit. */
+            // No work is needed before an edit.
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            /** Filtering runs after the completed edit. */
+            // Filtering runs after the completed edit.
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
         update("")
     }
 
-    /** Shows the reference's separate theme selection page with immediate persistent selection. */
+    // Shows the reference's separate theme selection page with immediate persistent selection.
     private fun themeSettings() {
         begin("Theme Mode")
         val content = ui.column()
@@ -661,7 +698,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Groups display style and four/six/eight choices as in the Make reference. */
+    // Groups display style and four/six/eight choices as in the Make reference.
     private fun favouriteSettings() {
         begin("Favourites Style")
         val content = ui.column()
@@ -686,7 +723,7 @@ class MainActivity : Activity() {
         content.addView(ui.label("Portrait: ${state.favouriteCount / 2} columns × 2 rows. Landscape: ${state.favouriteCount / 2} favourites per side.", 14f))
     }
 
-    /** Opens optional external media controls without loading providers or taking ownership of their playback. */
+    // Opens optional external media controls without loading providers or taking ownership of their playback.
     private fun externalPlayback() {
         begin("Other app playback")
         val panel = ExternalPlaybackPanel(this, ui)
@@ -694,7 +731,7 @@ class MainActivity : Activity() {
         panel.refresh()
     }
 
-    /** Shows a refreshable hardware snapshot without registering background monitors or requiring root. */
+    // Shows a refreshable hardware snapshot without registering background monitors or requiring root.
     private fun diagnostics() {
         begin("Device diagnostics")
         val content = ui.column()
@@ -708,7 +745,7 @@ class MainActivity : Activity() {
         content.addView(ui.label("These are Android-reported values at the last refresh. Independent display power and e-paper refresh depend on the connected hardware.", 16f))
     }
 
-    /** Presents the visual remote and individual key assignments using RemoteMappingPanel. */
+    // Presents the visual remote and individual key assignments using RemoteMappingPanel.
     private fun remoteSettings() {
         begin("Remote buttons")
         val panel = RemoteMappingPanel(this, ui, remote).build(
@@ -720,7 +757,7 @@ class MainActivity : Activity() {
         root.addView(ScrollView(this).apply { addView(panel) }, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
-    /** Presents one clear setup task per page, refreshing permission status when Android returns. */
+    // Presents one clear setup task per page, refreshing permission status when Android returns.
     private fun introduction(step: Int = 0) {
         begin("Welcome")
         if (!state.profileSetupComplete) {
@@ -761,7 +798,7 @@ class MainActivity : Activity() {
         }), LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
-    /** Explains accessibility access before sending the user to Android's own opt-in control. */
+    // Explains accessibility access before sending the user to Android's own opt-in control.
     private fun explainAccessibility() {
         AlertDialog.Builder(this).setTitle("Remote and preview support")
             .setMessage("This optional Android permission can read on-screen text and controls and perform actions in other apps. Snapplication uses it to identify reading/video screens, intercept your mapped remote keys, and record or replay actions only when you start them. Recorded steps and preview images stay on this device and are not uploaded. Screen images require separate screen-sharing consent. You can skip this permission and still use the launcher, or disable access in Android settings at any time.")
@@ -770,7 +807,7 @@ class MainActivity : Activity() {
             }.show()
     }
 
-    /** Offers one preview switch, automatic app following and optional manual selection. */
+    // Offers one preview switch, automatic app following and optional manual selection.
     private fun previewSettings() {
         begin("Home preview")
         val content = ui.column()
@@ -799,7 +836,7 @@ class MainActivity : Activity() {
         })
     }
 
-    /** Requests Android's screen-sharing consent; capture accepts only the active media target. */
+    // Requests Android's screen-sharing consent; capture accepts only the active media target.
     private fun requestPreviewCapture() {
         val manager = getSystemService(android.media.projection.MediaProjectionManager::class.java)
         val request = if (android.os.Build.VERSION.SDK_INT >= 34)
@@ -808,7 +845,7 @@ class MainActivity : Activity() {
         startActivityForResult(request, 201)
     }
 
-    /** Starts a named recording from either remote setup or the recorded-actions manager. */
+    // Starts a named recording from either remote setup or the recorded-actions manager.
     private fun recordMacro() {
             val service = RemoteActionService.instance
             if (service == null) explainAccessibility()
@@ -836,7 +873,7 @@ class MainActivity : Activity() {
             }
     }
 
-    /** Records cross-app routines and offers explicit playback, remote assignment and deletion. */
+    // Records cross-app routines and offers explicit playback, remote assignment and deletion.
     private fun macroSettings() {
         begin("Recorded actions")
         val content = ui.column()
@@ -862,7 +899,7 @@ class MainActivity : Activity() {
     private var drawerSwipeX = 0f
     private var drawerSwipeEligible = false
 
-    /** Opens from Home shortcuts or closes from the drawer handle using actual inset-aware view bounds. */
+    // Opens from Home shortcuts or closes from the drawer handle using actual inset-aware view bounds.
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         if (screen == "Home" || screen == "Apps") {
             when (event.actionMasked) {
@@ -890,7 +927,7 @@ class MainActivity : Activity() {
         return super.dispatchTouchEvent(event)
     }
 
-    /** Applies saved remote keys only in this activity, preserving text entry and paired key events. */
+    // Applies saved remote keys only in this activity, preserving text entry and paired key events.
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (!::remote.isInitialized || RemoteControls.learning) return super.dispatchKeyEvent(event)
         RemoteControls.observeKey(event)
@@ -935,7 +972,7 @@ class MainActivity : Activity() {
         return true
     }
 
-    /** Prevents a release from an earlier window from triggering a launcher shortcut. */
+    // Prevents a release from an earlier window from triggering a launcher shortcut.
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus && ::remote.isInitialized) remote.clearHeldButtons()
@@ -947,17 +984,17 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Opens a staged visual picker; cancelling preserves the current theme and colours. */
+    // Opens a staged visual picker; cancelling preserves the current theme and colours.
     private fun customColours() { ColourPicker(this, state, ui).show { settings() } }
 
-    /** Shows concise recoverable errors without exposing private source URLs or credentials. */
+    // Shows concise recoverable errors without exposing private source URLs or credentials.
     private fun message(text: String) { if (!isFinishing) AlertDialog.Builder(this).setMessage(text).setPositiveButton("OK", null).show() }
 
-    /** Returns from secondary screens to Home without trapping users in the launcher. */
+    // Returns from secondary screens to Home without trapping users in the launcher.
     @Deprecated("Legacy back callback for the native Activity host")
     override fun onBackPressed() { if (screen != "Home") navigateBack() else super.onBackPressed() }
 
-    /** Keeps touch, Android Back and mapped remote Back on the same screen hierarchy. */
+    // Keeps touch, Android Back and mapped remote Back on the same screen hierarchy.
     private fun navigateBack() {
         RemoteActionService.instance?.recordLauncherNavigation("back")
         when (screen) {
@@ -968,7 +1005,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Updates the existing notice without rebuilding Home or interrupting playback and reading. */
+    // Updates the existing notice without rebuilding Home or interrupting playback and reading.
     private fun updateThermalBanner() {
         thermalBanner?.apply {
             text = thermalText.orEmpty()
@@ -976,18 +1013,18 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Notices recordings saved while this activity is already visible. */
+    // Notices recordings saved while this activity is already visible.
     private val macroSavedListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "pendingAssignment") root.post { if (!isFinishing && hasWindowFocus()) offerSavedMacro() }
     }
 
-    /** Limits thermal polling and recording notifications to this visible activity. */
+    // Limits thermal polling and recording notifications to this visible activity.
     override fun onStart() {
         super.onStart(); thermal.start()
         getSharedPreferences("remoteMacros", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(macroSavedListener)
     }
 
-    /** Reloads the newest captured external frame after the source app returns to Home. */
+    // Reloads the newest captured external frame after the source app returns to Home.
     override fun onResume() {
         super.onResume()
         if (!::state.isInitialized) return
@@ -998,7 +1035,7 @@ class MainActivity : Activity() {
         offerSavedMacro()
     }
 
-    /** Offers remote assignment once when a recording finishes or the user returns from another app. */
+    // Offers remote assignment once when a recording finishes or the user returns from another app.
     private fun offerSavedMacro() {
         val macros = getSharedPreferences("remoteMacros", MODE_PRIVATE)
         val saved = macros.getString("pendingAssignment", null)
@@ -1012,13 +1049,13 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Saves and pauses playback whenever another app or the lock screen takes over. */
+    // Saves and pauses playback whenever another app or the lock screen takes over.
     override fun onStop() {
         getSharedPreferences("remoteMacros", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(macroSavedListener)
         thermal.stop(); watch?.pause(); super.onStop()
     }
 
-    /** Releases media resources and pending folder work when the activity is destroyed. */
+    // Releases media resources and pending folder work when the activity is destroyed.
     override fun onDestroy() {
         thermal.stop()
         unregisterReceiver(screenReceiver)

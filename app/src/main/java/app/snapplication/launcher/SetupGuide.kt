@@ -8,13 +8,24 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-/** Builds MainActivity's guided setup cards; permission requests remain owned by Android and the activity. */
+/*
+ * Builds MainActivity's guided setup cards; permission requests remain owned by Android and the activity.
+ *
+ * Related classes: MainActivity supplies Page entries and permission actions; LauncherUi styles the cards.
+ * UI: Static progress marks, explanation, one setup action and Previous/Next/Finish later buttons.
+ * Edit or extend: Edit walkthrough presentation here; change actual steps and Android permission entry points in
+ * MainActivity. Future Gaming setup can supply more Page entries.
+ */
 class SetupGuide(private val activity: Activity, private val ui: LauncherUi, private val reading: Boolean = false) {
-    /** Describes one setup step, its live status and the explicit action available to the user. */
+    /*
+     * One setup-card description supplied by MainActivity and rendered by SetupGuide. Holds the heading,
+     * explanation, status, action label and click callback. Add future mode-specific setup content through
+     * these fields; permission requests remain with the host activity.
+     */
     data class Page(val title: String, val explanation: String, val action: String, val status: String,
                     val onAction: () -> Unit)
 
-    /** Creates a compact, remote-friendly walkthrough with persistent progress and navigation. */
+    // Creates a compact, remote-friendly walkthrough with persistent progress and navigation.
     fun build(index: Int, pages: List<Page>, onStep: (Int) -> Unit, onFinish: () -> Unit): View {
         require(pages.isNotEmpty())
         val step = index.coerceIn(pages.indices)

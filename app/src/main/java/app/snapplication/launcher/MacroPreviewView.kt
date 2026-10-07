@@ -16,10 +16,22 @@ import org.json.JSONObject
 import java.util.Locale
 import kotlin.math.hypot
 
-/** Safe blank-screen rehearsal opened by MacroEditor. Draws recorded gestures and timing only;
- * it never calls RemoteActionService, opens another app, or injects a touch. */
+/*
+ * Safe blank-screen rehearsal opened by MacroEditor. Draws recorded gestures and timing only; it never calls
+ * RemoteActionService, opens another app, or injects a touch.
+ *
+ * Related classes: MacroEditor opens this view using locally saved macro JSON.
+ * UI: Blank fitted display, animated touch marks, duration, step timeline and Play/Stop/Close controls.
+ * Edit or extend: Edit rehearsal drawing and timing here; keep it visual only and in step with the real replay
+ * rules.
+ */
 class MacroPreviewView private constructor(context: Context, private val sequence: List<PreviewStep>,
     private val status: (String) -> Unit) : View(context) {
+    /*
+     * One scheduled item in MacroPreviewView's visual rehearsal. Source contains saved action data, title
+     * labels its timeline, and begins/ends define drawing time. No independent controls. Extend timing/display
+     * metadata here without injecting real input.
+     */
     private data class PreviewStep(val source: JSONObject, val title: String, val begins: Long, val ends: Long)
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG)
     private val density = resources.displayMetrics.density
@@ -38,25 +50,25 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
 
     init { setBackgroundColor(Color.WHITE); contentDescription = "Blank screen showing recorded touch positions" }
 
-    /** Rehearses once from zero; a second press cancels the previous visual timeline. */
+    // Rehearses once from zero; a second press cancels the previous visual timeline.
     fun restart() {
         stop(); elapsed = 0; started = SystemClock.uptimeMillis(); running = true; post(tick)
     }
 
-    /** Cancels every scheduled frame, including when the dialog closes or its activity leaves. */
+    // Cancels every scheduled frame, including when the dialog closes or its activity leaves.
     fun stop() { running = false; removeCallbacks(tick) }
 
-    /** Stops visual playback when Android removes the preview, including activity recreation. */
+    // Stops visual playback when Android removes the preview, including activity recreation.
     override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
 
-    /** Reports exact programmed waits/gesture durations; app-loading delays are explicitly excluded. */
+    // Reports exact programmed waits/gesture durations; app-loading delays are explicitly excluded.
     private fun updateStatus() {
         val next = sequence.firstOrNull { it.ends >= elapsed }
         val action = if (elapsed >= duration) "Finished" else if (next != null && elapsed < next.begins) "Waiting · ${next.title}" else next?.title.orEmpty()
         status("${seconds(elapsed)} / ${seconds(duration)} s · $action")
     }
 
-    /** Fits the recorded display in the blank canvas without distorting touch coordinates. */
+    // Fits the recorded display in the blank canvas without distorting touch coordinates.
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val step = sequence.firstOrNull { it.ends >= elapsed } ?: sequence.lastOrNull() ?: return
@@ -98,7 +110,7 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
     companion object {
         private fun seconds(value: Long) = String.format(Locale.getDefault(), "%.3f", value / 1000.0)
 
-        /** Matches replay speed, bounded waits, gesture limits and initial-launch skipping. */
+        // Matches replay speed, bounded waits, gesture limits and initial-launch skipping.
         fun show(activity: Activity, name: String, macro: JSONObject, label: (JSONObject) -> String) {
             val steps = macro.optJSONArray("steps") ?: return
             val speed = macro.optDouble("speed", 1.0).let { if (it.isFinite()) it.coerceIn(.25, 4.0) else 1.0 }

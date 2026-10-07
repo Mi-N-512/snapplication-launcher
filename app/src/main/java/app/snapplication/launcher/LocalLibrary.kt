@@ -5,9 +5,16 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import java.util.ArrayDeque
 
-/** Reads only user-granted document trees; MainActivity runs scans off the UI thread. */
+/*
+ * Reads only user-granted document trees; MainActivity runs scans off the UI thread.
+ *
+ * Related classes: MainActivity runs scans; LibraryItem carries results; NaturalOrder sorts titles.
+ * UI: No UI; feeds the local folder/content list.
+ * Edit or extend: Add file recognition here only with a reader/player or external-open path. Access stays inside
+ * user-granted document folders.
+ */
 class LocalLibrary(private val context: Context) {
-    /** Enumerates supported content recursively, bounding traversal to avoid pathological trees. */
+    // Enumerates supported content recursively, bounding traversal to avoid pathological trees.
     fun scan(tree: Uri, mode: String): List<LibraryItem> {
         val queue = ArrayDeque<String>()
         val seen = mutableSetOf<String>()
@@ -36,7 +43,7 @@ class LocalLibrary(private val context: Context) {
         return result.sortedWith { a, b -> NaturalOrder.compare(a.title, b.title) }
     }
 
-    /** Classifies files without requesting broad storage access or reading other apps' private files. */
+    // Classifies files without requesting broad storage access or reading other apps' private files.
     private fun accepts(name: String, mime: String, mode: String): Boolean {
         val extension = name.substringAfterLast('.', "").lowercase()
         return if (mode == "Watch") mime.startsWith("video/") || extension in setOf("mp4", "mkv", "webm", "m4v", "mov")

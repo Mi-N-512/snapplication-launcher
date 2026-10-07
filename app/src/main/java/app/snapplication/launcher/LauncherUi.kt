@@ -11,7 +11,14 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** Builds consistent accessible native controls for MainActivity and ReaderPanel using LauncherState colours. */
+/*
+ * Builds consistent accessible native controls for MainActivity and ReaderPanel using LauncherState colours.
+ *
+ * Related classes: MainActivity and the panel classes use LauncherState theme values through this shared factory.
+ * UI: Reusable labels, rows, buttons, focus treatment, borders and transparency surfaces.
+ * Edit or extend: Edit shared spacing, colours and control styling here so screens stay consistent. Future Gaming
+ * screens should reuse these controls.
+ */
 class LauncherUi(private val context: Context, private val state: LauncherState, private val glass: Boolean = false) {
     val background: Int = when (state.theme) {
         "OLED Black" -> Color.BLACK
@@ -28,7 +35,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         "Light", "E-paper" -> Color.WHITE
         else -> if (text == Color.BLACK) 0xfff0f0f0.toInt() else 0xff252525.toInt()
     })
-    /** Provides a translucent reading surface when the shared Transparency setting is active. */
+    // Provides a translucent reading surface when the shared Transparency setting is active.
     private fun glassColour(colour: Int): Int = if (glass)
         (colour and 0x00ffffff) or (if (text == Color.BLACK) 0xcc000000.toInt() else 0xaa000000.toInt()) else colour
 
@@ -40,7 +47,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         else -> text
     }
 
-    /** Layers translucent highlights over the live wallpaper; controls remain sharp above the surface. */
+    // Layers translucent highlights over the live wallpaper; controls remain sharp above the surface.
     fun homeSurface(): android.graphics.drawable.Drawable = if (glass) GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
         if (text == Color.BLACK) intArrayOf(0x70ffffff, 0x40ffffff, 0x60ffffff)
@@ -48,20 +55,20 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
     ).apply { setStroke(dp(1), 0x40ffffff) }
     else android.graphics.drawable.ColorDrawable(surface)
 
-    /** Keeps foreground text readable while revealing wallpaper through labelled controls. */
+    // Keeps foreground text readable while revealing wallpaper through labelled controls.
     fun textSurface(): Int = if (!glass) Color.TRANSPARENT
         else if (text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt()
 
-    /** Converts design dimensions to device-independent pixels. */
+    // Converts design dimensions to device-independent pixels.
     fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 
-    /** Creates a vertical or horizontal container shared across launcher screens. */
+    // Creates a vertical or horizontal container shared across launcher screens.
     fun column(horizontal: Boolean = false): LinearLayout = LinearLayout(context).apply {
         orientation = if (horizontal) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         // The page shell owns its background, allowing Home to reveal the system wallpaper.
     }
 
-    /** Creates readable text with generous line spacing for television and touch use. */
+    // Creates readable text with generous line spacing for television and touch use.
     fun label(value: String, size: Float = 20f): TextView = TextView(context).apply {
         text = value; textSize = size; setTextColor(this@LauncherUi.text)
         if (glass) setBackgroundColor(if (this@LauncherUi.text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt())
@@ -69,7 +76,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         gravity = Gravity.CENTER_VERTICAL
     }
 
-    /** Creates a focusable control with a visible directional-navigation focus ring. */
+    // Creates a focusable control with a visible directional-navigation focus ring.
     fun button(value: String, action: () -> Unit): Button = Button(context).apply {
         text = value; textSize = 17f; isAllCaps = false
         minHeight = dp(48); setTextColor(this@LauncherUi.text)
@@ -89,7 +96,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         setPadding(dp(12), dp(4), dp(12), dp(4))
     }
 
-    /** Creates the wireframe's flat row while preserving remote focus feedback. */
+    // Creates the wireframe's flat row while preserving remote focus feedback.
     fun row(value: String, action: () -> Unit): Button = button(value, action).apply {
         gravity = Gravity.CENTER_VERTICAL or Gravity.START
         textSize = 16f
@@ -98,7 +105,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         minHeight = dp(64)
     }
 
-    /** Preserves flat reference styling through focus changes, with a clear remote outline. */
+    // Preserves flat reference styling through focus changes, with a clear remote outline.
     fun flatFocus(view: View, colour: Int = Color.TRANSPARENT, outline: Boolean = true) {
         view.onFocusChangeListener = null
         view.background = android.graphics.drawable.StateListDrawable().apply {
@@ -116,7 +123,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         }
     }
 
-    /** Builds a two-line settings row with the reference's muted subtitle and right-side action. */
+    // Builds a two-line settings row with the reference's muted subtitle and right-side action.
     fun setting(title: String, subtitle: String, value: String = "›", action: () -> Unit): LinearLayout = column(true).apply {
         gravity = Gravity.CENTER_VERTICAL
         minimumHeight = dp(72)
@@ -134,7 +141,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         setOnClickListener { action() }
     }
 
-    /** Labels a group using the reference's spaced, small uppercase type. */
+    // Labels a group using the reference's spaced, small uppercase type.
     fun section(value: String): TextView = label(value.uppercase(), 11f).apply {
         typeface = android.graphics.Typeface.MONOSPACE
         letterSpacing = 0.12f
@@ -142,7 +149,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         setPadding(dp(16), dp(20), dp(16), dp(8))
     }
 
-    /** Adds equally weighted controls to a toolbar without squeezing vertical touch targets. */
+    // Adds equally weighted controls to a toolbar without squeezing vertical touch targets.
     fun addWeighted(row: LinearLayout, view: View) {
         row.addView(view, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(2), dp(2), dp(2), dp(2)) })
     }

@@ -20,7 +20,15 @@ import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
-/** Presents captured frames or clearly labelled session artwork for MainActivity; uses LauncherState and MediaAccessService without granting permissions. */
+/*
+ * Presents captured frames or clearly labelled session artwork for MainActivity; uses LauncherState and
+ * MediaAccessService without granting permissions.
+ *
+ * Related classes: MainActivity, LauncherState, PreviewCaptureService, MediaAccessService and RemoteActionService.
+ * UI: Centre frame/artwork, fit behaviour and play/previous/next controls for an external app.
+ * Edit or extend: Edit preview presentation and resume routing here. New content modes need their own capture
+ * rules; this class cannot own another app buffer.
+ */
 class ExternalPreview(private val activity: Activity, private val state: LauncherState) {
     private val mode = state.mode
     private val component = synchronized(PreviewCaptureService.cacheLock) { state.lastApp()?.let(ComponentName::unflattenFromString) }
@@ -31,7 +39,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
     private val access = ComponentName(activity, MediaAccessService::class.java)
     private val epoch = synchronized(PreviewCaptureService.cacheLock) { PreviewCaptureService.cacheEpoch }
 
-    /** Builds the saved-frame surface with visible transport icons; tapping the image resumes its app. */
+    // Builds the saved-frame surface with visible transport icons; tapping the image resumes its app.
     fun build(onResumeCapture: () -> Unit, onChoose: () -> Unit): View {
         val panel = FrameLayout(activity)
         val image = ImageView(activity).apply {
@@ -82,7 +90,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         var started = false
         var displayedBitmap: Bitmap? = null
         panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            /** Loads a bounded preview once this newly built Home surface becomes visible. */
+            // Loads a bounded preview once this newly built Home surface becomes visible.
             override fun onViewAttachedToWindow(v: View) {
                 if (started) return
                 started = true
@@ -101,7 +109,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
                     }
                 }
             }
-            /** Stops work belonging to the departed Home screen and releases its image reference. */
+            // Stops work belonging to the departed Home screen and releases its image reference.
             override fun onViewDetachedFromWindow(v: View) {
                 detached = true
                 executor.shutdownNow()
@@ -112,17 +120,17 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         return panel
     }
 
-    /** Finds only the selected app's live session; revoked or absent notification access produces no session. */
+    // Finds only the selected app's live session; revoked or absent notification access produces no session.
     private fun active(): MediaController? = runCatching {
         sessions?.getActiveSessions(access)?.firstOrNull { it.packageName == packageName }
     }.getOrNull()
 
-    /** Old Cloudstream screenshots may contain its catalogue; only the clean-player policy can replace them. */
+    // Old Cloudstream screenshots may contain its catalogue; only the clean-player policy can replace them.
     private fun requiresCleanFrame(): Boolean = mode == "Watch" &&
         (packageName?.startsWith("com.lagradost.cloudstream") == true ||
             packageName in setOf("xyz.Quickdev.Animiru.mi", "com.futo.platformplayer", "com.google.android.youtube"))
 
-    /** Reads only this app's frame; legacy caches remain available until replaced or explicitly cleared. */
+    // Reads only this app's frame; legacy caches remain available until replaced or explicitly cleared.
     private fun savedFrame(): File? {
         val owner = packageName ?: return null
         val current = PreviewCaptureService.frameFile(activity, mode, owner)
@@ -137,7 +145,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
     }
 
-    /** Gives explicit captured frames precedence, then caches bounded app-supplied artwork separately. */
+    // Gives explicit captured frames precedence, then caches bounded app-supplied artwork separately.
     private fun loadImage(): Pair<Bitmap, String>? {
         if (packageName == null) return null
         synchronized(PreviewCaptureService.cacheLock) {
@@ -177,7 +185,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
     }
 
-    /** Limits decoded image dimensions and rejects missing, corrupt or unexpectedly large cache files. */
+    // Limits decoded image dimensions and rejects missing, corrupt or unexpectedly large cache files.
     private fun decode(file: File): Bitmap? {
         if (!file.isFile || file.length() !in 1..16_777_216L) return null
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -189,7 +197,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         return BitmapFactory.decodeFile(file.path, options)
     }
 
-    /** Opens the app first; explicit Watch play requests can then resume its own advertised paused session. */
+    // Opens the app first; explicit Watch play requests can then resume its own advertised paused session.
     private fun openApp(resumePlayback: Boolean = false) {
         if (state.landscapeApps && activity.window.decorView.width > activity.window.decorView.height) {
             packageName?.let { RemoteActionService.instance?.prepareLandscape(it) }
@@ -220,7 +228,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }.onFailure { message("The playback session changed. Press play in the app to continue.") }
     }
 
-    /** Revalidates advertised episode commands before dispatching, then brings the owning app forward. */
+    // Revalidates advertised episode commands before dispatching, then brings the owning app forward.
     private fun skip(action: Long) {
         val controller = active()
         if (controller == null || (controller.playbackState?.actions ?: 0L) and action == 0L) {
@@ -234,6 +242,6 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }.onFailure { message("The playback session ended. Open the app to continue.") }
     }
 
-    /** Reports unavailable app/session actions without exposing media addresses or private metadata. */
+    // Reports unavailable app/session actions without exposing media addresses or private metadata.
     private fun message(value: String) { Toast.makeText(activity, value, Toast.LENGTH_LONG).show() }
 }

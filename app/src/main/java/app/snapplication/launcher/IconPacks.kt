@@ -14,8 +14,15 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.StringReader
 
-/** Resolves optional installed icon packs for MainActivity's favourites and app drawer.
- * Remote resources remain data only; missing or unsupported icons use the supplied native icon. */
+/*
+ * Resolves optional installed icon packs for MainActivity's favourites and app drawer. Remote resources remain data
+ * only; missing or unsupported icons use the supplied native icon.
+ *
+ * Related classes: MainActivity and DrawerPanel request icons; LauncherState retains launcher preferences.
+ * UI: No screen; supplies themed drawables to favourite tiles and app rows.
+ * Edit or extend: Extend supported icon-pack lookup formats and fallbacks here; preserve normal app icons when a
+ * pack has no match.
+ */
 object IconPacks {
     private val themeActions = listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME", "com.gau.go.launcherex.theme")
     private const val MAX_BYTES = 8 * 1024 * 1024
@@ -24,10 +31,13 @@ object IconPacks {
     private val cache = linkedMapOf<String, PackIndex>()
     private val drawableNamePattern = Regex("[a-zA-Z0-9_]{1,160}")
 
-    /** Cached component mapping invalidated by the installed pack's version or package update time. */
+    /*
+     * Cached icon-pack lookup data owned by IconPacks. Version/update fields invalidate stale mappings; icons
+     * maps components to drawable names. No UI. Add cache metadata here when supporting another pack format.
+     */
     private data class PackIndex(val version: Long, val updated: Long, val icons: Map<String, String>)
 
-    /** Lists only installed packs advertising a supported theme intent; never installs or contacts a provider. */
+    // Lists only installed packs advertising a supported theme intent; never installs or contacts a provider.
     fun listInstalled(context: Context): List<Pair<String, String>> {
         val manager = context.packageManager
         val discovered = linkedMapOf<String, String>()
@@ -43,7 +53,7 @@ object IconPacks {
         return discovered.entries.map { it.key to it.value }.sortedBy { it.second.lowercase() }
     }
 
-    /** Names the stored selection so Settings makes fallback versus pack selection visible. */
+    // Names the stored selection so Settings makes fallback versus pack selection visible.
     fun selectedLabel(context: Context): String {
         val selected = context.getSharedPreferences("launcher", Context.MODE_PRIVATE).getString("iconPack", "").orEmpty()
         if (selected.isBlank()) return "System icons"
@@ -51,7 +61,7 @@ object IconPacks {
             .getOrDefault("Selected pack is unavailable")
     }
 
-    /** Returns the selected pack's exact component icon or invokes the original native-icon loader. */
+    // Returns the selected pack's exact component icon or invokes the original native-icon loader.
     @SuppressLint("DiscouragedApi")
     fun load(context: Context, component: ComponentName, fallback: () -> Drawable): Drawable {
         val selected = context.getSharedPreferences("launcher", Context.MODE_PRIVATE).getString("iconPack", "").orEmpty()
@@ -82,7 +92,7 @@ object IconPacks {
         return themed ?: fallback()
     }
 
-    /** Reads a compiled appfilter resource first, or a bounded asset; malformed packs get an empty index. */
+    // Reads a compiled appfilter resource first, or a bounded asset; malformed packs get an empty index.
     @SuppressLint("DiscouragedApi")
     private fun readIndex(resources: Resources, packageName: String): Map<String, String> {
         var compiled: XmlResourceParser? = null
@@ -105,7 +115,7 @@ object IconPacks {
         finally { compiled?.close() }
     }
 
-    /** Bounds both retained mappings and parser work; accepts only exact ComponentInfo identifiers. */
+    // Bounds both retained mappings and parser work; accepts only exact ComponentInfo identifiers.
     private fun parse(parser: XmlPullParser): Map<String, String> {
         val result = linkedMapOf<String, String>()
         var entries = 0
@@ -128,7 +138,7 @@ object IconPacks {
         return result
     }
 
-    /** Rejects oversized assets before allocation can grow beyond the fixed appfilter budget. */
+    // Rejects oversized assets before allocation can grow beyond the fixed appfilter budget.
     private fun readBounded(input: InputStream): ByteArray {
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
