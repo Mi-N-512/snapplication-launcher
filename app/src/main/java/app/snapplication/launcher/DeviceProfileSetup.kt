@@ -5,9 +5,16 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-/** Builds the first, static setup screen for MainActivity; LauncherState owns profile and theme defaults. */
+/*
+ * Builds the first, static setup screen for MainActivity; LauncherState owns profile and theme defaults.
+ *
+ * Related classes: MainActivity, LauncherState and LauncherUi.
+ * UI: Static Reader/Phone/TV choices, theme choices and Continue button.
+ * Edit or extend: Edit first-run descriptions and layout here; change saved profile defaults in LauncherState. A
+ * future Gaming profile needs defaults and a real destination too.
+ */
 class DeviceProfileSetup(private val activity: Activity, private val state: LauncherState) {
-    /** Lets users choose a device and see its theme before any permission or media setup pages. */
+    // Lets users choose a device and see its theme before any permission or media setup pages.
     fun build(onChanged: () -> Unit, onContinue: () -> Unit): View {
         // Setup is deliberately opaque and never animates, including on an unrecognised e-reader.
         val ui = LauncherUi(activity, state, false)

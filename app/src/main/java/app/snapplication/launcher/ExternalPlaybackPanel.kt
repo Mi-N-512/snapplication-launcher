@@ -10,13 +10,20 @@ import android.media.session.PlaybackState
 import android.provider.Settings
 import android.widget.LinearLayout
 
-/** Builds optional controls for other apps' active media sessions; hosted by MainActivity using MediaAccessService access. */
+/*
+ * Builds optional controls for other apps' active media sessions; hosted by MainActivity using MediaAccessService
+ * access.
+ *
+ * Related classes: MainActivity, MediaAccessService and LauncherUi.
+ * UI: Media access explanation, refresh button, session titles and supported transport controls.
+ * Edit or extend: Add controls only when the other app advertises the corresponding media-session action.
+ */
 class ExternalPlaybackPanel(private val activity: Activity, private val ui: LauncherUi) {
     val view: LinearLayout = ui.column()
     private val sessions = activity.getSystemService(MediaSessionManager::class.java)
     private val listener = ComponentName(activity, MediaAccessService::class.java)
 
-    /** Refreshes the visible session snapshot; missing access is a recoverable opt-in state. */
+    // Refreshes the visible session snapshot; missing access is a recoverable opt-in state.
     fun refresh() {
         view.removeAllViews()
         view.addView(ui.label("Other app playback", 22f))
@@ -33,7 +40,7 @@ class ExternalPlaybackPanel(private val activity: Activity, private val ui: Laun
         }
     }
 
-    /** Explains Android's broad permission before opening its opt-in settings; never grants access automatically. */
+    // Explains Android's broad permission before opening its opt-in settings; never grants access automatically.
     fun explainAccess() {
         AlertDialog.Builder(activity).setTitle("Optional media access")
             .setMessage("Android requires notification access to list other apps' media sessions. This is a broad system permission. Snapplication uses media-session information for these controls; it does not read, save or send notification messages. You can turn access off in the same Android settings screen.")
@@ -43,7 +50,7 @@ class ExternalPlaybackPanel(private val activity: Activity, private val ui: Laun
             }.show()
     }
 
-    /** Shows only commands advertised by a session, with the app name and current media title. */
+    // Shows only commands advertised by a session, with the app name and current media title.
     private fun addSession(controller: MediaController) {
         val name = runCatching {
             activity.packageManager.getApplicationLabel(activity.packageManager.getApplicationInfo(controller.packageName, 0)).toString()
@@ -72,7 +79,7 @@ class ExternalPlaybackPanel(private val activity: Activity, private val ui: Laun
         }
     }
 
-    /** Revalidates both access and the requested command before sending a user-initiated transport request. */
+    // Revalidates both access and the requested command before sending a user-initiated transport request.
     private fun addControl(controller: MediaController, actions: Long, flag: Long, title: String,
                            request: (MediaController) -> Unit) {
         if (actions and flag == 0L) return
@@ -87,7 +94,7 @@ class ExternalPlaybackPanel(private val activity: Activity, private val ui: Laun
         })
     }
 
-    /** Reports unavailable controls without exposing session tokens or private media addresses. */
+    // Reports unavailable controls without exposing session tokens or private media addresses.
     private fun message(text: String) {
         if (!activity.isFinishing) AlertDialog.Builder(activity).setMessage(text).setPositiveButton("OK", null).show()
     }

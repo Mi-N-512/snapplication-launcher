@@ -27,9 +27,16 @@ import android.widget.Toast
 import android.widget.ScrollView
 import java.text.Collator
 
-/** Owns MainActivity's alphabetical app drawer, remote navigation and in-place favourite editing.
- * LauncherState stores Home choices; LauncherUi supplies styling; IconPacks supplies optional icons.
- * Navigation callbacks keep activity lifecycle and launching responsibilities in MainActivity. */
+/*
+ * Owns MainActivity's alphabetical app drawer, remote navigation and in-place favourite editing. LauncherState
+ * stores Home choices; LauncherUi supplies styling; IconPacks supplies optional icons. Navigation callbacks keep
+ * activity lifecycle and launching responsibilities in MainActivity.
+ *
+ * Related classes: MainActivity, LauncherState, LauncherUi and IconPacks.
+ * UI: Search, alphabetical rail, app rows, favourites editing and the live ordering preview.
+ * Edit or extend: Change app browsing, focus navigation and favourite editing here. A future games filter can reuse
+ * installed-app entries without changing the reader/player.
+ */
 class DrawerPanel(
     private val activity: Activity,
     private val state: LauncherState,
@@ -38,7 +45,11 @@ class DrawerPanel(
     private val onSettings: () -> Unit,
     private val onHome: () -> Unit
 ) {
-    /** A discovered launchable component and its cached label, shared by filtering and row binding. */
+    /*
+     * One installed app entry owned by DrawerPanel. ComponentName identifies the launch target; label and
+     * ResolveInfo supply each app row. No independent UI. Add app-list metadata here only when drawer sorting,
+     * filtering or display needs it.
+     */
     private data class Entry(val component: ComponentName, val label: String, val info: ResolveInfo)
 
     val view: LinearLayout = ui.column(true)
@@ -84,7 +95,7 @@ class DrawerPanel(
         list.requestFocus()
     }
 
-    /** Queries phone and TV launchers once, excludes this app and sorts labels using the user's locale. */
+    // Queries phone and TV launchers once, excludes this app and sorts labels using the user's locale.
     private fun discoverApps(): List<Entry> {
         val manager = activity.packageManager
         val found = listOf(Intent.CATEGORY_LAUNCHER, Intent.CATEGORY_LEANBACK_LAUNCHER).flatMap { category ->
@@ -100,7 +111,7 @@ class DrawerPanel(
             }
     }
 
-    /** Filters labels and lets a remote's Down key leave text editing for the first matching app. */
+    // Filters labels and lets a remote's Down key leave text editing for the first matching app.
     private fun configureSearch() {
         search.apply {
             hint = "Search apps"
@@ -121,7 +132,7 @@ class DrawerPanel(
                 if (action == EditorInfo.IME_ACTION_DONE) { focusFirstResult(); true } else false
             }
             addTextChangedListener(object : TextWatcher {
-                /** Updates result data only for a changed search, never for favourite toggles. */
+                // Updates result data only for a changed search, never for favourite toggles.
                 override fun afterTextChanged(text: Editable?) {
                     val query = text?.toString().orEmpty().trim()
                     visibleEntries = entries.filter { it.label.contains(query, ignoreCase = true) }
@@ -130,15 +141,15 @@ class DrawerPanel(
                     list.setSelection(0)
                     updateHint()
                 }
-                /** No state is needed before text replacement. */
+                // No state is needed before text replacement.
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                /** Filtering runs once after each completed text change. */
+                // Filtering runs once after each completed text change.
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             })
         }
     }
 
-    /** Uses ListView's native Up/Down selection and scrolling, with one selectable target per app. */
+    // Uses ListView's native Up/Down selection and scrolling, with one selectable target per app.
     private fun configureList() {
         list.apply {
             adapter = this@DrawerPanel.adapter
@@ -149,19 +160,19 @@ class DrawerPanel(
             setSelector(GradientDrawable().apply { setColor(android.graphics.Color.TRANSPARENT); setStroke(ui.dp(2), ui.accent) })
             setDrawSelectorOnTop(true)
             setOnScrollListener(object : android.widget.AbsListView.OnScrollListener {
-                /** Keeps the index aligned with touch scrolling without fighting an active index gesture. */
+                // Keeps the index aligned with touch scrolling without fighting an active index gesture.
                 override fun onScroll(v: android.widget.AbsListView?, first: Int, visible: Int, total: Int) {
                     if (!alphabetRail.hasFocus()) visibleEntries.getOrNull(first)?.let { alphabetRail.follow(it.label) }
                 }
-                /** No work is needed when scrolling starts or stops. */
+                // No work is needed when scrolling starts or stops.
                 override fun onScrollStateChanged(v: android.widget.AbsListView?, state: Int) {}
             })
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                /** Tracks remote-selected rows as well as the first visible touch-scrolled row. */
+                // Tracks remote-selected rows as well as the first visible touch-scrolled row.
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: View?, position: Int, id: Long) {
                     if (!alphabetRail.hasFocus()) visibleEntries.getOrNull(position)?.let { alphabetRail.follow(it.label) }
                 }
-                /** An empty selection leaves the last visible index marker intact. */
+                // An empty selection leaves the last visible index marker intact.
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
             }
             setOnItemClickListener { _, _, position, _ ->
@@ -184,7 +195,7 @@ class DrawerPanel(
         }
     }
 
-    /** Hides the keyboard and moves remote selection into the matching list, or to Edit if empty. */
+    // Hides the keyboard and moves remote selection into the matching list, or to Edit if empty.
     private fun focusFirstResult() {
         (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
             .hideSoftInputFromWindow(search.windowToken, 0)
@@ -192,8 +203,8 @@ class DrawerPanel(
         else { list.requestFocus(); list.setSelection(0) }
     }
 
-    /** Switches Select between launching and Home membership without rebuilding rows or losing scroll. */
-    /** Opens Settings' favourites entry in the same selection and drag-reorder mode. */
+    // Switches Select between launching and Home membership without rebuilding rows or losing scroll.
+    // Opens Settings' favourites entry in the same selection and drag-reorder mode.
     fun beginFavouriteEditing() { if (!editing) toggleEditing() }
 
     private fun toggleEditing() {
@@ -204,7 +215,7 @@ class DrawerPanel(
         refreshPreview()
     }
 
-    /** Explains the active Select action, including the empty-search state. */
+    // Explains the active Select action, including the empty-search state.
     private fun updateHint() {
         hint.text = when {
             visibleEntries.isEmpty() -> "No matching apps"
@@ -213,7 +224,7 @@ class DrawerPanel(
         }
     }
 
-    /** Changes one Home entry while keeping query, scroll offset and remote selection intact. */
+    // Changes one Home entry while keeping query, scroll offset and remote selection intact.
     private fun toggleFavourite(entry: Entry) {
         state.toggleFavourite(entry.component.flattenToString())
         refreshVisibleRows()
@@ -222,7 +233,7 @@ class DrawerPanel(
         Toast.makeText(activity, "${entry.label} ${if (added) "added to" else "removed from"} Home", Toast.LENGTH_SHORT).show()
     }
 
-    /** Refreshes existing text only; off-screen rows receive current state when ListView recycles them. */
+    // Refreshes existing text only; off-screen rows receive current state when ListView recycles them.
     private fun refreshVisibleRows() {
         for (index in 0 until list.childCount) {
             val entry = visibleEntries.getOrNull(list.firstVisiblePosition + index) ?: continue
@@ -230,7 +241,7 @@ class DrawerPanel(
         }
     }
 
-    /** Opens Android app information directly when an app row is held. */
+    // Opens Android app information directly when an app row is held.
     private fun openAppInfo(entry: Entry) {
         try {
             activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -240,10 +251,14 @@ class DrawerPanel(
         }
     }
 
-    /** Keeps every alphabet group visible; touch scrubs the rail and remote arrows skip empty groups. */
+    // Keeps every alphabet group visible; touch scrubs the rail and remote arrows skip empty groups.
     private fun createAlphabetRail(): View = AlphabetRail().also { alphabetRail = it }
 
-    /** Draws the complete compact index without shrinking the app list's touch targets. */
+    /*
+     * DrawerPanel's touch and remote alphabet selector. Draws the side index and moves focus to matching app
+     * rows. Edit letter grouping, hit targets and directional navigation here; keep selection in sync with the
+     * drawer list.
+     */
     private inner class AlphabetRail : View(activity) {
         private val letters = alphabet
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
@@ -257,21 +272,21 @@ class DrawerPanel(
                 invalidate()
             }
         }
-        /** Tests the currently filtered app names so keyboard navigation avoids dead ends. */
+        // Tests the currently filtered app names so keyboard navigation avoids dead ends.
         private fun hasApps(index: Int): Boolean = sectionStarts.containsKey(letters[index])
-        /** Follows ordinary list movement while leaving an actively scrubbed index in control. */
+        // Follows ordinary list movement while leaving an actively scrubbed index in control.
         fun follow(label: String) {
             val next = letters.indexOf(sectionFor(label)).coerceAtLeast(0)
             if (next != selected) { selected = next; invalidate() }
         }
-        /** Displays an easily read letter and count outside the compact rail. */
+        // Displays an easily read letter and count outside the compact rail.
         private fun showSection() {
             val letter = letters[selected]
             val count = sectionCounts[letter] ?: 0
             hint.text = "$letter  ·  $count ${if (count == 1) "app" else "apps"}  ·  Left or Select returns to apps"
             contentDescription = "App alphabet, $letter, $count apps. Up and Down choose; Left or Select opens the list."
         }
-        /** Centers every group within its own band, with a strong focus marker on the chosen letter. */
+        // Centers every group within its own band, with a strong focus marker on the chosen letter.
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             val band = height.toFloat() / letters.size
@@ -289,7 +304,7 @@ class DrawerPanel(
                 canvas.drawText(letter, width / 2f, (index + .5f) * band - (paint.ascent() + paint.descent()) / 2f, paint)
             }
         }
-        /** Scrubs directly to a letter without opening a modal picker or stealing list scrolling. */
+        // Scrubs directly to a letter without opening a modal picker or stealing list scrolling.
         override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> { parent.requestDisallowInterceptTouchEvent(true); requestFocus() }
@@ -306,7 +321,7 @@ class DrawerPanel(
             }
             return true
         }
-        /** Exposes the same jump to accessibility services and remote Select. */
+        // Exposes the same jump to accessibility services and remote Select.
         override fun performClick(): Boolean {
             super.performClick()
             sectionStarts[letters[selected]]?.let { position ->
@@ -314,7 +329,7 @@ class DrawerPanel(
             }
             return true
         }
-        /** Provides deterministic Up/Down movement and a direct route back to the app list. */
+        // Provides deterministic Up/Down movement and a direct route back to the app list.
         override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) { list.requestFocus(); return true }
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -330,14 +345,14 @@ class DrawerPanel(
         }
     }
 
-    /** Groups accents under their base letter; digits and other scripts have predictable dedicated groups. */
+    // Groups accents under their base letter; digits and other scripts have predictable dedicated groups.
     private fun sectionFor(label: String): String {
         val first = java.text.Normalizer.normalize(label.trim(), java.text.Normalizer.Form.NFD)
             .firstOrNull()?.uppercaseChar() ?: return "#"
         return when { first.isDigit() -> "0-9"; first in 'A'..'Z' -> first.toString(); else -> "#" }
     }
 
-    /** Indexes filtered data once, avoiding repeated app scans during every index draw and pointer move. */
+    // Indexes filtered data once, avoiding repeated app scans during every index draw and pointer move.
     private fun rebuildSections() {
         sectionStarts.clear(); sectionCounts.clear()
         visibleEntries.forEachIndexed { index, entry ->
@@ -351,12 +366,12 @@ class DrawerPanel(
         }
     }
 
-    /** Uses the cached first row for a group, keeping search and favourites mode intact. */
+    // Uses the cached first row for a group, keeping search and favourites mode intact.
     private fun jumpToLetter(letter: String) {
         sectionStarts[letter]?.let { list.setSelectionFromTop(it, 0) }
     }
 
-    /** Rebuilds the actual Home proportions and slot rules in miniature after each membership change. */
+    // Rebuilds the actual Home proportions and slot rules in miniature after each membership change.
     private fun refreshPreview() {
         preview.visibility = if (editing) View.VISIBLE else View.GONE
         if (!editing) return
@@ -397,7 +412,7 @@ class DrawerPanel(
         if (focused != null) preview.findViewWithTag<View>(focused)?.requestFocus()
     }
 
-    /** Mirrors MainActivity's grid, side-column and asymmetric final-row calculations exactly. */
+    // Mirrors MainActivity's grid, side-column and asymmetric final-row calculations exactly.
     private fun previewSlots(items: List<Entry>, portrait: Boolean, slotCount: Int, shown: List<Entry>): View {
         val column = ui.column()
         val columns = if (portrait && (state.grid || state.dynamicBlocks)) minOf(4, (slotCount + 1) / 2).coerceAtLeast(1)
@@ -412,7 +427,7 @@ class DrawerPanel(
         return column
     }
 
-    /** Creates a compact actual-slot drag target; Select retains accessible remote reorder controls. */
+    // Creates a compact actual-slot drag target; Select retains accessible remote reorder controls.
     private fun previewTile(entry: Entry?, shown: List<Entry>): View {
         val flat = entry?.component?.flattenToString()
         return ui.button(if (entry == null) "+" else "") {
@@ -451,7 +466,7 @@ class DrawerPanel(
         }
     }
 
-    /** Moves a dragged item to the target's stored position without losing hidden favourites. */
+    // Moves a dragged item to the target's stored position without losing hidden favourites.
     private fun moveTo(moving: String, target: String) {
         val order = state.favourites()
         val from = order.indexOf(moving)
@@ -461,7 +476,7 @@ class DrawerPanel(
         refreshPreview()
     }
 
-    /** Provides the same ordering control to remote users who cannot drag. */
+    // Provides the same ordering control to remote users who cannot drag.
     private fun chooseMove(entry: Entry) {
         val order = state.favourites()
         val flat = entry.component.flattenToString()
@@ -476,7 +491,7 @@ class DrawerPanel(
             }.setNegativeButton("Cancel", null).show()
     }
 
-    /** Sets membership markers and a complete spoken label without creating another focus target. */
+    // Sets membership markers and a complete spoken label without creating another focus target.
     private fun bindText(row: TextView, entry: Entry) {
         val added = entry.component.flattenToString() in state.favourites()
         row.text = if (editing) "${if (added) "✓" else "＋"}  ${entry.label}" else entry.label
@@ -484,15 +499,19 @@ class DrawerPanel(
             else "${entry.label}, open app"
     }
 
-    /** Recycles native list rows; each row carries its icon, name and optional membership marker. */
+    /*
+     * Connects DrawerPanel's installed entries to visible app rows and IconPacks artwork. Edit row binding, app
+     * labels and favourite state presentation here; keep launch and long-press behaviour consistent with the
+     * outer panel.
+     */
     private inner class AppAdapter : BaseAdapter() {
-        /** Supplies the filtered result count to ListView. */
+        // Supplies the filtered result count to ListView.
         override fun getCount(): Int = visibleEntries.size
-        /** Returns the launchable entry at the current filtered position. */
+        // Returns the launchable entry at the current filtered position.
         override fun getItem(position: Int): Any = visibleEntries[position]
-        /** Identifies a row position without claiming stability across search changes. */
+        // Identifies a row position without claiming stability across search changes.
         override fun getItemId(position: Int): Long = position.toLong()
-        /** Binds a non-focusable text row so ListView alone handles remote selection and scrolling. */
+        // Binds a non-focusable text row so ListView alone handles remote selection and scrolling.
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val row = convertView as? TextView ?: ui.label("", 18f).apply {
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START

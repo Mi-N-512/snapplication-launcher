@@ -13,7 +13,15 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.zip.ZipFile
 
-/** Renders local PDFs, CBZ comics and images inside MainActivity; LauncherState stores the current page. */
+/*
+ * Renders local PDFs, CBZ comics and images inside MainActivity; LauncherState stores the current page.
+ *
+ * Related classes: MainActivity supplies LibraryItem content; LauncherState stores progress; LauncherUi styles
+ * controls.
+ * UI: Embedded PDF, CBZ and image pages with navigation and fit behaviour.
+ * Edit or extend: Add supported local rendering formats here. EPUB currently opens an external reader; it is not
+ * rendered by this panel.
+ */
 class ReaderPanel(private val context: Context, private val state: LauncherState, private val ui: LauncherUi) {
     val view = ui.column()
     private val image = ImageView(context)
@@ -39,7 +47,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         if (state.readInLauncher && state.showReaderControls) view.addView(controls)
     }
 
-    /** Resizes the already-decoded page without copying the source or losing reading position. */
+    // Resizes the already-decoded page without copying the source or losing reading position.
     fun applyContentScale() {
         image.scaleType = when (state.contentScale) {
             "Fill" -> ImageView.ScaleType.CENTER_CROP
@@ -48,21 +56,21 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         }
     }
 
-    /** Loads a selected document at its saved page and cancels stale display results. */
+    // Loads a selected document at its saved page and cancels stale display results.
     fun load(selection: LibraryItem) {
         ready = false
         item = selection; page = state.progress(selection.uri).toInt().coerceAtLeast(0)
         state.remember(selection); render()
     }
 
-    /** Moves within document bounds; every confirmed page change persists immediately. */
+    // Moves within document bounds; every confirmed page change persists immediately.
     fun move(delta: Int) {
         if (!ready) return
         page = (page + delta).coerceIn(0, (count - 1).coerceAtLeast(0))
         item?.let { state.saveProgress(it.uri, page.toLong()) }; render()
     }
 
-    /** Decodes off the UI thread and only publishes results belonging to the current selection. */
+    // Decodes off the UI thread and only publishes results belonging to the current selection.
     private fun render() {
         val selection = item ?: return
         val request = ++generation
@@ -87,7 +95,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         }
     }
 
-    /** Uses bounded temporary copies for seekable PDF/ZIP access and releases every descriptor. */
+    // Uses bounded temporary copies for seekable PDF/ZIP access and releases every descriptor.
     private fun decode(selection: LibraryItem, requestedPage: Int): Pair<Bitmap, Int> {
         val uri = Uri.parse(selection.uri)
         val extension = selection.title.substringAfterLast('.', "").lowercase()
@@ -138,7 +146,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         }
     }
 
-    /** Caps decompressed input size before allocating an image to avoid archive expansion exhaustion. */
+    // Caps decompressed input size before allocating an image to avoid archive expansion exhaustion.
     private fun java.io.InputStream.readBytesBounded(limit: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
         while (true) {
@@ -148,7 +156,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         return out.toByteArray()
     }
 
-    /** Samples large images before decoding so comic pages cannot allocate unbounded bitmaps. */
+    // Samples large images before decoding so comic pages cannot allocate unbounded bitmaps.
     private fun decodeImage(data: ByteArray): Bitmap {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, options)
@@ -159,7 +167,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         return requireNotNull(BitmapFactory.decodeByteArray(data, 0, data.size, options))
     }
 
-    /** Prevents background decoding from updating a detached screen and frees the displayed bitmap. */
+    // Prevents background decoding from updating a detached screen and frees the displayed bitmap.
     fun close() {
         closed = true; generation++
         worker.execute { cachedFile?.delete(); cachedFile = null }

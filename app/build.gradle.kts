@@ -22,6 +22,8 @@ android {
     flavorDimensions += "edition"
     productFlavors {
         create("universal") {
+            // The shared manifest opens as Universal by default; Reader and TV remain separate editions.
+            isDefault = true
             dimension = "edition"
             resValue("string", "app_name", "Snapplication")
             resValue("string", "remote_support_name", "Snapplication remote and preview support")

@@ -11,7 +11,13 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 
-/** Previews custom theme colours for MainActivity and commits them to LauncherState only on Save. */
+/*
+ * Previews custom theme colours for MainActivity and commits them to LauncherState only on Save.
+ *
+ * Related classes: MainActivity, LauncherState and LauncherUi.
+ * UI: Background/accent radio buttons, colour sliders, sample panel and Save/Cancel dialog.
+ * Edit or extend: Edit colour controls or add theme roles here; persist new roles in LauncherState.
+ */
 class ColourPicker(private val activity: Activity, private val state: LauncherState, private val ui: LauncherUi) {
     private val colours = intArrayOf(state.background, state.accent)
     private var selected = 0
@@ -22,7 +28,7 @@ class ColourPicker(private val activity: Activity, private val state: LauncherSt
     private val preview = ui.label("Theme preview", 22f)
     private val code = ui.label("", 17f)
 
-    /** Builds hue, saturation and brightness controls usable by touch, mouse and directional keys. */
+    // Builds hue, saturation and brightness controls usable by touch, mouse and directional keys.
     fun show(onSaved: () -> Unit) {
         val content = ui.column().apply { setBackgroundColor(ui.background) }
         val roles = RadioGroup(activity).apply { orientation = LinearLayout.HORIZONTAL }
@@ -44,16 +50,16 @@ class ColourPicker(private val activity: Activity, private val state: LauncherSt
                 contentDescription = name
                 minimumHeight = ui.dp(48)
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    /** Updates the staged colour and preview without writing preferences while dragging. */
+                    // Updates the staged colour and preview without writing preferences while dragging.
                     override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
                         if (updating || !fromUser) return
                         hsv[index] = if (index == 0) value.toFloat() else value / 100f
                         colours[selected] = Color.HSVToColor(hsv)
                         refreshPreview()
                     }
-                    /** No transaction starts until the dialog's Save action. */
+                    // No transaction starts until the dialog's Save action.
                     override fun onStartTrackingTouch(bar: SeekBar) {}
-                    /** Retains the preview when the user releases the slider. */
+                    // Retains the preview when the user releases the slider.
                     override fun onStopTrackingTouch(bar: SeekBar) {}
                 })
             }
@@ -72,7 +78,7 @@ class ColourPicker(private val activity: Activity, private val state: LauncherSt
             }.show()
     }
 
-    /** Restores the selected colour into the sliders without generating artificial edits. */
+    // Restores the selected colour into the sliders without generating artificial edits.
     private fun loadColour() {
         updating = true
         Color.colorToHSV(colours[selected], hsv)
@@ -83,7 +89,7 @@ class ColourPicker(private val activity: Activity, private val state: LauncherSt
         refreshPreview()
     }
 
-    /** Renders a theme sample plus colour gradients and numeric values for precise adjustment. */
+    // Renders a theme sample plus colour gradients and numeric values for precise adjustment.
     private fun refreshPreview() {
         preview.setTextColor(if (Color.luminance(colours[0]) > 0.45) Color.BLACK else Color.WHITE)
         preview.background = GradientDrawable().apply {

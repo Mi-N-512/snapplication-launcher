@@ -4,10 +4,38 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Describes a playable or readable item shared by LocalLibrary, MainActivity and LauncherState. */
+/*
+ * Immutable description of a selected local or linked item: its URI, display title, MIME
+ * type and Read/Watch mode. The object identifies content; it does not load or play it.
+ * Related classes: LocalLibrary discovers items; MainActivity selects/routes them;
+ * LauncherState serializes recent items and Watch queues; WatchPlayer and ReaderPanel
+ * consume supported items. UI controls: none; title/mode inform the host's visible UI.
+ * Add metadata here only when its callers need it, and update LocalLibrary construction
+ * plus LauncherState serialization/restoration together so older saved items still load.
+ * Planned, not implemented: a future Gaming mode may require a distinct game descriptor
+ * with launch identity and its own progress semantics rather than treating games as videos
+ * or books. Coordinate that model with MainActivity and LauncherState before extending this.
+ */
 data class LibraryItem(val uri: String, val title: String, val mime: String, val mode: String)
 
-/** Persists launcher preferences and per-item progress for MainActivity, WatchPlayer and ReaderPanel. */
+/*
+ * Persists launcher configuration, per-mode source selection, recent content, local watch
+ * queues, ordered favourite components and per-URI progress in the launcher preferences.
+ * Related classes: MainActivity and DrawerPanel edit settings/favourites; DeviceProfileSetup
+ * applies device defaults; LauncherUi reads appearance; WatchPlayer and ReaderPanel save
+ * progress; ExternalPreview reads the selected external app and preview sizing.
+ * UI controls: none are created here. This is the stored state behind mode/theme choices,
+ * profile presets, favourite limits, preview options, orientation and playback settings.
+ * Add a persistent setting beside the relevant property with an explicit default and setter.
+ * Keep existing preference keys compatible; change applyDeviceProfile() for initial device
+ * presets and initializeReaderProfile() only for the documented older-reader migration.
+ * Modify remember()/last() for item serialization, saveProgress()/progress() for positions,
+ * and favourites()/toggleFavourite()/moveFavourite() for ordered favourite persistence.
+ * Planned, not implemented: Gaming mode would need its own recent game/source state and
+ * documented progress model, coordinated with MainActivity's mode picker and game UI.
+ * Existing mode-scoped keys can separate future state, but do not themselves implement
+ * gaming, save-state capture, or suspension. Watch queues remain explicitly video-only.
+ */
 class LauncherState(context: Context) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
     // Start recognised e-paper hardware in a legible reader layout even with the universal APK.
@@ -21,12 +49,12 @@ class LauncherState(context: Context) {
         get() = prefs.getBoolean("profileSetupComplete", false)
         set(value) { prefs.edit().putBoolean("profileSetupComplete", value).apply() }
 
-    /** Repairs older universal reader installs once, without resetting later theme choices. */
+    // Repairs older universal reader installs once, without resetting later theme choices.
     fun initializeReaderProfile() {
         if (readerDevice && !prefs.contains("deviceProfile")) applyDeviceProfile("Reader")
     }
 
-    /** Applies the chosen device's initial defaults; later settings remain individually editable. */
+    // Applies the chosen device's initial defaults; later settings remain individually editable.
     fun applyDeviceProfile(profile: String) {
         require(profile in listOf("Phone", "TV", "Reader"))
         deviceProfile = profile
@@ -79,10 +107,10 @@ class LauncherState(context: Context) {
         get() = prefs.getString("contentScale:$mode", if (viewerSource == "App") "Fill" else "Fit")!!
         set(value) { require(value in listOf("Fit", "Fill", "Stretch")); prefs.edit().putString("contentScale:$mode", value).apply() }
 
-    /** Saves the external task entry per mode for MainActivity's Continue app panel. */
+    // Saves the external task entry per mode for MainActivity's Continue app panel.
     fun rememberApp(component: String) { prefs.edit().putString("lastApp:$mode", component).apply() }
 
-    /** Returns the last app launched through this launcher in the current mode. */
+    // Returns the last app launched through this launcher in the current mode.
     fun lastApp(): String? = prefs.getString("lastApp:$mode", null)
 
     var useWallpaper: Boolean
@@ -106,7 +134,7 @@ class LauncherState(context: Context) {
     var tutorialSeen: Boolean
         get() = prefs.getBoolean("tutorialSeen", false)
         set(value) { prefs.edit().putBoolean("tutorialSeen", value).apply() }
-    /** Keeps apps launched from landscape Home wide, through the enabled accessibility bridge. */
+    // Keeps apps launched from landscape Home wide, through the enabled accessibility bridge.
     var landscapeApps: Boolean
         get() = prefs.getBoolean("landscapeApps", !readerDevice && theme != "E-paper")
         set(value) { prefs.edit().putBoolean("landscapeApps", value).apply() }
@@ -130,28 +158,28 @@ class LauncherState(context: Context) {
         get() = prefs.getInt("completion", 95)
         set(value) { prefs.edit().putInt("completion", value.coerceIn(0, 100)).apply() }
 
-    /** Saves durable progress for one URI; synchronous writes are used at lifecycle boundaries. */
+    // Saves durable progress for one URI; synchronous writes are used at lifecycle boundaries.
     fun saveProgress(uri: String, position: Long) {
         prefs.edit().putLong("progress:$uri", position.coerceAtLeast(0)).commit()
     }
 
-    /** Returns saved milliseconds for video or page index for a document. */
+    // Returns saved milliseconds for video or page index for a document.
     fun progress(uri: String): Long = prefs.getLong("progress:$uri", 0)
 
-    /** Records the last item independently for each mode without overwriting the other mode. */
+    // Records the last item independently for each mode without overwriting the other mode.
     fun remember(item: LibraryItem) {
         val json = JSONObject().put("uri", item.uri).put("title", item.title)
             .put("mime", item.mime).put("mode", item.mode)
         prefs.edit().putString("last:${item.mode}", json.toString()).apply()
     }
 
-    /** Restores the most recent selection; malformed stored data becomes an empty state. */
+    // Restores the most recent selection; malformed stored data becomes an empty state.
     fun last(mode: String): LibraryItem? = runCatching {
         val json = JSONObject(prefs.getString("last:$mode", null) ?: return null)
         LibraryItem(json.getString("uri"), json.getString("title"), json.getString("mime"), mode)
     }.getOrNull()
 
-    /** Stores the ordered local video queue used by WatchPlayer's previous/next controls. */
+    // Stores the ordered local video queue used by WatchPlayer's previous/next controls.
     fun setWatchQueue(items: List<LibraryItem>) {
         val array = JSONArray()
         items.filter { it.mode == "Watch" }.forEach { item ->
@@ -160,7 +188,7 @@ class LauncherState(context: Context) {
         prefs.edit().putString("watchQueue", array.toString()).apply()
     }
 
-    /** Restores the local queue after process death; invalid entries cannot crash the launcher. */
+    // Restores the local queue after process death; invalid entries cannot crash the launcher.
     fun watchQueue(): List<LibraryItem> = runCatching {
         val array = JSONArray(prefs.getString("watchQueue", "[]"))
         List(array.length()) { index ->
@@ -169,26 +197,26 @@ class LauncherState(context: Context) {
         }
     }.getOrDefault(emptyList())
 
-    /** Returns the folder permission URI saved for the current library mode. */
+    // Returns the folder permission URI saved for the current library mode.
     fun folder(mode: String): String? = prefs.getString("folder:$mode", null)
 
-    /** Remembers a user-approved folder for reopening after a process restart. */
+    // Remembers a user-approved folder for reopening after a process restart.
     fun setFolder(mode: String, uri: String) { prefs.edit().putString("folder:$mode", uri).apply() }
 
-    /** Reads ordered favourite component names for the home screen. */
+    // Reads ordered favourite component names for the home screen.
     fun favourites(): List<String> = runCatching {
         val array = JSONArray(prefs.getString("favourites", "[]"))
         List(array.length()) { array.getString(it) }
     }.getOrDefault(emptyList())
 
-    /** Toggles a favourite; new shortcuts go first so they remain visible even when Home is full. */
+    // Toggles a favourite; new shortcuts go first so they remain visible even when Home is full.
     fun toggleFavourite(component: String) {
         val items = favourites().toMutableList()
         if (!items.remove(component)) items.add(0, component)
         prefs.edit().putString("favourites", JSONArray(items).toString()).apply()
     }
 
-    /** Moves an existing shortcut one place without deleting favourites hidden by the display limit. */
+    // Moves an existing shortcut one place without deleting favourites hidden by the display limit.
     fun moveFavourite(component: String, offset: Int) {
         val items = favourites().toMutableList()
         val from = items.indexOf(component)

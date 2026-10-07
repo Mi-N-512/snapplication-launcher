@@ -1,8 +1,15 @@
 package app.snapplication.launcher
 
-/** Compares numeric filename chunks for ReaderPanel and LocalLibrary without integer overflow. */
+/*
+ * Compares numeric filename chunks for ReaderPanel and LocalLibrary without integer overflow.
+ *
+ * Related classes: LocalLibrary and ReaderPanel use the comparator; NaturalOrderTest covers numeric filenames.
+ * UI: No UI; controls the order of file and page names.
+ * Edit or extend: Edit numeric/text comparison rules here and add boundary tests so large chapter numbers remain
+ * correctly ordered.
+ */
 object NaturalOrder : Comparator<String> {
-    /** Sorts chapter2 before chapter10 while using text comparison for nonnumeric chunks. */
+    // Sorts chapter2 before chapter10 while using text comparison for nonnumeric chunks.
     override fun compare(a: String, b: String): Int {
         val chunks = Regex("[0-9]+|[^0-9]+")
         val left = chunks.findAll(a).map { it.value }.toList()

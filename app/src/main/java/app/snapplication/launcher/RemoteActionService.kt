@@ -22,22 +22,30 @@ import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Opt-in remote accessibility bridge used by MainActivity and RemoteControls. Records explicit, local,
- * bounded cross-app macros; never records typing, injects raw keys, or grants its own permissions. */
+/*
+ * Opt-in remote accessibility bridge used by MainActivity and RemoteControls. Records explicit, local, bounded
+ * cross-app macros; never records typing, injects raw keys, or grants its own permissions.
+ *
+ * Related classes: MainActivity, RemoteControls, RemoteMappingPanel, TouchMacroRecorder, LandscapeLaunch and
+ * PreviewCaptureService.
+ * UI: Small recording/replay stop overlays and confirmation dialogs; remote setup lives in RemoteMappingPanel.
+ * Edit or extend: Edit delivered-key actions, macro orchestration and foreground eligibility here. Keep
+ * credential/permission exclusions and never grant this service its own access.
+ */
 class RemoteActionService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val controls by lazy { RemoteControls(this) }
     private val landscapeLaunch by lazy { LandscapeLaunch(this) }
 
-    /** Receives an explicit app launch from landscape Home or its centre preview. */
+    // Receives an explicit app launch from landscape Home or its centre preview.
     fun prepareLandscape(target: String) {
         landscapeLaunch.begin(target)
         handler.postDelayed({ updateForeground() }, 8100)
     }
 
-    /** Releases the launch orientation immediately when its setting is disabled. */
+    // Releases the launch orientation immediately when its setting is disabled.
     fun cancelLandscape() { landscapeLaunch.clear() }
-    /** Avoids rotating a retained player when the launcher explicitly uses the same landscape layout. */
+    // Avoids rotating a retained player when the launcher explicitly uses the same landscape layout.
     fun onLauncherResume(keepLandscape: Boolean) { landscapeLaunch.onLauncherResume(keepLandscape) }
     private var recordingName: String? = null
     private var recordingPackage: String? = null
@@ -60,41 +68,41 @@ class RemoteActionService : AccessibilityService() {
     private var activityClass: String? = null
 
     companion object {
-        /** Active user-enabled service, used by launcher settings without enabling accessibility itself. */
+        // Active user-enabled service, used by launcher settings without enabling accessibility itself.
         @Volatile var instance: RemoteActionService? = null
             private set
-        /** Foreground identity for remote macros; our recording overlay does not replace its target app. */
+        // Foreground identity for remote macros; our recording overlay does not replace its target app.
         @Volatile var currentPackage: String? = null
             private set
-        /** Monotonic time of the last foreground package change. */
+        // Monotonic time of the last foreground package change.
         @Volatile var currentPackageSinceNanos: Long = 0L
             private set
 
-        /** Capture identity is stricter: overlaid, private-input and unverifiable windows publish null. */
+        // Capture identity is stricter: overlaid, private-input and unverifiable windows publish null.
         @Volatile var captureBounds: Rect? = null
             private set
         @Volatile var capturePackage: String? = null
             private set
-        /** Capture consumers reject frames older than this privacy/window-state transition. */
+        // Capture consumers reject frames older than this privacy/window-state transition.
         @Volatile var capturePackageSinceNanos: Long = 0L
             private set
 
-        /** Returns local macro names for the settings screen and per-device mapping chooser. */
+        // Returns local macro names for the settings screen and per-device mapping chooser.
         fun savedMacroNames(context: Context): List<String> = macros(context).keys().asSequence().sorted().toList()
 
-        /** Reads stored macro JSON defensively without exposing recorded labels in diagnostics. */
+        // Reads stored macro JSON defensively without exposing recorded labels in diagnostics.
         private fun macros(context: Context): JSONObject = runCatching {
             JSONObject(context.getSharedPreferences("remoteMacros", Context.MODE_PRIVATE).getString("macros", "{}")!!)
         }.getOrElse { JSONObject() }
     }
 
-    /** Registers the running instance; permission and service flags are supplied by Android settings/XML. */
+    // Registers the running instance; permission and service flags are supplied by Android settings/XML.
     override fun onServiceConnected() {
         instance = this
         updateForeground()
     }
 
-    /** Records explicit clicks and app transitions across allowed apps; text input is never stored. */
+    // Records explicit clicks and app transitions across allowed apps; text input is never stored.
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.className?.toString()?.endsWith("Activity") == true) {
@@ -138,7 +146,7 @@ class RemoteActionService : AccessibilityService() {
         } finally { node.recycle() }
     }
 
-    /** Records one semantic scroll per event burst; no raw touch tracking or inferred coordinates. */
+    // Records one semantic scroll per event burst; no raw touch tracking or inferred coordinates.
     private fun recordScroll(event: AccessibilityEvent, owner: String) {
         if (android.os.Build.VERSION.SDK_INT < 28) return
         val delta = if (event.scrollDeltaY != 0) event.scrollDeltaY else event.scrollDeltaX
@@ -160,7 +168,7 @@ class RemoteActionService : AccessibilityService() {
         } finally { node.recycle() }
     }
 
-    /** Adds a bounded action with its original delay and updates the visible recording control. */
+    // Adds a bounded action with its original delay and updates the visible recording control.
     private fun appendRecordedStep(step: JSONObject) {
         if (recordingName == null || !recordingStarted) return
         if (!step.has("delay")) step.put("delay", (SystemClock.uptimeMillis() - lastRecordTime).coerceIn(250, 2000))
@@ -170,18 +178,18 @@ class RemoteActionService : AccessibilityService() {
         if (recordingSteps.length() >= 20) stopRecording()
     }
 
-    /** Records delivered navigation keys; gestures that Android does not expose are not guessed. */
+    // Records delivered navigation keys; gestures that Android does not expose are not guessed.
     private fun recordNavigation(kind: String) {
         val active = currentPackage ?: return
         if (recordablePackage(active)) appendRecordedStep(JSONObject().put("kind", kind).put("package", active))
     }
 
-    /** Records explicit launcher navigation without executing it twice through Android global actions. */
+    // Records explicit launcher navigation without executing it twice through Android global actions.
     fun recordLauncherNavigation(kind: String) {
         if (kind in setOf("home", "back")) recordNavigation(kind)
     }
 
-    /** Prefers stable click IDs; for unlabelled containers records a labelled descendant and its clickable ancestor. */
+    // Prefers stable click IDs; for unlabelled containers records a labelled descendant and its clickable ancestor.
     private fun recordSelector(node: AccessibilityNodeInfo): JSONObject? {
         val id = node.viewIdResourceName?.takeIf { it.isNotBlank() }
         fun labelled(current: AccessibilityNodeInfo, depth: Int): JSONObject? {
@@ -206,7 +214,7 @@ class RemoteActionService : AccessibilityService() {
         return label
     }
 
-    /** Captures bounded parent IDs/classes without storing text, positions or private field values. */
+    // Captures bounded parent IDs/classes without storing text, positions or private field values.
     private fun selectorParents(node: AccessibilityNodeInfo): List<String> {
         val result = mutableListOf<String>()
         var parent = node.parent
@@ -221,13 +229,13 @@ class RemoteActionService : AccessibilityService() {
         return result
     }
 
-    /** Guards new recordings by their container path; absent guards retain legacy replay behavior. */
+    // Guards new recordings by their container path; absent guards retain legacy replay behavior.
     private fun parentContextMatches(node: AccessibilityNodeInfo, step: JSONObject): Boolean {
         if (!step.has("guardParents")) return true
         val expected = step.optJSONArray("guardParents") ?: return false
         return MacroContext.matches((0 until expected.length()).map { expected.optString(it) }, selectorParents(node))
     }
-    /** Resolves the actual active window, while keeping macro and stricter capture eligibility separate. */
+    // Resolves the actual active window, while keeping macro and stricter capture eligibility separate.
     private fun updateForeground() {
         val root = rootInActiveWindow
         val visibleWindows = windows
@@ -325,7 +333,7 @@ class RemoteActionService : AccessibilityService() {
         }
     }
 
-    /** Keeps the last unobstructed Cloudstream picture when menus, transport controls or episode lists appear.
+    /* Keeps the last unobstructed Cloudstream picture when menus, transport controls or episode lists appear.
      * Subtitle subtrees belong to the watched content and are not treated as application chrome. */
     private fun hasPlayerChrome(node: AccessibilityNodeInfo, depth: Int = 0): Boolean {
         if (depth > 40) return true
@@ -343,7 +351,7 @@ class RemoteActionService : AccessibilityService() {
         return false
     }
 
-    /** Handles only saved physical-key assignments outside the launcher; untouched keys pass through. */
+    // Handles only saved physical-key assignments outside the launcher; untouched keys pass through.
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_UP && controls.hasHeldAssignment(event)) {
             controls.assignment(event, false)
@@ -380,7 +388,7 @@ class RemoteActionService : AccessibilityService() {
         return true
     }
 
-    /** Runs a saved action without injecting key events, avoiding feedback loops through this service. */
+    // Runs a saved action without injecting key events, avoiding feedback loops through this service.
     fun performMappedAction(action: String) {
         when (action) {
             "Home" -> { recordNavigation("home"); openRecordedApp(packageName) }
@@ -403,7 +411,7 @@ class RemoteActionService : AccessibilityService() {
         }
     }
 
-    /** Moves accessibility/native focus where the target app exposes it; Select clicks the focused node. */
+    // Moves accessibility/native focus where the target app exposes it; Select clicks the focused node.
     private fun moveFocus(action: String) {
         val root = rootInActiveWindow ?: return
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
@@ -423,7 +431,7 @@ class RemoteActionService : AccessibilityService() {
         } finally { focused?.recycle(); root.recycle() }
     }
 
-    /** Starts or stops a named quick recording from a mapped remote key at any ordinary app screen. */
+    // Starts or stops a named quick recording from a mapped remote key at any ordinary app screen.
     fun toggleRecording() {
         if (recordingName != null) { stopRecording(); return }
         val names = savedMacroNames().toSet()
@@ -438,7 +446,7 @@ class RemoteActionService : AccessibilityService() {
         } else startQuickRecording(chosenName)
     }
 
-    /** Starts the quick recorder after any launcher Home transition has settled. */
+    // Starts the quick recorder after any launcher Home transition has settled.
     private fun startQuickRecording(name: String) {
         val touch = getSharedPreferences("remoteMacros", MODE_PRIVATE).getBoolean("touchRecording", true)
         if (touch && !canRecordTouches()) { message("Refresh Snapplication accessibility support: turn it off and on to allow recorded gestures."); return }
@@ -446,11 +454,11 @@ class RemoteActionService : AccessibilityService() {
         else message("Recording could not start. Enable accessibility support and try again.")
     }
 
-    /** Checks the capability Android actually bound, including devices retaining pre-update permissions. */
+    // Checks the capability Android actually bound, including devices retaining pre-update permissions.
     fun canRecordTouches(): Boolean = (serviceInfo?.capabilities ?: 0) and
         android.accessibilityservice.AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES != 0
 
-    /** Arms up to 20 cross-app actions; an optional first app preserves older launcher integration. */
+    // Arms up to 20 cross-app actions; an optional first app preserves older launcher integration.
     fun beginRecording(name: String, targetPackage: String = "", touch: Boolean = false): Boolean {
         if (touch && !canRecordTouches()) return false
         if (name.isBlank() || name.length > 40 || (targetPackage.isNotBlank() && !recordablePackage(targetPackage)) ||
@@ -518,7 +526,7 @@ class RemoteActionService : AccessibilityService() {
         }
     }
 
-    /** Ends explicit recording, removes its overlay and saves only a nonempty macro to local preferences. */
+    // Ends explicit recording, removes its overlay and saves only a nonempty macro to local preferences.
     fun stopRecording(): Boolean {
         touchRecorder?.close(); touchRecorder = null
         stopButton?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
@@ -538,10 +546,10 @@ class RemoteActionService : AccessibilityService() {
         return true
     }
 
-    /** Lists the saved local macros without requiring MainActivity to inspect service storage. */
+    // Lists the saved local macros without requiring MainActivity to inspect service storage.
     fun savedMacroNames(): List<String> = savedMacroNames(this)
 
-    /** Removes a selected macro and cancels pending replay so deleted actions cannot continue running. */
+    // Removes a selected macro and cancels pending replay so deleted actions cannot continue running.
     fun deleteMacro(name: String) {
         finishReplay()
         val saved = macros(this)
@@ -549,7 +557,7 @@ class RemoteActionService : AccessibilityService() {
         getSharedPreferences("remoteMacros", Context.MODE_PRIVATE).edit().putString("macros", saved.toString()).apply()
     }
 
-    /** Opens the first recorded app from Settings, then replays after its foreground identity is verified. */
+    // Opens the first recorded app from Settings, then replays after its foreground identity is verified.
     fun openForReplay(name: String) {
         if (runningMacro == name) return
         finishReplay()
@@ -566,7 +574,7 @@ class RemoteActionService : AccessibilityService() {
         awaitReplayApp(name, target, request, 0)
     }
 
-    /** Waits briefly for the requested app without sending any recorded click during its transition. */
+    // Waits briefly for the requested app without sending any recorded click during its transition.
     private fun awaitReplayApp(name: String, target: String, request: Int, attempt: Int) {
         handler.postDelayed({
             if (request != replayGeneration) return@postDelayed
@@ -577,7 +585,7 @@ class RemoteActionService : AccessibilityService() {
         }, 250)
     }
 
-    /** Replays legacy single-app or cross-app macros; optional confirmation remains a user preference. */
+    // Replays legacy single-app or cross-app macros; optional confirmation remains a user preference.
     fun replay(name: String) {
         if (runningMacro == name) return
         if (recordingName != null) { message("Stop recording before running a macro."); return }
@@ -614,7 +622,7 @@ class RemoteActionService : AccessibilityService() {
             }
     }
 
-    /** Keeps a visible cancel control available throughout playback, including transition waits. */
+    // Keeps a visible cancel control available throughout playback, including transition waits.
     private fun beginReplay(name: String, target: String, steps: JSONArray) {
         finishReplay()
         runningMacro = name
@@ -633,7 +641,7 @@ class RemoteActionService : AccessibilityService() {
         runStep(target, steps, 0, replayGeneration)
     }
 
-    /** Invalidates queued steps and removes replay controls on cancellation, completion or failure. */
+    // Invalidates queued steps and removes replay controls on cancellation, completion or failure.
     private fun finishReplay(feedback: String? = null) {
         replayGeneration++
         runningMacro = null
@@ -643,7 +651,7 @@ class RemoteActionService : AccessibilityService() {
         if (feedback != null) message(feedback)
     }
 
-    /** Replays legacy clicks and v2 cross-app actions, waiting for verified app transitions. */
+    // Replays legacy clicks and v2 cross-app actions, waiting for verified app transitions.
     private fun runStep(target: String, steps: JSONArray, index: Int, generation: Int, attempt: Int = 0) {
         if (generation != replayGeneration) return
         if (index >= steps.length()) { finishReplay("Action finished"); return }
@@ -701,7 +709,7 @@ class RemoteActionService : AccessibilityService() {
         }, if (attempt > 0) 250 else (step.optLong("delay", 350).coerceIn(0, 10000) / replaySpeed).toLong().coerceIn(40, 10000))
     }
 
-    /** Describes the visible app layout without text; coordinate macros stop on a different screen,
+    /* Describes the visible app layout without text; coordinate macros stop on a different screen,
      * keyboard, password or lock screen. Vendor dialogs are eligible; Android permission surfaces are not. */
     private fun touchGuard(): JSONObject? {
         if (!getSystemService(android.os.PowerManager::class.java).isInteractive ||
@@ -768,7 +776,7 @@ class RemoteActionService : AccessibilityService() {
         } finally { visible.forEach { it.recycle() } }
     }
 
-    /** Replays a guarded coordinate stroke exactly once; timeout/cancel never retries an uncertain touch. */
+    // Replays a guarded coordinate stroke exactly once; timeout/cancel never retries an uncertain touch.
     private fun replayTouch(step: JSONObject, generation: Int, completed: () -> Unit) {
         val current = touchGuard()
         if (current == null || !TouchMacroRecorder.sameScreen(step, current)) {
@@ -778,12 +786,12 @@ class RemoteActionService : AccessibilityService() {
             ?: run { finishReplay("Macro stopped: invalid recorded gesture."); return }
         var finished = false
         val accepted = runCatching { dispatchGesture(gesture, object : GestureResultCallback() {
-            /** Advances once only after Android confirms the touch finished. */
+            // Advances once only after Android confirms the touch finished.
             override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
                 if (generation != replayGeneration || finished) return
                 finished = true; completed()
             }
-            /** Stops instead of retrying a partially delivered action. */
+            // Stops instead of retrying a partially delivered action.
             override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
                 if (generation != replayGeneration || finished) return
                 finished = true; finishReplay("Macro stopped: Android cancelled the touch.")
@@ -795,7 +803,7 @@ class RemoteActionService : AccessibilityService() {
         }, 4500)
     }
 
-    /** Opens only an installed app's public launcher entry; no arbitrary intents or privileged screens. */
+    // Opens only an installed app's public launcher entry; no arbitrary intents or privileged screens.
     private fun openRecordedApp(target: String): Boolean {
         if (!recordablePackage(target)) return false
         val intent = if (target == packageName) Intent(this, MainActivity::class.java)
@@ -806,7 +814,7 @@ class RemoteActionService : AccessibilityService() {
         }.getOrDefault(false)
     }
 
-    /** Finds exact ID/label matches only; no guessed coordinates or partial-text clicks are replayed. */
+    // Finds exact ID/label matches only; no guessed coordinates or partial-text clicks are replayed.
     private fun collectMatches(root: AccessibilityNodeInfo, step: JSONObject, matches: MutableList<AccessibilityNodeInfo>, depth: Int = 0) {
         if (depth > 40 || matches.size > 1) return
         val id = step.optString("id")
@@ -829,7 +837,7 @@ class RemoteActionService : AccessibilityService() {
         }
     }
 
-    /** Rejects password/editable screens entirely so recordings never capture credentials or text entry. */
+    // Rejects password/editable screens entirely so recordings never capture credentials or text entry.
     private fun containsSensitiveInput(root: AccessibilityNodeInfo, depth: Int = 0, blockEditable: Boolean = true): Boolean {
         if (depth > 40) return true
         if (root.isVisibleToUser && (root.isPassword || (blockEditable && root.isEditable))) return true
@@ -841,29 +849,29 @@ class RemoteActionService : AccessibilityService() {
         return false
     }
 
-    /** Allows explicitly chosen apps, including vendor utilities, while excluding permission, lock and system settings surfaces. */
+    // Allows explicitly chosen apps, including vendor utilities, while excluding permission, lock and system settings surfaces.
     private fun recordablePackage(target: String): Boolean {
         if (target.isBlank() || target in setOf("android", "com.android.systemui", "com.android.settings", "com.android.permissioncontroller", "com.google.android.permissioncontroller", "com.android.packageinstaller", "com.google.android.packageinstaller")) return false
         return runCatching { packageManager.getApplicationInfo(target, 0); true }.getOrDefault(false)
     }
 
-    /** Gives concise feedback without displaying captured labels or app contents. */
+    // Gives concise feedback without displaying captured labels or app contents.
     private fun message(text: String) { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
 
-    /** Android interrupts accessibility feedback here, not the service. We own no ongoing spoken/haptic feedback.
+    /* Android interrupts accessibility feedback here, not the service. We own no ongoing spoken/haptic feedback.
      * Keep macros alive: apps such as Huawei Clock call interrupt during ordinary tab changes.
      * Actual service shutdown still cancels all work through onUnbind/onDestroy. */
     override fun onInterrupt() {
         if (BuildConfig.DEBUG) android.util.Log.d("SnappMacro", "Accessibility interrupt")
     }
 
-    /** Releases overlays and capture identity when the user disables this accessibility service. */
+    // Releases overlays and capture identity when the user disables this accessibility service.
     override fun onUnbind(intent: Intent?): Boolean { cleanUp(); instance = null; return super.onUnbind(intent) }
 
-    /** Releases the same resources when Android destroys the service process normally. */
+    // Releases the same resources when Android destroys the service process normally.
     override fun onDestroy() { cleanUp(); instance = null; super.onDestroy() }
 
-    /** Clears transient state; recorded clicks are saved only through the explicit Stop action. */
+    // Clears transient state; recorded clicks are saved only through the explicit Stop action.
     private fun cleanUp() {
         landscapeLaunch.clear()
         if (BuildConfig.DEBUG) android.util.Log.d("SnappMacro", "Service cleanup; recording=${recordingPackage != null}")

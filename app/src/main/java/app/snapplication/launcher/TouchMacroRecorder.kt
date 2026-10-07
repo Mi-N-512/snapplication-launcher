@@ -17,9 +17,16 @@ import android.view.WindowManager
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Explicit, bounded single-finger recorder used by RemoteActionService. Its transparent overlay
- * observes a gesture, then lets Android mirror it once to the guarded app after the finger lifts.
- * The service owns the always-visible Stop button above this overlay and persists successful steps. */
+/*
+ * Explicit, bounded single-finger recorder used by RemoteActionService. Its transparent overlay observes a gesture,
+ * then lets Android mirror it once to the guarded app after the finger lifts. The service owns the always-visible
+ * Stop button above this overlay and persists successful steps.
+ *
+ * Related classes: RemoteActionService owns recording, consent checks, Stop overlay and saved steps.
+ * UI: Transparent single-finger interception layer with tap rings/swipe trails; it pauses on unavailable screens.
+ * Edit or extend: Edit gesture sampling, marker drawing and pause/forwarding lifecycle here. Preserve one-shot
+ * dispatch and guard checks; never record typing or protected screens.
+ */
 class TouchMacroRecorder(
     private val service: AccessibilityService,
     private val guard: () -> JSONObject?,
@@ -38,7 +45,7 @@ class TouchMacroRecorder(
     private var generation = 0
     private var paused = false
     private val availability = object : Runnable {
-        /** Leaves protected screens usable and resumes interception only after the guard approves. */
+        // Leaves protected screens usable and resumes interception only after the guard approves.
         override fun run() {
             if (closed) return
             if (!busy && context == null) {
@@ -54,7 +61,7 @@ class TouchMacroRecorder(
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
 
-    /** Installs the recorder before the service installs its smaller Stop overlay. */
+    // Installs the recorder before the service installs its smaller Stop overlay.
     fun start(): Boolean = runCatching {
         val surface = RecordingSurface().apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -67,7 +74,7 @@ class TouchMacroRecorder(
         true
     }.getOrDefault(false)
 
-    /** Accepts only bounded one-finger paths in the current app's verified window. */
+    // Accepts only bounded one-finger paths in the current app's verified window.
     private fun touch(event: MotionEvent): Boolean {
         if (closed || busy || paused) return true
         if (event.pointerCount != 1 || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
@@ -110,7 +117,7 @@ class TouchMacroRecorder(
         return true
     }
 
-    /** Stores only normalized coordinates inside the app, never raw touches on keyboard/system windows. */
+    // Stores only normalized coordinates inside the app, never raw touches on keyboard/system windows.
     private fun addPoint(x: Float, y: Float) {
         val current = context ?: return
         val bounds = current.optJSONArray("window") ?: return
@@ -132,7 +139,7 @@ class TouchMacroRecorder(
         }
     }
 
-    /** Temporarily removes interception before injecting once, preventing the recorder from recording itself. */
+    // Temporarily removes interception before injecting once, preventing the recorder from recording itself.
     private fun mirror(step: JSONObject) {
         if (closed) return
         val surface = overlay ?: return
@@ -152,7 +159,7 @@ class TouchMacroRecorder(
                 pauseRecording(); return@postDelayed
             }
             val accepted = runCatching { service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
-                /** Saves only gestures Android confirms completed; the next gesture cannot begin until then. */
+                // Saves only gestures Android confirms completed; the next gesture cannot begin until then.
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     if (closed || request != generation) return
                     recorded(step)
@@ -162,7 +169,7 @@ class TouchMacroRecorder(
                     params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
                     if (runCatching { manager.updateViewLayout(surface, params) }.isFailure) fail("Recording stopped: overlay unavailable.")
                 }
-                /** Cancellation never retries or produces another touch. */
+                // Cancellation never retries or produces another touch.
                 override fun onCancelled(gestureDescription: GestureDescription?) {
                     if (!closed && request == generation) pauseRecording()
                 }
@@ -172,7 +179,7 @@ class TouchMacroRecorder(
         handler.postDelayed({ if (!closed && request == generation && busy) fail("Recording stopped: touch forwarding timed out.") }, step.optLong("duration") + 1500)
     }
 
-    /** Discards an interrupted gesture without injecting it or ending the recording session.
+    /* Discards an interrupted gesture without injecting it or ending the recording session.
      * The service-owned Stop button stays available above this non-touchable overlay. */
     private fun pauseRecording() {
         if (closed) return
@@ -186,7 +193,7 @@ class TouchMacroRecorder(
         pausedChanged(true)
     }
 
-    /** Re-enables recording after leaving a protected screen; discarded gestures are never retried. */
+    // Re-enables recording after leaving a protected screen; discarded gestures are never retried.
     private fun resumeRecording() {
         if (closed || !paused) return
         val surface = overlay ?: return
@@ -197,7 +204,7 @@ class TouchMacroRecorder(
         paused = false; pausedChanged(false)
     }
 
-    /** Removes the intercepting window on every finish/failure path and invalidates queued callbacks. */
+    // Removes the intercepting window on every finish/failure path and invalidates queued callbacks.
     fun close() {
         if (closed) return
         closed = true; generation++
@@ -206,17 +213,22 @@ class TouchMacroRecorder(
         overlay = null; context = null
     }
 
-    /** Identifies our non-interactive accessibility window for the service's underlying-app guard. */
+    // Identifies our non-interactive accessibility window for the service's underlying-app guard.
     fun ownsWindow(id: Int): Boolean = overlay?.let { surface ->
         val node = surface.createAccessibilityNodeInfo()
         try { node.windowId == id } finally { node.recycle() }
     } == true
 
-    /** Restores the normal screen before reporting an error to the service's visible recorder. */
+    // Restores the normal screen before reporting an error to the service's visible recorder.
     private fun fail(message: String) { close(); failed(message) }
 
-    /** Visible, non-interactive ink on the existing recording overlay; never creates extra gestures.
+    /* Visible, non-interactive ink on the existing recording overlay; never creates extra gestures.
      * RemoteActionService still owns Stop, while TouchMacroRecorder owns this view's lifetime. */
+    /*
+     * Draws tap rings and swipe trails for TouchMacroRecorder on its existing transparent overlay.
+     * RemoteActionService separately owns the Stop control. Edit marker appearance and coordinate drawing here;
+     * never inject gestures from drawing callbacks.
+     */
     private inner class RecordingSurface : View(service) {
         private val trail = Path()
         private val ink = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -225,7 +237,7 @@ class TouchMacroRecorder(
         private var visibleMarker = false
         private val density = resources.displayMetrics.density
 
-        /** Appends only points that already passed the recorder's privacy/window guard. */
+        // Appends only points that already passed the recorder's privacy/window guard.
         fun addMarker(screenX: Float, screenY: Float) {
             val location = IntArray(2); getLocationOnScreen(location)
             markerX = screenX - location[0]; markerY = screenY - location[1]
@@ -233,10 +245,10 @@ class TouchMacroRecorder(
             visibleMarker = true; invalidate()
         }
 
-        /** Removes a completed or cancelled trace without leaving a persistent overlay animation. */
+        // Removes a completed or cancelled trace without leaving a persistent overlay animation.
         fun clearMarker() { visibleMarker = false; trail.reset(); invalidate() }
 
-        /** White edging keeps the blue tap target legible over both light and dark apps. */
+        // White edging keeps the blue tap target legible over both light and dark apps.
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             if (!visibleMarker) return
@@ -253,7 +265,7 @@ class TouchMacroRecorder(
         private const val MAX_POINTS = 128
         private const val MAX_DURATION = 3000L
 
-        /** Coordinate actions require the same app, layout, screen dimensions and orientation. */
+        // Coordinate actions require the same app, layout, screen dimensions and orientation.
         fun sameScreen(before: JSONObject, after: JSONObject): Boolean =
             before.optString("package") == after.optString("package") &&
                 before.optString("screenGuard") == after.optString("screenGuard") &&
@@ -262,7 +274,7 @@ class TouchMacroRecorder(
                 before.optJSONArray("window")?.toString() == after.optJSONArray("window")?.toString() &&
                 before.optJSONArray("excluded")?.toString() == after.optJSONArray("excluded")?.toString()
 
-        /** Validates stored coordinates and constructs one stroke; malformed saved data cannot inject touches. */
+        // Validates stored coordinates and constructs one stroke; malformed saved data cannot inject touches.
         fun description(step: JSONObject, width: Int, height: Int, speed: Double = 1.0): GestureDescription? {
             val points = step.optJSONArray("points") ?: return null
             if (points.length() !in 1..MAX_POINTS || width <= 0 || height <= 0) return null

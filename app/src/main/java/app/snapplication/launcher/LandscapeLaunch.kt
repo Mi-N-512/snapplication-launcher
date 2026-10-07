@@ -8,7 +8,14 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 
-/** Scopes a landscape request to the app opened by MainActivity/ExternalPreview; owned by RemoteActionService. */
+/*
+ * Scopes a landscape request to the app opened by MainActivity/ExternalPreview; owned by RemoteActionService.
+ *
+ * Related classes: RemoteActionService owns it; MainActivity and ExternalPreview request landscape launches.
+ * UI: An invisible, non-touchable orientation window; no visible settings page.
+ * Edit or extend: Edit when landscape is retained or released and recognised fullscreen actions here. Keep user
+ * orientation settings authoritative.
+ */
 class LandscapeLaunch(private val service: RemoteActionService) {
     private var target: String? = null
     private var expires = 0L
@@ -16,7 +23,7 @@ class LandscapeLaunch(private val service: RemoteActionService) {
     private var overlay: View? = null
     private var fullscreenRequested = false
 
-    /** Starts a non-touchable orientation request; never changes the phone's saved rotation settings. */
+    // Starts a non-touchable orientation request; never changes the phone's saved rotation settings.
     fun begin(packageName: String) {
         if (target == packageName && overlay != null) {
             // Reuse the same window across a landscape Home visit instead of briefly removing
@@ -37,7 +44,7 @@ class LandscapeLaunch(private val service: RemoteActionService) {
         if (runCatching { service.getSystemService(WindowManager::class.java).addView(view, params) }.isSuccess) overlay = view
     }
 
-    /** Releases on app exit; requests only an explicitly labelled enter-fullscreen action, once per launch. */
+    // Releases on app exit; requests only an explicitly labelled enter-fullscreen action, once per launch.
     fun update(packageName: String?, root: AccessibilityNodeInfo?) {
         val expected = target ?: return
         if (!LauncherState(service).landscapeApps) { clear(); return }
@@ -53,12 +60,12 @@ class LandscapeLaunch(private val service: RemoteActionService) {
         } else if (entered || SystemClock.uptimeMillis() > expires) clear()
     }
 
-    /** Keeps a retained player's request only while Home explicitly wants landscape too. */
+    // Keeps a retained player's request only while Home explicitly wants landscape too.
     fun onLauncherResume(keepLandscape: Boolean) {
         if (!keepLandscape || !LauncherState(service).landscapeApps) clear()
     }
 
-    /** Uses semantic labels instead of coordinates, avoiding exit/fullscreen toggles with unknown state. */
+    // Uses semantic labels instead of coordinates, avoiding exit/fullscreen toggles with unknown state.
     private fun clickFullscreen(node: AccessibilityNodeInfo, depth: Int = 0): Boolean {
         if (depth > 35 || !node.isVisibleToUser) return false
         val label = node.contentDescription?.toString()?.trim()?.lowercase()
@@ -74,13 +81,13 @@ class LandscapeLaunch(private val service: RemoteActionService) {
         return false
     }
 
-    /** Removes the orientation window on return Home, setting changes or service shutdown. */
+    // Removes the orientation window on return Home, setting changes or service shutdown.
     fun clear() {
         overlay?.let { runCatching { service.getSystemService(WindowManager::class.java).removeView(it) } }
         overlay = null; target = null; entered = false; fullscreenRequested = false
     }
 
-    /** Identifies only this invisible one-pixel window so capture can ignore its empty pixels. */
+    // Identifies only this invisible one-pixel window so capture can ignore its empty pixels.
     fun ownsWindow(id: Int): Boolean {
         val node = overlay?.createAccessibilityNodeInfo() ?: return false
         return try { node.windowId == id } finally { node.recycle() }

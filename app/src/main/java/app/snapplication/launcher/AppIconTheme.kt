@@ -4,12 +4,19 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 
-/** Switches the launcher icon aliases for MainActivity's Settings without disabling the HOME activity.
- * Android PackageManager persists the choice across process death; no separate preference can drift. */
+/*
+ * Switches the launcher icon aliases for MainActivity's Settings without disabling the HOME activity. Android
+ * PackageManager persists the choice across process death; no separate preference can drift.
+ *
+ * Related classes: MainActivity and the BlueIcon/GoldIcon manifest aliases.
+ * UI: No screen of its own; changes the installed launcher icon selected in Settings.
+ * Edit or extend: Add icon choices together with their manifest aliases and preview artwork; keep the HOME activity
+ * enabled.
+ */
 object AppIconTheme {
     val choices = listOf("Blue / white", "Gold / black")
 
-    /** Previews both installed icon variants before MainActivity commits the selected alias. */
+    // Previews both installed icon variants before MainActivity commits the selected alias.
     fun showChooser(activity: android.app.Activity, onChanged: () -> Unit) {
         var selected = currentLabel(activity)
         val density = activity.resources.displayMetrics.density
@@ -40,12 +47,12 @@ object AppIconTheme {
             }.show()
     }
 
-    /** Reads the enabled alias to provide Settings and onboarding with the current icon label. */
+    // Reads the enabled alias to provide Settings and onboarding with the current icon label.
     fun currentLabel(context: Context): String = if (
         context.packageManager.getComponentEnabledSetting(alias(context, "GoldIcon")) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
     ) choices[1] else choices[0]
 
-    /** Enables the destination first, then hides the previous icon while leaving the running app alive. */
+    // Enables the destination first, then hides the previous icon while leaving the running app alive.
     fun apply(context: Context, choice: String): Boolean {
         if (choice !in choices) return false
         val gold = choice == choices[1]
@@ -60,6 +67,6 @@ object AppIconTheme {
         } catch (_: RuntimeException) { false }
     }
 
-    /** Uses the installed flavour's package id and the aliases' shared fully qualified class names. */
+    // Uses the installed flavour's package id and the aliases' shared fully qualified class names.
     private fun alias(context: Context, name: String) = ComponentName(context.packageName, "app.snapplication.launcher.$name")
 }

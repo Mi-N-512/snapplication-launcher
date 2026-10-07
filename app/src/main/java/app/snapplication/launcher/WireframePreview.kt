@@ -6,12 +6,18 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
 
-/** Draws miniature theme and favourite layouts for MainActivity's settings, using LauncherUi colours. */
+/*
+ * Draws miniature theme and favourite layouts for MainActivity's settings, using LauncherUi colours.
+ *
+ * Related classes: MainActivity displays layout/theme samples using LauncherUi colours.
+ * UI: Small painted layout previews; these are illustrations, not interactive app tiles.
+ * Edit or extend: Edit the sample geometry and colours here when available layout choices change.
+ */
 class WireframePreview(context: Context, private val backgroundColour: Int, private val foreground: Int,
     private val columns: Int = 0, private val count: Int = 3) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    /** Renders a small phone/list or two-row grid without adding redundant accessibility nodes. */
+    // Renders a small phone/list or two-row grid without adding redundant accessibility nodes.
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val w = width.toFloat(); val h = height.toFloat()

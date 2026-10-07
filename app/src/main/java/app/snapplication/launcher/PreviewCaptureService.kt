@@ -13,7 +13,16 @@ import android.os.*
 import java.io.File
 import java.io.ByteArrayOutputStream
 
-/** Keeps one local frame per Read/Watch app after explicit screen-sharing consent; MainActivity owns setup and ExternalPreview displays it. */
+/*
+ * Keeps one local frame per Read/Watch app after explicit screen-sharing consent; MainActivity owns setup and
+ * ExternalPreview displays it.
+ *
+ * Related classes: MainActivity requests consent; RemoteActionService supplies eligible bounds; ExternalPreview
+ * reads saved frames.
+ * UI: Foreground capture notification; no full page of its own.
+ * Edit or extend: Edit bounded capture, per-app caching and lifecycle cleanup here. New modes require explicit
+ * eligibility rules, not unrestricted capture.
+ */
 class PreviewCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
@@ -27,7 +36,7 @@ class PreviewCaptureService : Service() {
     private var captureWidth = 0
     private var captureHeight = 0
     private var eligibleSince = Long.MIN_VALUE
-    /** Requests one fresh frame after eligibility settles, including paused video and static book pages. */
+    // Requests one fresh frame after eligibility settles, including paused video and static book pages.
     private val eligibilityRefresh = object : Runnable {
         override fun run() {
             if (stopped) return
@@ -41,11 +50,11 @@ class PreviewCaptureService : Service() {
         }
     }
     private val displayListener = object : DisplayManager.DisplayListener {
-        /** New secondary displays do not change the captured default display. */
+        // New secondary displays do not change the captured default display.
         override fun onDisplayAdded(displayId: Int) {}
-        /** Removed secondary displays do not change this projection session. */
+        // Removed secondary displays do not change this projection session.
         override fun onDisplayRemoved(displayId: Int) {}
-        /** Older Android versions report rotation through the default display rather than projection callbacks. */
+        // Older Android versions report rotation through the default display rather than projection callbacks.
         override fun onDisplayChanged(displayId: Int) {
             if (displayId == android.view.Display.DEFAULT_DISPLAY && Build.VERSION.SDK_INT < 34) {
                 val metrics = displayMetrics()
@@ -54,13 +63,13 @@ class PreviewCaptureService : Service() {
         }
     }
 
-    /** Starts the capture worker; no projection begins until the consent result arrives. */
+    // Starts the capture worker; no projection begins until the consent result arrives.
     override fun onCreate() {
         super.onCreate(); thread.start(); handler = Handler(thread.looper)
         sessionEpoch = synchronized(cacheLock) { cacheEpoch }
     }
 
-    /** Starts a visible, user-stoppable capture session; Android never restarts it without new consent. */
+    // Starts a visible, user-stoppable capture session; Android never restarts it without new consent.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") { stopped = true; stopSelf(); return START_NOT_STICKY }
         if (starting) return START_NOT_STICKY
@@ -81,9 +90,9 @@ class PreviewCaptureService : Service() {
             if (stopped || synchronized(cacheLock) { sessionEpoch != cacheEpoch }) { stopSelf(); return@runCatching }
             projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(Activity.RESULT_OK, consent)
             projection!!.registerCallback(object : MediaProjection.Callback() {
-                /** Releases capture immediately when Android or the user revokes screen sharing. */
+                // Releases capture immediately when Android or the user revokes screen sharing.
                 override fun onStop() { stopped = true; stopSelf() }
-                /** Resizes the same virtual display for rotation and Android 14 app-only capture bounds. */
+                // Resizes the same virtual display for rotation and Android 14 app-only capture bounds.
                 override fun onCapturedContentResize(width: Int, height: Int) {
                     resizeCapture(width, height, displayMetrics().densityDpi)
                 }
@@ -103,13 +112,13 @@ class PreviewCaptureService : Service() {
         return START_NOT_STICKY
     }
 
-    /** Reads default-screen pixel bounds for initial capture and pre-Android 14 rotation. */
+    // Reads default-screen pixel bounds for initial capture and pre-Android 14 rotation.
     @Suppress("DEPRECATION")
     private fun displayMetrics(): android.util.DisplayMetrics = android.util.DisplayMetrics().also {
         (getSystemService(WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay.getRealMetrics(it)
     }
 
-    /** Replaces only the image surface and dimensions; the consent token creates one virtual display only. */
+    // Replaces only the image surface and dimensions; the consent token creates one virtual display only.
     private fun resizeCapture(sourceWidth: Int, sourceHeight: Int, density: Int) {
         val current = display ?: return
         if (stopped || sourceWidth <= 0 || sourceHeight <= 0) return
@@ -131,7 +140,7 @@ class PreviewCaptureService : Service() {
         }.onFailure { stopped = true; stopSelf() }
     }
 
-    /** Replaces the buffer queue after a foreground eligibility change. A new surface cannot deliver
+    /* Replaces the buffer queue after a foreground eligibility change. A new surface cannot deliver
      * images queued while another app or player menu was visible; image timestamps need no clock assumption. */
     private fun refreshEligibleSurface(since: Long) {
         val current = display ?: return
@@ -148,7 +157,7 @@ class PreviewCaptureService : Service() {
         }.onFailure { replacement.close(); stopped = true; stopSelf() }
     }
 
-    /** Discards all other apps, system windows and locked screens before touching pixel data. */
+    // Discards all other apps, system windows and locked screens before touching pixel data.
     private fun saveEligibleFrame(source: ImageReader) {
         if (source !== reader || stopped) return
         val frame = runCatching { source.acquireLatestImage() }.getOrNull() ?: return
@@ -209,7 +218,7 @@ class PreviewCaptureService : Service() {
         }
     }
 
-    /** Stops projection and discards queued images without deleting the intentionally saved last frame. */
+    // Stops projection and discards queued images without deleting the intentionally saved last frame.
     override fun onDestroy() {
         active = false; stopped = true
         handler.removeCallbacks(eligibilityRefresh)
@@ -220,20 +229,20 @@ class PreviewCaptureService : Service() {
         super.onDestroy()
     }
 
-    /** Capture is started by an explicit intent and exposes no binder interface. */
+    // Capture is started by an explicit intent and exposes no binder interface.
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /** Reports only the current process's live session; never persists consent tokens. */
+    // Reports only the current process's live session; never persists consent tokens.
     companion object {
         @Volatile var active = false; private set
         internal val cacheLock = Any()
         internal var cacheEpoch = 0L
 
-        /** Names a private per-app frame without interpreting package names as paths. */
+        // Names a private per-app frame without interpreting package names as paths.
         internal fun frameFile(context: Context, mode: String, owner: String): File =
             File(context.filesDir, "preview-${if (mode == "Read") "Read" else "Watch"}-${owner.replace(Regex("[^A-Za-z0-9_.]"), "_")}.jpg")
 
-        /** Cancels every pending cache write before removing images, AtomicFile sidecars and associated identities. */
+        // Cancels every pending cache write before removing images, AtomicFile sidecars and associated identities.
         fun clearSaved(context: Context) {
             synchronized(cacheLock) {
                 cacheEpoch++

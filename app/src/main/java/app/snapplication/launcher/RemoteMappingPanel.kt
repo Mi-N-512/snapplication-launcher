@@ -10,8 +10,16 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.LinearLayout
 
-/** Builds MainActivity's remote setup using RemoteControls assignments and MacroEditor recordings.
- * The generic diagram represents actions, not an inferred photograph or layout of the connected remote. */
+/*
+ * Builds MainActivity's remote setup using RemoteControls assignments and MacroEditor recordings. The generic
+ * diagram represents actions, not an inferred photograph or layout of the connected remote.
+ *
+ * Related classes: MainActivity hosts the page; RemoteControls learns keys; MacroEditor and RemoteActionService
+ * manage recordings.
+ * UI: Generic remote diagram, live inverted key feedback, macro buttons, saved assignments and Return to Home.
+ * Edit or extend: Edit remote shape, action placement and mapping instructions here. A future gamepad layout should
+ * reuse the same mapping storage and page-scoped feedback.
+ */
 class RemoteMappingPanel(
     private val activity: Activity,
     private val ui: LauncherUi,
@@ -26,7 +34,7 @@ class RemoteMappingPanel(
     }
     private val observer: (KeyEvent) -> Unit = { event -> showKey(event) }
 
-    /** Creates a remote-friendly setup page with a diagram, saved keys and a record-then-assign flow. */
+    // Creates a remote-friendly setup page with a diagram, saved keys and a record-then-assign flow.
     fun build(
         onAccessibility: () -> Unit,
         onRecordAction: () -> Unit,
@@ -86,7 +94,7 @@ class RemoteMappingPanel(
         return body
     }
 
-    /** Uses actual focusable buttons so every diagram action supports touch, keyboard and remote navigation. */
+    // Uses actual focusable buttons so every diagram action supports touch, keyboard and remote navigation.
     private fun diagram(onChanged: () -> Unit): View {
         val surround = ui.column().apply { gravity = Gravity.CENTER_HORIZONTAL }
         val device = ui.column().apply {
@@ -135,7 +143,7 @@ class RemoteMappingPanel(
         return surround
     }
 
-    /** Builds a directly assignable action with a stable identity for live key feedback. */
+    // Builds a directly assignable action with a stable identity for live key feedback.
     private fun actionButton(action: String, onChanged: () -> Unit): Button {
         val symbol = when (action) {
             "Screen off" -> "⏻"; "Home" -> "⌂"; "Apps" -> "▦"; "Back" -> "↶"
@@ -156,7 +164,7 @@ class RemoteMappingPanel(
         }
     }
 
-    /** Inverts the reported action while retaining a visible keyboard/remote focus outline. */
+    // Inverts the reported action while retaining a visible keyboard/remote focus outline.
     private fun decorate(button: Button, action: String) {
         val highlighted = activeAction == action
         button.setTextColor(if (highlighted) ui.background else ui.text)
@@ -167,7 +175,7 @@ class RemoteMappingPanel(
         }
     }
 
-    /** Shows only Android-delivered physical keys; this read-only feedback never executes an action. */
+    // Shows only Android-delivered physical keys; this read-only feedback never executes an action.
     private fun showKey(event: KeyEvent) {
         if (event.device?.isVirtual != false) return
         val mapped = remote.action(event)
@@ -189,7 +197,7 @@ class RemoteMappingPanel(
         controls.values.firstOrNull()?.postDelayed(resetHighlight, if (event.action == KeyEvent.ACTION_UP) 220 else 1200)
     }
 
-    /** Changes or removes one saved physical key without disrupting the rest of the remote. */
+    // Changes or removes one saved physical key without disrupting the rest of the remote.
     private fun edit(mapping: RemoteControls.Mapping, onChanged: () -> Unit) {
         AlertDialog.Builder(activity).setTitle("${mapping.keyLabel} · ${mapping.deviceName}")
             .setItems(arrayOf("Change action: ${RemoteControls.displayLabel(mapping.action)}", "Delete this assignment")) { _, choice ->
@@ -200,7 +208,7 @@ class RemoteMappingPanel(
             }.setNegativeButton("Done", null).show()
     }
 
-    /** Offers all available launcher actions and current recordings from one consistent picker. */
+    // Offers all available launcher actions and current recordings from one consistent picker.
     private fun chooseAction(onChosen: (String) -> Unit) {
         val actions = remote.actions
         AlertDialog.Builder(activity).setTitle("What should this button do?")

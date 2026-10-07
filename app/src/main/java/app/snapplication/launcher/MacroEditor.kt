@@ -7,21 +7,29 @@ import android.widget.EditText
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Edits local action timing and steps for MainActivity; RemoteActionService reads the saved options at replay. */
+/*
+ * Edits local action timing and steps for MainActivity; RemoteActionService reads the saved options at replay.
+ *
+ * Related classes: MainActivity opens it; RemoteActionService reads saved macros; MacroPreviewView rehearses
+ * timing.
+ * UI: Dialogs for speed, starting screen, step timing/order, naming, deletion and preview.
+ * Edit or extend: Add editable macro options here together with validation and corresponding replay support in
+ * RemoteActionService.
+ */
 class MacroEditor(private val activity: Activity, private val onChanged: () -> Unit) {
     private val prefs = activity.getSharedPreferences("remoteMacros", Context.MODE_PRIVATE)
 
-    /** Reads recordings defensively without losing unrelated actions when a dialog opens. */
+    // Reads recordings defensively without losing unrelated actions when a dialog opens.
     private fun all(): JSONObject = runCatching { JSONObject(prefs.getString("macros", "{}")!!) }.getOrElse { JSONObject() }
 
-    /** Saves one edit after stopping any running routine that may use the old steps. */
+    // Saves one edit after stopping any running routine that may use the old steps.
     private fun save(name: String, macro: JSONObject) {
         RemoteActionService.instance?.performMappedAction("Stop action")
         prefs.edit().putString("macros", all().put(name, macro).toString()).apply()
         onChanged()
     }
 
-    /** Presents explicit speed, start behavior, step editing, rename and deletion controls. */
+    // Presents explicit speed, start behavior, step editing, rename and deletion controls.
     fun show(name: String) {
         val macro = all().optJSONObject(name) ?: return
         val choices = arrayOf("Speed: ${macro.optDouble("speed", 1.0)}×", "Start: ${if (macro.optBoolean("currentScreen")) "current screen" else "open recorded app"}",
@@ -47,7 +55,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         }.setNegativeButton("Done", null).show()
     }
 
-    /** Names a recorded step using its visible label when available. */
+    // Names a recorded step using its visible label when available.
     private fun title(step: JSONObject): String = when (step.optString("kind", "click")) {
         "gesture" -> if ((step.optJSONArray("points")?.length() ?: 0) > 2) "Swipe on screen" else "Tap on screen"
         "home" -> "Go Home"
@@ -57,7 +65,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         else -> "Tap " + step.optString("label").ifBlank { step.optString("id").substringAfterLast('/').replace('_', ' ').ifBlank { "button" } }
     }
 
-    /** Lists individual delays so the user can inspect and shorten an existing routine. */
+    // Lists individual delays so the user can inspect and shorten an existing routine.
     private fun steps(name: String) {
         val macro = all().optJSONObject(name) ?: return
         val steps = macro.optJSONArray("steps") ?: return
@@ -69,7 +77,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
             .setNegativeButton("Back") { _, _ -> show(name) }.show()
     }
 
-    /** Changes timing or order and permits removal without re-recording the whole macro. */
+    // Changes timing or order and permits removal without re-recording the whole macro.
     private fun editStep(name: String, index: Int) {
         val macro = all().optJSONObject(name) ?: return
         val sequence = macro.optJSONArray("steps") ?: return
@@ -98,7 +106,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         }.setNegativeButton("Back") { _, _ -> steps(name) }.show()
     }
 
-    /** Renames a routine and updates existing remote assignments atomically within each preference file. */
+    // Renames a routine and updates existing remote assignments atomically within each preference file.
     private fun rename(old: String) {
         val input = EditText(activity).apply { setSingleLine(); setText(old); selectAll() }
         val dialog = AlertDialog.Builder(activity).setTitle("Action name").setView(input)
