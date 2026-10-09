@@ -1,0 +1,3 @@
+<resources>
+    <string name="reader_accessibility_description">Recognises visible reading pages and saves occasional still screenshots when Page previews is enabled. Pictures stay on this device. No continuous screen recording, remote remapping or gesture recording. Disable here at any time.</string>
+</resources>

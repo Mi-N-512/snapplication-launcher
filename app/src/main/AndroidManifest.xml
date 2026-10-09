@@ -45,9 +45,13 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
+        <!-- Only an explicit temporary URI grant exposes the current book identity to Read. -->
+        <provider android:name=".ReaderBookProvider"
+            android:authorities="${applicationId}.readerbook"
+            android:exported="false" android:grantUriPermissions="true" />
         <!-- Opt-in services; exported bindings remain protected by Android service permissions. -->
         <service
-            android:name=".PreviewCaptureService"
+            android:name="app.snapplication.launcher.PreviewCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
         <service
@@ -61,7 +65,7 @@
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/remote_accessibility" />
         </service>
         <service
-            android:name=".MediaAccessService"
+            android:name="app.snapplication.launcher.MediaAccessService"
             android:label="Snapplication media controls"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">

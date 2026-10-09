@@ -30,10 +30,10 @@ For all three debug APKs run `gradlew.bat :app:assembleDebug`. Validate each edi
 ## Private test editions
 
 - **Universal**: original package `app.snapplication.launcher`; Read and Watch, configurable appearance and orientation. Updates the existing development installation while preserving preferences.
-- **E-reader**: separate package `app.snapplication.launcher.ereader`; starts in Read with the high-contrast E-paper theme. Keeps its own favourites and reading progress. Vendor-specific e-ink refresh is not implemented or claimed.
+- **E-reader**: separate package `app.snapplication.launcher.ereader`; reading-only with the high-contrast E-paper theme. Keeps its own favourites and reading progress. No Watch/TV, remote remapping, macros or media-notification access. Vendor-specific e-ink refresh is not implemented or claimed.
 - **TV**: separate package `app.snapplication.launcher.tv`; starts in Watch/landscape, includes an Android TV launcher entry/banner, discovers TV-only apps, and supports directional controls without requiring touch. Physical TV/CEC validation remains outstanding.
 
-All editions share the same free features and can be installed alongside each other. Choose `universalDebug`, `ereaderDebug`, or `tvDebug` in Android Studio's Build Variants window. These are private development builds, not store releases.
+All editions remain free and can be installed alongside each other. Reader deliberately exposes reading features only. Choose `universalDebug`, `ereaderDebug`, or `tvDebug` in Android Studio's Build Variants window. These are private development builds, not store releases. See [the acceptance checks](CONSTRAINTS.md) before calling a build ready.
 
 ### Add apps to Home
 

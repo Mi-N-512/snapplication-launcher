@@ -10,7 +10,7 @@ import android.view.accessibility.AccessibilityNodeInfo
  * Finds visible document pages for RemoteActionService; rejects generic web views and library grids. PDF, EPUB and
  * comics belong to their reader app: this inspects its displayed page, never its files.
  *
- * Related classes: RemoteActionService uses this helper before PreviewCaptureService saves a reader frame.
+ * Related classes: RemoteActionService uses this helper before ReadingSnapshots saves a still page.
  * UI: No UI; returns eligible visible page bounds from another reader app.
  * Edit or extend: Extend recognised reader activities/page controls conservatively here. PDF/EPUB file parsing
  * belongs elsewhere.
@@ -27,11 +27,24 @@ object ReaderSurface {
     fun find(context: Context, root: AccessibilityNodeInfo, activity: String?): Rect? {
         val bounds = Rect().also { root.getBoundsInScreen(it) }
         if (bounds.isEmpty) return null
+        val owner = root.packageName?.toString().orEmpty()
+        val meebookPage = owner == MeebookReaderBridge.OWNER && activity in MeebookReaderBridge.ACTIVITIES
         val reader = activity?.substringAfterLast('.')?.lowercase() in readerActivities
         // A generic page_view name also occurs in shopping and gallery apps. Require a reader
         // activity or a declared document handler before treating such a surface as a book.
-        if (!reader && !handlesDocuments(context, root.packageName?.toString().orEmpty())) return null
+        if (!reader && !meebookPage && !handlesDocuments(context, owner)) return null
         val minimum = bounds.width().toLong() * bounds.height() / 3
+        // Meebook's Read uses an obfuscated canvas in four private book tasks. Never accept
+        // its library or menus: require the observed page canvas and unobstructed root together.
+        if (meebookPage && !hasControls(root, 0)) {
+            val pages = root.findAccessibilityNodeInfosByViewId("$owner:id/ao4")
+            try {
+                pages.firstOrNull { it.isVisibleToUser }?.let { page ->
+                    val rect = Rect().also { page.getBoundsInScreen(it) }
+                    if (rect.width().toLong() * rect.height() >= minimum) return rect
+                }
+            } finally { pages.forEach { it.recycle() } }
+        }
         scan(root, minimum, 0)?.let { return it }
         return bounds.takeIf { reader && !hasControls(root, 0) }
     }

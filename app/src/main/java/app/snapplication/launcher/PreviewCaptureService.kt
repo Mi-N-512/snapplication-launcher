@@ -43,6 +43,7 @@ class PreviewCaptureService : Service() {
             val target = RemoteActionService.capturePackage
             val since = RemoteActionService.capturePackageSinceNanos
             val state = LauncherState(this@PreviewCaptureService)
+            if (state.mode == "Read") { stopped = true; stopSelf(); return }
             val selected = state.lastApp()?.let { ComponentName.unflattenFromString(it)?.packageName }
             if (target != null && (state.followMediaApps || target == selected) && since != eligibleSince &&
                 SystemClock.elapsedRealtimeNanos() - since >= 500_000_000L) refreshEligibleSurface(since)
@@ -71,6 +72,7 @@ class PreviewCaptureService : Service() {
 
     // Starts a visible, user-stoppable capture session; Android never restarts it without new consent.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (LauncherState(this).mode == "Read") { stopSelf(); return START_NOT_STICKY }
         if (intent?.action == "STOP") { stopped = true; stopSelf(); return START_NOT_STICKY }
         if (starting) return START_NOT_STICKY
         val consent = intent?.getParcelableExtra<Intent>("consent")
@@ -81,7 +83,7 @@ class PreviewCaptureService : Service() {
         val stop = PendingIntent.getService(this, 41, Intent(this, PreviewCaptureService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this, "preview").setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentTitle("Snapplication preview active")
-            .setContentText("Only your selected Read/Watch app is saved locally. Tap Stop to end.")
+            .setContentText(if (BuildConfig.FLAVOR == "ereader") "Your latest eligible reading page stays on this device. Tap Stop to end." else "Only your selected Read/Watch app is saved locally. Tap Stop to end.")
             .addAction(Notification.Action.Builder(null, "Stop", stop).build()).setOngoing(true).build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(41, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         else startForeground(41, notification)
