@@ -71,6 +71,8 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
         if (mode == "Read") { previous.visibility = View.GONE; next.visibility = View.GONE }
         panel.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        val setup = ui.button("Enable page previews") { onResumeCapture() }.apply { visibility = View.GONE }
+        panel.addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         val actions = active()?.playbackState?.actions ?: 0L
         previous.isEnabled = actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS != 0L
         next.isEnabled = actions and PlaybackState.ACTION_SKIP_TO_NEXT != 0L
@@ -105,6 +107,9 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
                             title.visibility = if (result.second == "Last captured frame") View.GONE else View.VISIBLE
                             image.contentDescription = result.second
                             reveal.contentDescription = "${result.second}. Open preview app"
+                        } else if (mode == "Read" && (!state.readPagePreviews || RemoteActionService.instance == null)) {
+                            title.text = "Enable page previews, then open a book in your reader"
+                            setup.visibility = View.VISIBLE
                         }
                     }
                 }
@@ -121,7 +126,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
     }
 
     // Finds only the selected app's live session; revoked or absent notification access produces no session.
-    private fun active(): MediaController? = runCatching {
+    private fun active(): MediaController? = if (mode == "Read") null else runCatching {
         sessions?.getActiveSessions(access)?.firstOrNull { it.packageName == packageName }
     }.getOrNull()
 
@@ -199,6 +204,8 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
 
     // Opens the app first; explicit Watch play requests can then resume its own advertised paused session.
     private fun openApp(resumePlayback: Boolean = false) {
+        if (mode == "Read" && packageName == MeebookReaderBridge.OWNER &&
+            MeebookReaderBridge.open(activity, prefs.getString("resumeUri:Read:$packageName", null))) return
         if (state.landscapeApps && activity.window.decorView.width > activity.window.decorView.height) {
             packageName?.let { RemoteActionService.instance?.prepareLandscape(it) }
         }

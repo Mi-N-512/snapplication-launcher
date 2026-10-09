@@ -38,12 +38,14 @@ data class LibraryItem(val uri: String, val title: String, val mime: String, val
  */
 class LauncherState(context: Context) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    // Enforces the reading edition even when older preferences contain a TV or Watch choice.
+    val readerOnly: Boolean get() = BuildConfig.FLAVOR == "ereader"
     // Start recognised e-paper hardware in a legible reader layout even with the universal APK.
     private val readerDevice = BuildConfig.FLAVOR == "ereader" ||
         listOf(android.os.Build.MANUFACTURER, android.os.Build.BRAND, android.os.Build.MODEL)
             .any { it.contains("meebook", true) || it.contains("boyue", true) }
     var deviceProfile: String
-        get() = prefs.getString("deviceProfile", if (readerDevice) "Reader" else if (BuildConfig.FLAVOR == "tv") "TV" else "Phone")!!
+        get() = if (readerOnly) "Reader" else prefs.getString("deviceProfile", if (readerDevice) "Reader" else if (BuildConfig.FLAVOR == "tv") "TV" else "Phone")!!
         private set(value) { prefs.edit().putString("deviceProfile", value).apply() }
     var profileSetupComplete: Boolean
         get() = prefs.getBoolean("profileSetupComplete", false)
@@ -57,6 +59,7 @@ class LauncherState(context: Context) {
     // Applies the chosen device's initial defaults; later settings remain individually editable.
     fun applyDeviceProfile(profile: String) {
         require(profile in listOf("Phone", "TV", "Reader"))
+        if (readerOnly && profile != "Reader") return
         deviceProfile = profile
         val reader = profile == "Reader"
         prefs.edit().putString("mode", if (reader) "Read" else "Watch")
@@ -68,8 +71,8 @@ class LauncherState(context: Context) {
     }
 
     var mode: String
-        get() = prefs.getString("mode", if (readerDevice) "Read" else "Watch")!!
-        set(value) { prefs.edit().putString("mode", value).apply() }
+        get() = if (readerOnly) "Read" else prefs.getString("mode", if (readerDevice) "Read" else "Watch")!!
+        set(value) { prefs.edit().putString("mode", if (readerOnly) "Read" else value).apply() }
     var theme: String
         get() = prefs.getString("theme", if (readerDevice) "E-paper" else "Dark")!!
         set(value) {
@@ -89,11 +92,14 @@ class LauncherState(context: Context) {
         get() = prefs.getBoolean("showFavouriteHeading", false)
         set(value) { prefs.edit().putBoolean("showFavouriteHeading", value).apply() }
     var playVideosInLauncher: Boolean
-        get() = prefs.getBoolean("playVideosInLauncher", false)
+        get() = !readerOnly && prefs.getBoolean("playVideosInLauncher", false)
         set(value) { prefs.edit().putBoolean("playVideosInLauncher", value).apply() }
     var readInLauncher: Boolean
         get() = prefs.getBoolean("readInLauncher", false)
         set(value) { prefs.edit().putBoolean("readInLauncher", value).apply() }
+    var readPagePreviews: Boolean
+        get() = prefs.getBoolean("readPagePreviews", false)
+        set(value) { prefs.edit().putBoolean("readPagePreviews", value).apply() }
     var showReaderControls: Boolean
         get() = prefs.getBoolean("showReaderControls", false)
         set(value) { prefs.edit().putBoolean("showReaderControls", value).apply() }
@@ -136,7 +142,7 @@ class LauncherState(context: Context) {
         set(value) { prefs.edit().putBoolean("tutorialSeen", value).apply() }
     // Keeps apps launched from landscape Home wide, through the enabled accessibility bridge.
     var landscapeApps: Boolean
-        get() = prefs.getBoolean("landscapeApps", !readerDevice && theme != "E-paper")
+        get() = !readerOnly && prefs.getBoolean("landscapeApps", !readerDevice && theme != "E-paper")
         set(value) { prefs.edit().putBoolean("landscapeApps", value).apply() }
 
     var fullscreen: Boolean

@@ -34,6 +34,8 @@ import org.json.JSONObject
  */
 class RemoteActionService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
+    private var readingSnapshots: ReadingSnapshots? = null
+    private val meebookReader by lazy { MeebookReaderBridge(this) }
     private val controls by lazy { RemoteControls(this) }
     private val landscapeLaunch by lazy { LandscapeLaunch(this) }
 
@@ -83,6 +85,8 @@ class RemoteActionService : AccessibilityService() {
             private set
         @Volatile var capturePackage: String? = null
             private set
+        @Volatile var captureActivity: String? = null
+            private set
         // Capture consumers reject frames older than this privacy/window-state transition.
         @Volatile var capturePackageSinceNanos: Long = 0L
             private set
@@ -100,6 +104,22 @@ class RemoteActionService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         updateForeground()
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            readingSnapshots = ReadingSnapshots(this)
+            readingSnapshots?.changed()
+        }
+    }
+
+    // Rechecks page privacy before an event-triggered still screenshot; does not schedule another one.
+    fun refreshReadingEligibility() { updateForeground() }
+
+    // Resolves only the captured reader window through its verified public book service.
+    fun readingBookUri(readerActivity: String?): String? = meebookReader.bookUri(readerActivity)
+
+    // Applies the page-preview switch without running a projection or polling timer.
+    fun refreshReadingSnapshots() {
+        updateForeground()
+        if (android.os.Build.VERSION.SDK_INT >= 30) readingSnapshots?.changed()
     }
 
     // Records explicit clicks and app transitions across allowed apps; text input is never stored.
@@ -110,6 +130,7 @@ class RemoteActionService : AccessibilityService() {
             activityClass = event.className?.toString()
         }
         updateForeground()
+        if (android.os.Build.VERSION.SDK_INT >= 30) readingSnapshots?.changed(event)
         if (recordingName == null) return
         // Touch callbacks persist the mirrored gesture after completion. Accessibility echoes and
         // intermediate app switches must not insert semantic duplicates before that gesture.
@@ -287,18 +308,19 @@ class RemoteActionService : AccessibilityService() {
                 val grayjay = capture == "com.futo.platformplayer"
                 val youtube = capture == "com.google.android.youtube"
                 val playerId = when {
+                    state.mode != "Watch" -> null
                     cloudstream -> "player_view"
                     youtube -> "watch_player"
                     grayjay -> "videodetail_player"
                     else -> null
                 }
                 val players = if (playerId != null) root.findAccessibilityNodeInfosByViewId("$capture:id/$playerId") else emptyList()
-                val generic = if (players.isEmpty() && !animiru) VideoSurface.find(this, root, capture) else null
+                val generic = if (state.mode == "Watch" && players.isEmpty() && !animiru) VideoSurface.find(this, root, capture) else null
                 val player = players.firstOrNull { it.isVisibleToUser } ?: generic
                 val video = player != null ||
                     (activityPackage == capture && activityClass?.endsWith(".PlayerActivity") == true)
                 // Grayjay retains its catalogue beneath the player. Inspect the player subtree only.
-                val chrome = hasPlayerChrome(if ((grayjay || youtube) && player != null) player else root)
+                val chrome = state.mode == "Watch" && hasPlayerChrome(if ((grayjay || youtube) && player != null) player else root)
                 if ((grayjay || youtube || generic != null) && player != null) {
                     val playerBounds = Rect().also { player.getBoundsInScreen(it) }
                     nextBounds = nextBounds?.let { Rect(it).takeIf { rect -> rect.intersect(playerBounds) && !rect.isEmpty } }
@@ -321,6 +343,9 @@ class RemoteActionService : AccessibilityService() {
                 capture = null; nextBounds = null
             }
             val captureWindowId = if (capture == null) null else activeWindow?.id
+            captureActivity = activityClass.takeIf { capture != null && activityPackage == capture }
+            if (capture == MeebookReaderBridge.OWNER && state.mode == "Read" && state.readPagePreviews) meebookReader.connect()
+            else meebookReader.close()
             if (capture != capturePackage || captureWindowId != lastCaptureWindowId || nextBounds != captureBounds) {
                 lastCaptureWindowId = captureWindowId
                 capturePackageSinceNanos = SystemClock.elapsedRealtimeNanos()
@@ -353,6 +378,7 @@ class RemoteActionService : AccessibilityService() {
 
     // Handles only saved physical-key assignments outside the launcher; untouched keys pass through.
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (BuildConfig.FLAVOR == "ereader") return false
         if (event.action == KeyEvent.ACTION_UP && controls.hasHeldAssignment(event)) {
             controls.assignment(event, false)
             return true
@@ -390,6 +416,7 @@ class RemoteActionService : AccessibilityService() {
 
     // Runs a saved action without injecting key events, avoiding feedback loops through this service.
     fun performMappedAction(action: String) {
+        if (BuildConfig.FLAVOR == "ereader") return
         when (action) {
             "Home" -> { recordNavigation("home"); openRecordedApp(packageName) }
             "Back" -> { recordNavigation("back"); if (!performGlobalAction(GLOBAL_ACTION_BACK)) message("Android could not go back on this screen.") }
@@ -460,6 +487,7 @@ class RemoteActionService : AccessibilityService() {
 
     // Arms up to 20 cross-app actions; an optional first app preserves older launcher integration.
     fun beginRecording(name: String, targetPackage: String = "", touch: Boolean = false): Boolean {
+        if (BuildConfig.FLAVOR == "ereader") return false
         if (touch && !canRecordTouches()) return false
         if (name.isBlank() || name.length > 40 || (targetPackage.isNotBlank() && !recordablePackage(targetPackage)) ||
             name.trim() in savedMacroNames()) return false
@@ -869,7 +897,12 @@ class RemoteActionService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean { cleanUp(); instance = null; return super.onUnbind(intent) }
 
     // Releases the same resources when Android destroys the service process normally.
-    override fun onDestroy() { cleanUp(); instance = null; super.onDestroy() }
+    override fun onDestroy() {
+        meebookReader.close()
+        if (android.os.Build.VERSION.SDK_INT >= 30) readingSnapshots?.close()
+        readingSnapshots = null
+        cleanUp(); instance = null; super.onDestroy()
+    }
 
     // Clears transient state; recorded clicks are saved only through the explicit Stop action.
     private fun cleanUp() {
@@ -888,6 +921,7 @@ class RemoteActionService : AccessibilityService() {
         lastCaptureWindowId = null
         captureBounds = null
         capturePackage = null
+        captureActivity = null
         capturePackageSinceNanos = SystemClock.elapsedRealtimeNanos()
     }
 }

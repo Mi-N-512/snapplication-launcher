@@ -33,7 +33,8 @@ import java.util.concurrent.Executors
  * Where to find things (the names below are the exact class and method names):
  * - Home layout and favourite blocks: MainActivity.home() and favouriteColumn().
  * - The centre's saved picture and return-to-app action: ExternalPreview.
- *   PreviewCaptureService saves pictures; ExternalPreview displays them.
+ *   ReadingSnapshots saves still reading pages. PreviewCaptureService saves Watch frames.
+ *   ExternalPreview displays the saved picture; ReaderSurface recognises reading pages.
  * - Video playing inside Home: WatchPlayer. Pages shown inside Home: ReaderPanel.
  * - Folder items and saved places: LocalLibrary, LibraryItem and LauncherState.
  * - All Apps, A-Z navigation and changing favourite order: DrawerPanel.
@@ -184,7 +185,7 @@ class MainActivity : Activity() {
         return root
     }
 
-    // Uses the Make layout: a 57 percent portrait viewer and a 70 percent landscape viewer.
+    // Gives portrait reading pages more room while retaining the Make layout for Watch and landscape.
     @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     private fun home(measuredLandscape: Boolean? = null) {
         begin("Home")
@@ -212,8 +213,9 @@ class MainActivity : Activity() {
             body.addView(viewer, LinearLayout.LayoutParams(0, -1, .70f))
             body.addView(favouriteColumn(favourites.drop(left), slotCount = right), LinearLayout.LayoutParams(0, -1, .15f))
         } else {
-            body.addView(viewer, LinearLayout.LayoutParams(-1, 0, .57f))
-            body.addView(favouriteColumn(favourites, portrait = true, slotCount = if (state.dynamicBlocks) favourites.size.coerceAtLeast(2) else state.favouriteCount), LinearLayout.LayoutParams(-1, 0, .43f))
+            val previewShare = if (state.mode == "Read") .72f else .57f
+            body.addView(viewer, LinearLayout.LayoutParams(-1, 0, previewShare))
+            body.addView(favouriteColumn(favourites, portrait = true, slotCount = if (state.dynamicBlocks) favourites.size.coerceAtLeast(2) else state.favouriteCount), LinearLayout.LayoutParams(-1, 0, 1f - previewShare))
         }
         val last = state.last(state.mode)
         if (state.viewerSource == "App") {
@@ -237,7 +239,7 @@ class MainActivity : Activity() {
                 player.view.hideController()
                 addOpenContentOverlay(panel, last, "▶")
             } else player.view.showController()
-        } else if (last.title.endsWith(".epub", true) || last.mime == "application/epub+zip") {
+        } else if (!ReadingFormats.canRenderInline(last.title, last.mime)) {
             panel.addView(ui.label(last.title, 24f))
             addOpenContentOverlay(panel, last, "Open book in reader")
         } else {
@@ -270,7 +272,8 @@ class MainActivity : Activity() {
         watch?.pause()
         val uri = Uri.parse(item.uri)
         val extension = item.title.substringAfterLast('.', "").lowercase()
-        val mime = if (extension == "cbz") "application/vnd.comicbook+zip"
+        val mime = if (item.mode == "Read") ReadingFormats.mime(item.title, item.mime)
+            else if (extension == "cbz") "application/vnd.comicbook+zip"
             else if (item.mime !in setOf("application/octet-stream", "application/zip", "")) item.mime else when (extension) {
             "pdf" -> "application/pdf"
             "epub" -> "application/epub+zip"
@@ -304,12 +307,14 @@ class MainActivity : Activity() {
     // Persists preview and local-media sizing without changing another app's display.
     private fun chooseContentScale() {
         val values = arrayOf("Fit", "Fill", "Stretch")
-        val labels = arrayOf("Fit · show the whole image", "Crop · fill without distortion", "Stretch · fill all dimensions")
+        val labels = arrayOf("Fit to preview · show the whole page or image", "Crop to fill · no distortion", "Stretch · fill all dimensions")
+        val returnToPagePreviews = screen == "Page previews"
         AlertDialog.Builder(this).setTitle("Preview sizing")
-            .setItems(labels) { _, index ->
+            .setSingleChoiceItems(labels, values.indexOf(state.contentScale)) { dialog, index ->
                 state.contentScale = values[index]
                 reader?.applyContentScale(); watch?.applyContentScale()
-                settings()
+                dialog.dismiss()
+                if (returnToPagePreviews) readingPreviewSettings() else settings()
             }.setNegativeButton("Cancel", null).show()
     }
 
@@ -503,6 +508,7 @@ class MainActivity : Activity() {
 
     // Switches between the two user-selected modes while keeping independent resume positions.
     private fun chooseMode() {
+        if (state.readerOnly) return
         AlertDialog.Builder(this).setTitle("Mode").setItems(arrayOf("Watch", "Read")) { _, index ->
             state.mode = if (index == 0) "Watch" else "Read"; applyOrientation(); home()
         }.show()
@@ -558,7 +564,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Favourites Style", "${if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
         content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
         content.addView(ui.section(if (state.deviceProfile == "Reader") "Reading" else "Read & Watch"))
-        content.addView(ui.setting("Home preview", "Follow your last video or book; save a still picture locally") { previewSettings() })
+        content.addView(ui.setting("Home preview", if (state.readerOnly) "Save your last reading page on this device" else "Follow your last video or book; save a still picture locally") { previewSettings() })
         if (state.deviceProfile != "Reader") content.addView(ui.setting("Play videos in launcher", "Off: tap the preview to open a video app", if (state.playVideosInLauncher) "On" else "Off") {
             state.playVideosInLauncher = !state.playVideosInLauncher; settings()
         })
@@ -566,15 +572,15 @@ class MainActivity : Activity() {
             state.readInLauncher = !state.readInLauncher; settings()
         })
         content.addView(ui.setting("Main viewer", if (state.viewerSource == "App") "Continue app" else "Folder content") { chooseViewerSource() })
-        content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · preview, documents and videos") { chooseContentScale() })
+        content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
         content.addView(ui.setting("Previous / Next buttons", "Show page controls in the reading panel", if (state.showReaderControls) "On" else "Off") {
             state.showReaderControls = !state.showReaderControls; settings()
         })
-        content.addView(ui.row("Mode    ${state.mode}  ›") { chooseMode() })
+        if (!state.readerOnly) content.addView(ui.row("Mode    ${state.mode}  ›") { chooseMode() })
         content.addView(ui.row("Library    ›") { library() })
         content.addView(ui.row("Choose folder    ›") { pickFolder() })
         if (state.deviceProfile != "Reader") content.addView(ui.row("Other app playback    ›") { externalPlayback() })
-        content.addView(ui.section("Display & Input"))
+        content.addView(ui.section(if (state.readerOnly) "Display" else "Display & Input"))
         content.addView(ui.setting("Fullscreen", "Hide system bars; swipe an edge to reveal them", if (state.fullscreen) "On" else "Off") {
             state.fullscreen = !state.fullscreen; settings()
         })
@@ -589,7 +595,7 @@ class MainActivity : Activity() {
             if (!state.landscapeApps) RemoteActionService.instance?.cancelLandscape()
             settings()
         })
-        content.addView(ui.setting("Wireless Remote", "Remap a connected remote control", "Calibrate ›") { remoteSettings() })
+        if (!state.readerOnly) content.addView(ui.setting("Wireless Remote", "Remap a connected remote control", "Calibrate ›") { remoteSettings() })
         if (state.deviceProfile != "Reader") content.addView(ui.setting("Second Screen", "Connected displays and device information") { diagnostics() })
         content.addView(ui.row("Set as default launcher    ›") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) })
         if (state.deviceProfile != "Reader") {
@@ -627,7 +633,7 @@ class MainActivity : Activity() {
     private fun organizeSettings(content: LinearLayout) {
         val groups = linkedMapOf<String, MutableList<View>>()
         var group = "Appearance"
-        val names = setOf("APPEARANCE", "FAVOURITES", "READ & WATCH", "READING", "DISPLAY & INPUT", "PLAYBACK", "ABOUT")
+        val names = setOf("APPEARANCE", "FAVOURITES", "READ & WATCH", "READING", "DISPLAY", "DISPLAY & INPUT", "PLAYBACK", "ABOUT")
         for (index in 0 until content.childCount) {
             val child = content.getChildAt(index)
             if (child is android.widget.TextView && child.text.toString() in names) group = child.text.toString().lowercase().replaceFirstChar { it.uppercase() }
@@ -654,7 +660,7 @@ class MainActivity : Activity() {
         }
         val summaries = mapOf("Appearance" to "Theme, transparency, corners and icon packs", "Favourites" to "Add apps, arrange blocks and choose your layout",
             "Read & watch" to "Last-frame preview, content and playback", "Reading" to "Page previews, folders and reading apps", "About" to "Setup guide and device information", "Display & input" to "Fullscreen, orientation and remote buttons",
-            "Playback" to "Episode progress, setup guide and device information")
+            "Display" to "Fullscreen and reading orientation", "Playback" to "Episode progress, setup guide and device information")
         fun words(view: View): String = if (view is android.widget.TextView) view.text.toString() else if (view is ViewGroup)
             (0 until view.childCount).joinToString(" ") { words(view.getChildAt(it)) } else ""
         fun update(query: String) {
@@ -747,6 +753,7 @@ class MainActivity : Activity() {
 
     // Presents the visual remote and individual key assignments using RemoteMappingPanel.
     private fun remoteSettings() {
+        if (state.readerOnly) { settings(); return }
         begin("Remote buttons")
         val panel = RemoteMappingPanel(this, ui, remote).build(
             onAccessibility = { explainAccessibility() },
@@ -773,14 +780,14 @@ class MainActivity : Activity() {
         val pages = listOf(
             SetupGuide.Page(if (state.mode == "Read") "Return to your last page" else "Pick up where you left off", if (state.mode == "Read") "Your last captured page lives in the centre. Select it to reopen your reading app. Choose PDF, EPUB or comics from a folder, or read in your preferred app." else "Your last video lives in the centre. Select its picture to return to the app; your favourite apps sit around it.",
                 "Try Home", "You can revisit this guide from Settings at any time.") { state.tutorialSeen = true; home() },
-            SetupGuide.Page("Put your apps within reach", "Open Favourites mode in All Apps. Tap apps to add them, then drag the preview icons into order. With a remote, select an icon to move it.",
+            SetupGuide.Page("Put your apps within reach", "Open Favourites mode in All Apps. Tap apps to add them, then drag the preview icons into order." + if (state.readerOnly) "" else " With a remote, select an icon to move it.",
                 "Choose favourites", "Tap apps to select them; drag the preview to change their order.") { state.tutorialSeen = true; drawer(editFavourites = true) },
-            SetupGuide.Page("Connect your remote and previews", "Accessibility support identifies the app on screen and runs the buttons and actions you choose. Enable Snapplication in Android, then return here.",
-                if (access) "Review accessibility" else "Enable accessibility", if (access) "✓ Accessibility is connected" else "Needed for remote actions and app previews") { explainAccessibility() },
-            SetupGuide.Page("Keep your last moment", "Android asks to share the screen. Snapplication saves only the latest eligible media frame locally. Protected video can appear black. Stop sharing from the capture notification whenever you want.",
-                if (PreviewCaptureService.active) "Previews are on" else if (access) "Enable screen capture" else "Enable accessibility first",
-                if (PreviewCaptureService.active) "✓ Screen capture is running" else "Android may ask again after a restart or an update") {
-                if (!access) explainAccessibility() else if (!PreviewCaptureService.active) requestPreviewCapture()
+            SetupGuide.Page(if (state.readerOnly) "Recognise your reading pages" else "Connect your remote and previews", if (state.readerOnly) "Enable Snapplication E-reader support in Android, then return here. It recognises reading pages so your library, menus and other screens do not replace your book preview." else "Accessibility support identifies the app on screen and runs the buttons and actions you choose. Enable Snapplication in Android, then return here.",
+                if (access) "Review accessibility" else "Enable accessibility", if (access) "✓ Accessibility is connected" else if (state.readerOnly) "Step 1 of 2 for page previews" else "Needed for remote actions and app previews") { explainAccessibility() },
+            SetupGuide.Page(if (state.mode == "Read") "Save a page, not a video" else "Keep your last moment", if (state.mode == "Read") "Page previews take one still picture after a supported reader reports a change. No screen recording runs while you read. Open a book, then return Home to see your saved page. Requires Android 11 or newer and accessibility support." else "Android asks to share the screen. Snapplication saves only the latest eligible media frame locally. Protected video can appear black. Stop sharing from the capture notification whenever you want.",
+                if (state.mode == "Read") "Set up page previews" else if (PreviewCaptureService.active) "Previews are on" else if (access) "Enable screen capture" else "Enable accessibility first",
+                if (state.mode == "Read") "Only the latest eligible page is kept locally" else if (PreviewCaptureService.active) "✓ Screen capture is running" else "Android may ask again after a restart or an update") {
+                if (state.mode == "Read") readingPreviewSettings() else if (!access) explainAccessibility() else if (!PreviewCaptureService.active) requestPreviewCapture()
             },
             SetupGuide.Page("Let the app handle playback", "Optional notification access lets Snapplication use an app's media controls. Play, previous and next work only when that app offers them. No notification messages are saved or sent.",
                 if (media) "Review media access" else "Enable media controls", if (media) "✓ Media access is enabled" else "Optional — previews can open apps without this") {
@@ -800,23 +807,60 @@ class MainActivity : Activity() {
 
     // Explains accessibility access before sending the user to Android's own opt-in control.
     private fun explainAccessibility() {
-        AlertDialog.Builder(this).setTitle("Remote and preview support")
-            .setMessage("This optional Android permission can read on-screen text and controls and perform actions in other apps. Snapplication uses it to identify reading/video screens, intercept your mapped remote keys, and record or replay actions only when you start them. Recorded steps and preview images stay on this device and are not uploaded. Screen images require separate screen-sharing consent. You can skip this permission and still use the launcher, or disable access in Android settings at any time.")
+        AlertDialog.Builder(this).setTitle(if (state.readerOnly) "Reading page support" else "Remote and preview support")
+            .setMessage(if (state.readerOnly) "This optional Android permission lets Snapplication identify reading pages and take occasional still screenshots when page previews are enabled. Pictures stay on this device. The E-reader edition does not remap buttons, record gestures or run screen recording. After updating, turn Snapplication E-reader support off and on if Android has not refreshed its screenshot permission. You can skip setup and still use the launcher." else "This optional Android permission can read on-screen text and controls and perform actions in other apps. Snapplication uses it to identify reading/video screens, take still reading-page previews, intercept your mapped remote keys, and record or replay actions only when you start them. Recorded steps and preview images stay on this device and are not uploaded. Watch previews require separate screen-sharing consent. You can skip this permission and still use the launcher, or disable access in Android settings at any time.")
             .setNegativeButton("Cancel", null).setPositiveButton("Open Android settings") { _, _ ->
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }.show()
     }
 
-    // Offers one preview switch, automatic app following and optional manual selection.
+    // Uses occasional accessibility screenshots for books; never starts projection as a fallback.
+    private fun readingPreviewSettings() {
+        begin("Page previews")
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val supported = android.os.Build.VERSION.SDK_INT >= 30
+        val service = RemoteActionService.instance
+        val permitted = supported && service != null && service.serviceInfo.capabilities and
+            android.accessibilityservice.AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT != 0
+        content.addView(ui.label("Still page previews", 22f))
+        content.addView(ui.label("Save still pictures of your reading page without screen recording. Most readers update after page-change events. Meebook Read is checked every five seconds because it does not announce page turns. Pictures stay on this device.", 16f))
+        if (!supported) content.addView(ui.label("Automatic still previews require Android 11 or newer. You can still open reading apps and use local PDF, CBZ and image pages.", 16f))
+        else {
+            content.addView(ui.setting("Page previews", "Occasional still screenshots", if (state.readPagePreviews && permitted) "On" else "Off") {
+                if (state.readPagePreviews && permitted) state.readPagePreviews = false
+                else {
+                    state.readPagePreviews = true
+                    if (!permitted) explainAccessibility()
+                }
+                RemoteActionService.instance?.refreshReadingSnapshots()
+                readingPreviewSettings()
+            })
+            if (!permitted) content.addView(ui.button("Enable reading page support") { explainAccessibility() })
+            if (android.os.Build.VERSION.SDK_INT >= 30) ReadingSnapshots.lastError?.let { content.addView(ui.label(it, 14f)) }
+        }
+        content.addView(ui.setting("Follow last reading app", "Switch previews as you read in different supported apps", if (state.followMediaApps) "On" else "Off") {
+            state.followMediaApps = !state.followMediaApps; readingPreviewSettings()
+        })
+        if (!state.followMediaApps) content.addView(ui.button("Choose fixed preview app") { choosingPreview = true; drawer() })
+        content.addView(ui.button("Picture sizing: ${if (state.contentScale == "Fill") "Crop" else state.contentScale}") { chooseContentScale() })
+        content.addView(ui.label("Meebook Read previews can lag a few seconds. Other readers that do not report changes, or block screenshots, may keep an older preview. Continuous recording is never started automatically.", 14f))
+        content.addView(ui.button("Clear saved pictures") {
+            PreviewCaptureService.clearSaved(this); readingPreviewSettings()
+        })
+    }
+
+    // Offers Watch capture, automatic app following and optional manual selection.
     private fun previewSettings() {
+        if (state.mode == "Read") { readingPreviewSettings(); return }
         begin("Home preview")
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         val enabled = RemoteActionService.instance != null
         val running = PreviewCaptureService.active
         content.addView(ui.label(if (running) "Previews are on" else "Previews are off", 22f))
-        content.addView(ui.label("Keep a still picture of your last video or book. Tap it to return to that app. Pictures stay on this phone. Protected video may be black.", 16f))
-        content.addView(ui.setting("Follow last media app", "Switch between supported players and readers as you use them", if (state.followMediaApps) "On" else "Off") {
+        content.addView(ui.label(if (state.readerOnly) "Save your last reading page on this device. Tap its picture on Home to return to the reading app." else "Keep a still picture of your last video or book. Tap it to return to that app. Pictures stay on this device. Protected video may be black.", 16f))
+        content.addView(ui.setting(if (state.readerOnly) "Follow last reading app" else "Follow last media app", if (state.readerOnly) "Update the preview when you read in another supported app" else "Switch between supported players and readers as you use them", if (state.followMediaApps) "On" else "Off") {
             state.followMediaApps = !state.followMediaApps; previewSettings()
         })
         if (!state.followMediaApps) content.addView(ui.button("Choose fixed preview app") { choosingPreview = true; drawer() })
@@ -838,6 +882,7 @@ class MainActivity : Activity() {
 
     // Requests Android's screen-sharing consent; capture accepts only the active media target.
     private fun requestPreviewCapture() {
+        if (state.mode == "Read") { readingPreviewSettings(); return }
         val manager = getSystemService(android.media.projection.MediaProjectionManager::class.java)
         val request = if (android.os.Build.VERSION.SDK_INT >= 34)
             manager.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
@@ -929,6 +974,7 @@ class MainActivity : Activity() {
 
     // Applies saved remote keys only in this activity, preserving text entry and paired key events.
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (::state.isInitialized && state.readerOnly) return super.dispatchKeyEvent(event)
         if (!::remote.isInitialized || RemoteControls.learning) return super.dispatchKeyEvent(event)
         RemoteControls.observeKey(event)
         // On the mapping page non-navigation keys are diagnostic: do not lock, leave or run a macro.
@@ -1028,6 +1074,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (!::state.isInitialized) return
+        if (state.mode == "Read") stopService(Intent(this, PreviewCaptureService::class.java))
         RemoteActionService.instance?.onLauncherResume(state.orientation == "Landscape" ||
             (state.orientation == "Mode default" && state.mode == "Watch" && state.theme != "E-paper"))
         if (screen == "Welcome") introduction(guideStep)
@@ -1037,6 +1084,7 @@ class MainActivity : Activity() {
 
     // Offers remote assignment once when a recording finishes or the user returns from another app.
     private fun offerSavedMacro() {
+        if (state.readerOnly) return
         val macros = getSharedPreferences("remoteMacros", MODE_PRIVATE)
         val saved = macros.getString("pendingAssignment", null)
         if (saved != null) {

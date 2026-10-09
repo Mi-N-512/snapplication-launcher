@@ -47,6 +47,6 @@ class LocalLibrary(private val context: Context) {
     private fun accepts(name: String, mime: String, mode: String): Boolean {
         val extension = name.substringAfterLast('.', "").lowercase()
         return if (mode == "Watch") mime.startsWith("video/") || extension in setOf("mp4", "mkv", "webm", "m4v", "mov")
-        else mime.startsWith("image/") || mime == "application/pdf" || mime == "application/epub+zip" || extension in setOf("pdf", "cbz", "epub")
+        else ReadingFormats.accepts(name, mime)
     }
 }

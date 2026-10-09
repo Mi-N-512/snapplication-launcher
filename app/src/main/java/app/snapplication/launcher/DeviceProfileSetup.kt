@@ -24,19 +24,19 @@ class DeviceProfileSetup(private val activity: Activity, private val state: Laun
             LinearLayout.LayoutParams(-1, 0, 1f))
         body.addView(ui.section("WELCOME TO SNAPPLICATION"))
         body.addView(ui.label("Make this screen yours", 28f))
-        body.addView(ui.label("Choose your device and theme first. You can change either later in Settings.", 16f))
-        body.addView(ui.section("1 · Your device"))
+        body.addView(ui.label(if (state.readerOnly) "Your reading launcher. Choose a comfortable theme to begin." else "Choose your device and theme first. You can change either later in Settings.", 16f))
+        if (!state.readerOnly) body.addView(ui.section("1 · Your device"))
         val descriptions = linkedMapOf(
             "Reader" to "E-paper, including Meebook M6 · books and pages, portrait, no animation",
             "Phone" to "Touch controls · resume videos or switch to reading",
             "TV" to "Landscape · large controls for a remote")
-        descriptions.forEach { (profile, description) ->
+        if (!state.readerOnly) descriptions.forEach { (profile, description) ->
             body.addView(ui.setting(profile, description, if (state.deviceProfile == profile) "Selected" else "Choose") {
                 state.applyDeviceProfile(profile)
                 onChanged()
             })
         }
-        body.addView(ui.section("2 · Your theme"))
+        body.addView(ui.section(if (state.readerOnly) "Your reading theme" else "2 · Your theme"))
         listOf("E-paper", "Light", "Dark").forEach { theme ->
             val explanation = when (theme) {
                 "E-paper" -> "Black on white · no animation or transparency"
