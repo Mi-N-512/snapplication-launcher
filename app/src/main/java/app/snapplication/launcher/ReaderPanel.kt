@@ -98,8 +98,8 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
     // Uses bounded temporary copies for seekable PDF/ZIP access and releases every descriptor.
     private fun decode(selection: LibraryItem, requestedPage: Int): Pair<Bitmap, Int> {
         val uri = Uri.parse(selection.uri)
-        val extension = selection.title.substringAfterLast('.', "").lowercase()
-        if (selection.mime.startsWith("image/")) {
+        val kind = requireNotNull(ReadingFormats.inlineKind(selection.title, selection.mime))
+        if (kind == ReadingFormats.InlineKind.IMAGE) {
             val data = context.contentResolver.openInputStream(uri)!!.use { it.readBytesBounded(32 * 1024 * 1024) }
             return decodeImage(data) to 1
         }
@@ -120,7 +120,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
             cachedFile?.delete(); cachedFile = temp; cachedUri = selection.uri
         } catch (error: Exception) { temp.delete(); throw error }
         run {
-            if (selection.mime == "application/pdf" || extension == "pdf") {
+            if (kind == ReadingFormats.InlineKind.PDF) {
                 PdfRenderer(ParcelFileDescriptor.open(temp, ParcelFileDescriptor.MODE_READ_ONLY)).use { pdf ->
                     require(pdf.pageCount > 0)
                     pdf.openPage(requestedPage.coerceIn(0, pdf.pageCount - 1)).use { p ->
@@ -133,7 +133,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
                     }
                 }
             }
-            require(extension == "cbz")
+            require(kind == ReadingFormats.InlineKind.COMIC)
             ZipFile(temp).use { zip ->
                 val pages = zip.entries().asSequence().filter { !it.isDirectory &&
                     it.name.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "webp") }
