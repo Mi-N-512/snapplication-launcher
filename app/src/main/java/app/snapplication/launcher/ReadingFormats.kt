@@ -35,10 +35,22 @@ object ReadingFormats {
 
     // EPUB and other document formats must never fall through to the built-in CBZ decoder.
     fun canRenderInline(name: String, supplied: String): Boolean {
-        val resolved = mime(name, supplied)
-        return resolved in setOf("application/pdf", "application/vnd.comicbook+zip", "application/x-cbz") ||
-            extension(name) in images || (resolved.startsWith("image/") && resolved != "image/vnd.djvu")
+        return inlineKind(name, supplied) != null
     }
+
+    // Shares the exact decoder choice with ReaderPanel so generic provider MIME types still work.
+    fun inlineKind(name: String, supplied: String): InlineKind? {
+        val resolved = mime(name, supplied)
+        return when {
+            resolved == "application/pdf" -> InlineKind.PDF
+            resolved in setOf("application/vnd.comicbook+zip", "application/x-cbz") -> InlineKind.COMIC
+            extension(name) in images || (resolved.startsWith("image/") && resolved != "image/vnd.djvu") -> InlineKind.IMAGE
+            else -> null
+        }
+    }
+
+    /* Decoder choices shared by file routing and ReaderPanel; additional parsers belong here only once implemented. */
+    enum class InlineKind { PDF, COMIC, IMAGE }
 
     // Uses locale-independent matching for names received from Android document providers.
     private fun extension(name: String): String = name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)

@@ -10,6 +10,13 @@ import org.junit.Test
  * Edit here when adding formats, especially when external formats resemble ZIPs or images.
  */
 class ReadingFormatsTest {
+    // Exercises the decoder selector consumed by ReaderPanel, including providers without useful filenames/MIME.
+    @Test fun decoderMatchesGenericAndMimeOnlyFiles() {
+        assertEquals(ReadingFormats.InlineKind.IMAGE, ReadingFormats.inlineKind("page.PNG", "application/octet-stream"))
+        assertEquals(ReadingFormats.InlineKind.COMIC, ReadingFormats.inlineKind("opaque-id", "application/x-cbz"))
+        assertEquals(ReadingFormats.InlineKind.PDF, ReadingFormats.inlineKind("opaque-id", "application/pdf"))
+        assertNull(ReadingFormats.inlineKind("book.epub", "application/zip"))
+    }
     // Generic document providers must still expose uppercase EPUB and comic filenames correctly.
     @Test fun genericProviderTypesResolveFromBookNames() {
         assertEquals("application/epub+zip", ReadingFormats.mime("Book.EPUB", "application/octet-stream"))
