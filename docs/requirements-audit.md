@@ -1,5 +1,19 @@
 # V1 requirements audit — 1 October 2026
 
+## Status note — 12 October 2026
+
+The table below is a historical 1 October checkpoint, not the current implementation inventory.
+Later evidence supersedes several missing-feature rows: automatic Reader still previews and Meebook
+resume are documented in [Reader QA](reader-qa-2026-10-09.md) and [Reader review](reader-review-2026-10-11.md);
+macro recording, editing, single-run replay and USB screen-off checks are documented in
+[Mate USB QA](mate-usb-qa-2026-10-12.md). Current code includes TouchMacroRecorder, MacroEditor and
+MacroPreviewView. These do not establish universal compatibility or complete the hardware checks.
+Physical remote Back/Power delivery and Huawei HDMI-dialog recording remain unverified in the current
+direct-USB setup. The overall V1 goal remains incomplete; passing a narrow software test is not a
+release/completion audit.
+
+## Historical checkpoint
+
 Checkpoint reviewed: source 3666385, private build b50cf2f. This is an incomplete V1 audit, not release approval. The original DOCX was re-extracted in full for this review; latest user instructions override its early design notes.
 
 ## Current contract

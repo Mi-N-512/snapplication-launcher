@@ -47,3 +47,17 @@ step for attributing screen-transition stalls; these frame counts do not identif
 Physical Back/Power delivery, remote wake behavior, Huawei external-display terms dialog recording,
 HDMI blanking and the user's reported remote delay remain unverified. USB virtual keys cannot prove
 these work. Android-reserved keys cannot be made interceptable by this focus-query change.
+
+## Macro form follow-up
+
+Recording-name and step-wait forms now keep invalid input open with an inline correction message.
+Wait values outside 0–10000 milliseconds are rejected rather than silently clamped; cancelling returns
+to the step list. The recording form reacquires the accessibility service on each attempt and at delayed
+start, so opening Accessibility and reconnecting support does not leave a captured, stale service.
+
+All-edition build, lint and 63 existing tests passed again (macro-forms-final-build.log). Focused review
+identified the stale-service risk and confirmed its correction. On the updated Universal installed on
+the Mate: empty name retained the form; correcting it created a two-step QA recording; an out-of-range
+wait (25010001) displayed an error without dismissing; correcting it to zero saved a visible 0 ms step;
+that value persisted later, and Cancel returned to the unchanged step list. These are UI checks, not
+a claim that hardware recording or service reconnection was exercised end-to-end.
