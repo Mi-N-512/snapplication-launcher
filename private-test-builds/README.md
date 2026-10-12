@@ -1,6 +1,6 @@
 # Private test builds - 12 October 2026
 
-Source commit: 8e52615. Development builds only; no public release.
+Source commit: 09389cb. Development builds only; no public release.
 
 - [Universal APK](snapplication-universal-debug.apk)
 - [E-reader APK](snapplication-ereader-debug.apk)
@@ -15,6 +15,9 @@ All three editions compiled and passed lint and 63 unit tests. The 12 October up
 Macro name and timing forms now retain invalid input for correction, explain errors beside the field,
 and reacquire accessibility support after a reconnect. Empty-name correction, rejected timing,
 zero-delay saving/persistence and Cancel were checked on the Mate using a temporary recording.
+Both macro deletion entry points now ask for confirmation and support saved-data deletion without
+an accessibility connection. List Cancel and confirmed deletion were checked on the Mate; the
+disconnected-service path was reviewed without changing the user's accessibility permission.
 
 Earlier physical Meebook checks covered Mihon, PDF, EPUB and CBZ; these were not repeated for this remote-only change. Read's silent page canvas is checked every five seconds and may retain an older preview if Home is opened immediately after turning a page. Protected/unsupported readers and unknown vendor versions have limitations; no universal parser or battery-life claim is made.
 
