@@ -380,7 +380,7 @@ class RemoteActionService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (BuildConfig.FLAVOR == "ereader") return false
         if (event.action == KeyEvent.ACTION_UP && controls.hasHeldAssignment(event)) {
-            controls.assignment(event, false)
+            controls.assignment(event) { false }
             return true
         }
         if (RemoteControls.learning || currentPackage == packageName) return false
@@ -388,21 +388,16 @@ class RemoteActionService : AccessibilityService() {
         // Learned hybrid remotes can report mouse sources for their buttons; the saved descriptor/key
         // is the authority. Avoid a full window-tree scan here: Android's key-filter deadline is short.
         if (device.isVirtual || event.keyCode in setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)) return false
-        // Screen off is permitted even during text entry. Avoid a slow cross-process tree request
-        // before this time-sensitive action; latch and consume its release as with other mappings.
-        if (controls.action(event) == "Screen off") {
-            controls.assignment(event, false)
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) performMappedAction("Screen off")
-            return true
+        // Only text-sensitive shortcuts need a cross-process focus read. Navigation, locking,
+        // unmapped keys and latched repeats/releases must not wait for another app's window tree.
+        val action = controls.assignment(event) {
+            val root = rootInActiveWindow
+            try {
+                root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { focused ->
+                    try { focused.isEditable || focused.isPassword } finally { focused.recycle() }
+                } ?: false
+            } finally { root?.recycle() }
         }
-        val root = rootInActiveWindow
-        val editing = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { focused ->
-            val sensitive = focused.isEditable || focused.isPassword
-            focused.recycle()
-            sensitive
-        } ?: false
-        root?.recycle()
-        val action = controls.assignment(event, editing)
         if (action == null) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && event.keyCode == KeyEvent.KEYCODE_BACK) recordNavigation("back")
             return false

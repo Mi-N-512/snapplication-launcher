@@ -1,4 +1,13 @@
-# Reader fix acceptance — 8 October 2026
+# Active task — Mate USB remote checks, 12 October 2026
+
+The user has explicitly moved work to the directly connected Mate 10 Pro. The earlier Reader-only device
+restriction below applies to the completed Reader task, not this work. Preserve Reader functionality.
+Run all three editions' build/lint/unit tests using `scripts/verify.ps1` (optionally `-Offline`). Install
+Universal only on the Mate for this task. Verify macro record/save/replay/stop and screen off through USB;
+physical remote Back/Power and Huawei TV connection dialogs remain unverified without that hardware.
+Do not infer real remote key delivery from virtual ADB key events. Retain saved user macros and mappings.
+
+# Completed Reader fix acceptance — 8 October 2026
 
 User-approved baseline: `eaecf69`. Scope: Meebook M6 Reader edition, Mihon streaming pages and Read downloaded books. Do not change or install on the Mate 10 Pro during this task.
 
