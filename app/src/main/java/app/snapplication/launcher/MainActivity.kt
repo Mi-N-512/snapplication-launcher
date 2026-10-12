@@ -898,23 +898,36 @@ class MainActivity : Activity() {
                 val name = EditText(this).apply { hint = "Action name"; setSingleLine(true) }
                 val touch = android.widget.CheckBox(this).apply { text = "Record taps and swipes"; isChecked = getSharedPreferences("remoteMacros", MODE_PRIVATE).getBoolean("touchRecording", true) }
                 val form = ui.column().apply { addView(name); addView(touch) }
-                AlertDialog.Builder(this).setTitle("Record an action").setView(form)
+                val dialog = AlertDialog.Builder(this).setTitle("Record an action").setView(form)
                     .setMessage("Start at Home and perform your steps. Each touch is repeated after you lift your finger. Stop saves the action; return here to assign a remote button. Turn off taps and swipes to record accessible buttons instead.")
-                    .setNegativeButton("Cancel", null).setPositiveButton("Record") { _, _ ->
+                    .setNegativeButton("Cancel", null).setPositiveButton("Record", null).create()
+                // Preserve the form on invalid names so the user can correct them without starting over.
+                dialog.setOnShowListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                         val title = name.text.toString().trim()
+                        // Accessibility can reconnect while this preserved form remains open.
+                        val activeService = RemoteActionService.instance
                         if (title.isBlank() || title.length > 40 || title in RemoteActionService.savedMacroNames(this)) {
-                            message("Use a unique action name of 1–40 characters.")
-                        } else if (touch.isChecked && !service.canRecordTouches()) {
+                            name.error = "Use a unique action name of 1–40 characters."
+                        } else if (activeService == null) {
+                            explainAccessibility()
+                        } else if (touch.isChecked && !activeService.canRecordTouches()) {
                             AlertDialog.Builder(this).setTitle("Refresh gesture permission")
                                 .setMessage("Android is using the old accessibility permission. Turn Snapplication support off and on in Accessibility settings to enable recorded taps and swipes.")
                                 .setPositiveButton("Open accessibility") { _, _ -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                                 .setNegativeButton("Later", null).show()
                         } else {
                             getSharedPreferences("remoteMacros", MODE_PRIVATE).edit().putBoolean("touchRecording", touch.isChecked).apply()
+                            dialog.dismiss()
                             home()
-                            root.postDelayed({ if (!isFinishing && !service.beginRecording(title, touch = touch.isChecked)) message("Recording could not start. Check accessibility support.") }, 450)
+                            root.postDelayed({
+                                if (!isFinishing && RemoteActionService.instance?.beginRecording(title, touch = touch.isChecked) != true)
+                                    message("Recording could not start. Check accessibility support.")
+                            }, 450)
                         }
-                    }.show()
+                    }
+                }
+                dialog.show()
             }
     }
 

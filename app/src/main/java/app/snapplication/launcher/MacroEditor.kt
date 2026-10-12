@@ -89,11 +89,21 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         AlertDialog.Builder(activity).setTitle(title(step)).setItems(options.toTypedArray()) { _, chosen ->
             if (chosen == 0) {
                 val input = EditText(activity).apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER; setText(step.optLong("delay", 350).toString()); selectAll() }
-                AlertDialog.Builder(activity).setTitle("Wait before this step (0–10000 ms)").setView(input)
-                    .setNegativeButton("Cancel", null).setPositiveButton("Save") { _, _ ->
-                        input.text.toString().toLongOrNull()?.let { step.put("delay", it.coerceIn(0, 10000)); save(name, macro) }
-                        steps(name)
-                    }.show()
+                val dialog = AlertDialog.Builder(activity).setTitle("Wait before this step (0–10000 ms)").setView(input)
+                    .setNegativeButton("Cancel") { _, _ -> steps(name) }.setPositiveButton("Save", null).create()
+                // Keep invalid input available to correct; never silently clamp or discard the user's timing.
+                dialog.setOnShowListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val delay = input.text.toString().trim().toLongOrNull()
+                        if (delay == null || delay !in 0L..10000L) {
+                            input.error = "Enter a whole number from 0 to 10000 milliseconds"
+                            return@setOnClickListener
+                        }
+                        step.put("delay", delay); save(name, macro)
+                        dialog.dismiss(); steps(name)
+                    }
+                }
+                dialog.show()
             } else {
                 val list = (0 until sequence.length()).map { sequence.getJSONObject(it) }.toMutableList()
                 when (options[chosen]) {
