@@ -57,15 +57,15 @@ class RemoteControls(private val context: Context) {
     }
 
     // Latches each press's assignment so entering a text field cannot change repeats or key-up.
-    fun assignment(event: KeyEvent, editing: Boolean): String? {
+    fun assignment(event: KeyEvent, isEditing: () -> Boolean): String? {
         val key = event.deviceId to event.keyCode
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             val mapped = action(event)
             // Navigation and launcher escape keys must remain usable while a search field owns focus.
-            held[key] = if (editing && mapped !in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro", "Stop action")) null else mapped
+            held[key] = RemoteInputPolicy.permitted(mapped, isEditing)
         }
         val releaseOnly = if (event.action == KeyEvent.ACTION_UP && event.keyCode == KeyEvent.KEYCODE_BACK && !event.isCanceled && !held.containsKey(key)) action(event) else null
-        val assigned = held[key] ?: releaseOnly?.takeIf { !editing || it in setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps", "Screen off", "Record/stop macro", "Stop action") }
+        val assigned = held[key] ?: RemoteInputPolicy.permitted(releaseOnly, isEditing)
         if (event.action == KeyEvent.ACTION_UP) held.remove(key)
         return assigned
     }

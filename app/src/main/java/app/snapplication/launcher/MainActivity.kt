@@ -992,7 +992,7 @@ class MainActivity : Activity() {
             message("Remote buttons reset. Standard controls restored.")
             return true
         }
-        val action = remote.assignment(event, currentFocus is EditText) ?: return super.dispatchKeyEvent(event)
+        val action = remote.assignment(event) { currentFocus is EditText } ?: return super.dispatchKeyEvent(event)
         if (action == "Screen off") {
             if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0)
                 RemoteActionService.instance?.performMappedAction(action) ?: explainAccessibility()
