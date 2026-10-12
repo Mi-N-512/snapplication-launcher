@@ -949,7 +949,7 @@ class MainActivity : Activity() {
             content.addView(ui.button("Edit action: $name") { MacroEditor(this) { macroSettings() }.show(name) })
             content.addView(ui.button("Map button: $name") { remote.learn("Macro: $name") { macroSettings() } })
             content.addView(ui.button("Run: $name") { RemoteActionService.instance?.openForReplay(name) ?: explainAccessibility() })
-            content.addView(ui.button("Delete: $name") { RemoteActionService.instance?.deleteMacro(name); macroSettings() })
+            content.addView(ui.button("Delete: $name") { MacroEditor(this) { macroSettings() }.confirmDelete(name) })
         }
     }
 

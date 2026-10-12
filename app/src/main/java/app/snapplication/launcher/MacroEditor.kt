@@ -46,13 +46,25 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
                 2 -> steps(name)
                 5 -> MacroPreviewView.show(activity, name, macro, ::title)
                 3 -> rename(name)
-                4 -> AlertDialog.Builder(activity).setTitle("Delete $name?").setMessage("Its remote assignment will no longer run an action.")
-                    .setNegativeButton("Cancel", null).setPositiveButton("Delete") { _, _ ->
-                        RemoteActionService.instance?.performMappedAction("Stop action")
-                        val root = all(); root.remove(name); prefs.edit().putString("macros", root.toString()).apply(); onChanged()
-                    }.show()
+                4 -> confirmDelete(name)
             }
         }.setNegativeButton("Done", null).show()
+    }
+
+    // Shares explicit confirmation across the list and editor; deleting saved data needs no accessibility grant.
+    fun confirmDelete(name: String) {
+        AlertDialog.Builder(activity).setTitle("Delete $name?")
+            .setMessage("Its remote assignment will no longer run an action.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Delete") { _, _ ->
+                val service = RemoteActionService.instance
+                if (service != null) service.deleteMacro(name)
+                else {
+                    val root = all(); root.remove(name)
+                    prefs.edit().putString("macros", root.toString()).apply()
+                }
+                if (prefs.getString("pendingAssignment", null) == name) prefs.edit().remove("pendingAssignment").apply()
+                onChanged()
+            }.show()
     }
 
     // Names a recorded step using its visible label when available.
