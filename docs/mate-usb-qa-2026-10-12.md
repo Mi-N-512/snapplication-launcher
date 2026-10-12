@@ -61,3 +61,16 @@ the Mate: empty name retained the form; correcting it created a two-step QA reco
 wait (25010001) displayed an error without dismissing; correcting it to zero saved a visible 0 ms step;
 that value persisted later, and Cancel returned to the unchanged step list. These are UI checks, not
 a claim that hardware recording or service reconnection was exercised end-to-end.
+
+## Consistent macro deletion
+
+The action list previously called an optional service method, silently doing nothing when accessibility
+was disconnected, and deleted immediately when connected. List and editor now share explicit confirmation
+in MacroEditor. Confirmed deletion stops replay through the service when available, otherwise removes
+only the chosen saved entry directly. It also clears a matching pending-assignment prompt.
+
+All-edition build/lint and 63 tests passed (macro-delete-build.log); read-only review found no required
+changes. The updated Universal was installed. On the Mate, list Delete opened confirmation, Cancel kept
+the temporary recording, and confirmed Delete removed it while preserving the visible user recording.
+The temporary recording was cleaned up and the phone returned to Home. Accessibility was left enabled;
+the disconnected-service fallback was inspected in code, not verified by changing the user's permission.
