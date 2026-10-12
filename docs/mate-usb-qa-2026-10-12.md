@@ -29,6 +29,9 @@ without publication or deployment.
 - Original build screen-off probe reached Android's Asleep state in 0.625 seconds including USB
   command/query overhead. The display was still transitioning at that first query; this is not
   a measured physical display-off latency or remote wake guarantee.
+- Updated build: Android reported Asleep at 1.141 seconds and display OFF at 1.469 seconds,
+  including USB input/query overhead. Woke through ADB and returned to Home. This is one on-screen
+  button test, not physical remote latency, HDMI blanking or a measured improvement.
 
 ## Performance evidence and limits
 
