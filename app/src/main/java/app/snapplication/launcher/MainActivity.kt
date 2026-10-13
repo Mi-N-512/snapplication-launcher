@@ -334,7 +334,10 @@ class MainActivity : Activity() {
     // Preserves the configured Make block count; unassigned cells open the app picker.
     private fun favouriteColumn(components: List<String>, portrait: Boolean = false, slotCount: Int): LinearLayout {
         val shell = ui.column().apply { background = ui.homeSurface() }
-        if (state.showFavouriteHeading) shell.addView(ui.section("Favourites"))
+        if (state.showFavouriteHeading) shell.addView(ui.section("Favourites").apply {
+            // The enclosing favourite panel already supplies the selected glass or solid surface.
+            setBackgroundColor(Color.TRANSPARENT)
+        })
         val column = ui.column().apply {
             gravity = android.view.Gravity.CENTER
             dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.border); setSize(ui.dp(1), ui.dp(1)) }
