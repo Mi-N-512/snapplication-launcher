@@ -33,6 +33,9 @@ class RemoteControls(private val context: Context) {
         RemoteActionService.savedMacroNames(context).map { "Macro: $it" }
     private val held = mutableMapOf<Pair<Int, Int>, String?>()
     private val reserved = setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)
+    private var learningDialog: AlertDialog? = null
+    var learningAction: String? = null
+        private set
 
     companion object {
         // Prevents the global accessibility filter from stealing the button being learned by the dialog.
@@ -94,6 +97,7 @@ class RemoteControls(private val context: Context) {
     fun learn(action: String, onSaved: () -> Unit) {
         require(action in actions)
         val activity = context as? Activity ?: return
+        closeLearning()
         val status = TextView(activity).apply {
             text = "Press and release the remote button for ${displayLabel(action)}.\n\nAny existing assignment on that button will be replaced. Use Cancel to exit. Android receives remote keys first. It may reserve Home, Power or other keys so the launcher never receives them. If nothing appears, try a different physical button."
             setPadding(32, 24, 32, 24)
@@ -136,10 +140,24 @@ class RemoteControls(private val context: Context) {
                 Toast.makeText(activity, "No button received. Android may reserve this key. Tap the action and try another remote button.", Toast.LENGTH_LONG).show()
             }
         }
-        dialog.setOnDismissListener { learning = false; timeoutHandler.removeCallbacks(timeout) }
+        dialog.setOnDismissListener {
+            if (learningDialog === dialog) {
+                learning = false; learningDialog = null; learningAction = null
+            }
+            timeoutHandler.removeCallbacks(timeout)
+        }
+        learningDialog = dialog
+        learningAction = action
         learning = true
         dialog.show()
         timeoutHandler.postDelayed(timeout, 30_000)
+    }
+
+    // Releases the old activity's dialog and key-learning state before a display/input recreation.
+    fun closeLearning() {
+        learningDialog?.dismiss()
+        learningDialog = null; learningAction = null; learning = false
+        clearHeldButtons()
     }
 
     // Describes real saved assignments for the settings screen without claiming remote pairing.

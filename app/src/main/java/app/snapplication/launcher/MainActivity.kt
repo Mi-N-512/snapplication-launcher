@@ -100,19 +100,32 @@ class MainActivity : Activity() {
             IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
         else registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         applyOrientation()
+        settingsCategory = savedInstanceState?.getString("settingsCategory")
         when (savedInstanceState?.getString("screen")) {
             "Settings" -> settings()
             "Theme Mode" -> themeSettings()
             "Favourites Style" -> favouriteSettings()
             "Apps" -> drawer()
+            "Remote buttons" -> remoteSettings()
+            "Recorded actions" -> macroSettings()
+            "Home preview" -> previewSettings()
+            "Page previews" -> readingPreviewSettings()
+            "Other app playback" -> externalPlayback()
+            "Device diagnostics" -> diagnostics()
+            "Library" -> library()
             "Welcome" -> introduction(savedInstanceState?.getInt("guideStep") ?: 0)
             else -> home()
         }
         if (!state.tutorialSeen && screen != "Welcome") introduction()
+        savedInstanceState?.getString("learningAction")?.takeIf { it in remote.actions }?.let { action ->
+            root.post { if (!isDestroyed && !isFinishing) remote.learn(action) { remoteSettings() } }
+        }
     }
 
     // Preserves picker intent across rotation so a Watch folder cannot become a Read folder accidentally.
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("settingsCategory", settingsCategory)
+        outState.putString("learningAction", remote.learningAction)
         outState.putInt("guideStep", guideStep); outState.putString("pickerMode", pickerMode); outState.putString("screen", screen); super.onSaveInstanceState(outState)
     }
 
@@ -617,7 +630,7 @@ class MainActivity : Activity() {
                 override fun onStopTrackingTouch(bar: SeekBar) {}
             })
         })
-        content.addView(ui.label("For videos played here: when you leave or turn the screen off after this point, prepare the next file and show its name while paused. Other apps control their own episode loading; a ready next episode cannot be guaranteed unless that app exposes it.", 16f))
+        content.addView(ui.label("Videos played here prepare the next file when you leave or turn the screen off. For other apps, the next Play request advances after this percentage when the player supplies duration and a Next control. CloudStream can use its visible Next button with accessibility enabled. If no next episode is available, the current episode resumes. The other app still owns loading and buffering.", 16f))
         }
         if (state.deviceProfile == "Reader") content.addView(ui.section("About"))
         content.addView(ui.button("Introduction and setup") { introduction() })
@@ -1086,6 +1099,7 @@ class MainActivity : Activity() {
     // Reloads the newest captured external frame after the source app returns to Home.
     override fun onResume() {
         super.onResume()
+        ExternalWatchPlayback.cancelResume()
         if (!::state.isInitialized) return
         if (state.mode == "Read") stopService(Intent(this, PreviewCaptureService::class.java))
         RemoteActionService.instance?.onLauncherResume(state.orientation == "Landscape" ||
@@ -1118,6 +1132,7 @@ class MainActivity : Activity() {
 
     // Releases media resources and pending folder work when the activity is destroyed.
     override fun onDestroy() {
+        remote.closeLearning()
         thermal.stop()
         unregisterReceiver(screenReceiver)
         scanGeneration++; watch?.close(); reader?.close(); worker.shutdownNow(); super.onDestroy()
