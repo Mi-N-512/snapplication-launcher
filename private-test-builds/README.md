@@ -1,6 +1,6 @@
-# Private test builds - 12 October 2026
+# Private test builds - 13 October 2026
 
-Source commit: 09389cb. Development builds only; no public release.
+Source commit: 2b0e31f. Development builds only; no public release.
 
 - [Universal APK](snapplication-universal-debug.apk)
 - [E-reader APK](snapplication-ereader-debug.apk)
@@ -22,3 +22,7 @@ disconnected-service path was reviewed without changing the user's accessibility
 Earlier physical Meebook checks covered Mihon, PDF, EPUB and CBZ; these were not repeated for this remote-only change. Read's silent page canvas is checked every five seconds and may retain an older preview if Home is opened immediately after turning a page. Protected/unsupported readers and unknown vendor versions have limitations; no universal parser or battery-life claim is made.
 
 [Device verification](../docs/reader-qa-2026-10-09.md) | [Code review](../docs/reader-review-2026-10-11.md)
+
+13 October: Settings subpages and remote-learning dialogs survive activity recreation. Watch previews reject visible loading indicators, track the latest eligible media app, and retry warm playback after opening the retained app task. Completion-threshold handling on explicit Play now guards against repeated Next commands and supports CloudStream's visible player controls.
+
+All three editions passed build, lint and 72 unit tests. On the Mate, Family Guy produced a fresh clean Home frame and resumed the same episode near the saved position with its buffer retained. Playback checks were under ten seconds each. Settings/remote-learning restoration passed a recreation check. CloudStream next-episode advancement remains unverified on-device: the tested episode advertised no Next action. Physical remote/HDMI behavior remains unverified over the USB-only connection. Android controls capture consent; apps control their own buffer retention.
