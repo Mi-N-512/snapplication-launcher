@@ -1,9 +1,10 @@
 package app.snapplication.launcher
 
 /*
- * Defines the completion-slider rule used by WatchPlayer when the screen turns off.
+ * Defines the completion-slider rule used by WatchPlayer and ExternalWatchPlayback.
  *
- * Related classes: WatchPlayer calls this rule; EpisodeResumeTest checks boundary cases.
+ * Related classes: WatchPlayer prepares local files; ExternalWatchPlayback advances supported external players
+ * on the next explicit Play request. EpisodeResumeTest checks boundary cases.
  * UI: No UI; supplies a decision used by the episode-completion setting.
  * Edit or extend: Adjust completion thresholds and boundary rules here, with matching tests; external apps still
  * own their playback state.

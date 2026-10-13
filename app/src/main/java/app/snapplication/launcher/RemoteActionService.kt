@@ -38,6 +38,12 @@ class RemoteActionService : AccessibilityService() {
     private val meebookReader by lazy { MeebookReaderBridge(this) }
     private val controls by lazy { RemoteControls(this) }
     private val landscapeLaunch by lazy { LandscapeLaunch(this) }
+    private val cloudStreamControls by lazy { CloudStreamControls(this) }
+
+    // Uses the visible CloudStream player when its session has no exported Next transport action.
+    fun nextCloudStreamEpisode(owner: String, isCurrent: () -> Boolean, result: (Boolean) -> Unit) {
+        cloudStreamControls.next(owner, isCurrent, result)
+    }
 
     // Receives an explicit app launch from landscape Home or its centre preview.
     fun prepareLandscape(target: String) {
@@ -319,6 +325,14 @@ class RemoteActionService : AccessibilityService() {
                 val player = players.firstOrNull { it.isVisibleToUser } ?: generic
                 val video = player != null ||
                     (activityPackage == capture && activityClass?.endsWith(".PlayerActivity") == true)
+                // A stopped projection must not strand Play on a different app. Each preview is still
+                // loaded by its owner, so changing the resume target cannot reuse another app's image.
+                if (state.mode == "Watch" && video && state.followMediaApps) {
+                    val entry = packageManager.getLaunchIntentForPackage(capture)?.component
+                    if (entry != null && state.lastApp() != entry.flattenToString()) {
+                        synchronized(PreviewCaptureService.cacheLock) { state.rememberApp(entry.flattenToString()) }
+                    }
+                }
                 // Grayjay retains its catalogue beneath the player. Inspect the player subtree only.
                 val chrome = state.mode == "Watch" && hasPlayerChrome(if ((grayjay || youtube) && player != null) player else root)
                 if ((grayjay || youtube || generic != null) && player != null) {
@@ -366,6 +380,9 @@ class RemoteActionService : AccessibilityService() {
         val id = node.viewIdResourceName.orEmpty().lowercase()
         if (id.contains("subtitle") || id.contains("caption")) return false
         val kind = node.className?.toString().orEmpty()
+        // Loading and volume/brightness indicators must not replace the last clean episode frame.
+        if (kind.endsWith("ProgressBar") || kind.endsWith("ProgressIndicator") ||
+            id.endsWith("/player_buffering") || id.endsWith("/exo_buffering")) return true
         if (!node.text.isNullOrBlank() || kind.endsWith("Button") || kind.endsWith("SeekBar") ||
             (node.isClickable && kind.endsWith("ImageView"))) return true
         for (index in 0 until node.childCount.coerceAtMost(300)) {
@@ -901,6 +918,7 @@ class RemoteActionService : AccessibilityService() {
 
     // Clears transient state; recorded clicks are saved only through the explicit Stop action.
     private fun cleanUp() {
+        cloudStreamControls.close()
         landscapeLaunch.clear()
         if (BuildConfig.DEBUG) android.util.Log.d("SnappMacro", "Service cleanup; recording=${recordingPackage != null}")
         recordingSteps = JSONArray()

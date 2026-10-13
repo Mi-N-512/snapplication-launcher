@@ -222,17 +222,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
             return
         }
         if (!resumePlayback || mode != "Watch") return
-        // Requery after launch: a cached controller may have ended, and a reader must never receive playback.
-        runCatching {
-            val controller = active() ?: return@runCatching
-            val playback = controller.playbackState ?: return@runCatching
-            // Animiru advertises Play but leaves its state at NONE, even with a retained player.
-            // This is an explicit Play request, never a play/pause toggle: do not pause an active stream.
-            if (playback.state in setOf(PlaybackState.STATE_NONE, PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED) &&
-                playback.actions and PlaybackState.ACTION_PLAY != 0L) {
-                controller.transportControls.play()
-            }
-        }.onFailure { message("The playback session changed. Press play in the app to continue.") }
+        packageName?.let { owner -> ExternalWatchPlayback.resume(activity, owner) { message(it) } }
     }
 
     // Revalidates advertised episode commands before dispatching, then brings the owning app forward.
