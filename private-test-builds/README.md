@@ -1,6 +1,6 @@
-# Private test builds - 13 October 2026
+# Private test builds - 14 October 2026
 
-Source commit: 2b0e31f. Development builds only; no public release.
+Source commit: 0faab1e. Development builds only; no public release.
 
 - [Universal APK](snapplication-universal-debug.apk)
 - [E-reader APK](snapplication-ereader-debug.apk)
@@ -26,3 +26,5 @@ Earlier physical Meebook checks covered Mihon, PDF, EPUB and CBZ; these were not
 13 October: Settings subpages and remote-learning dialogs survive activity recreation. Watch previews reject visible loading indicators, track the latest eligible media app, and retry warm playback after opening the retained app task. Completion-threshold handling on explicit Play now guards against repeated Next commands and supports CloudStream's visible player controls.
 
 All three editions passed build, lint and 72 unit tests. On the Mate, Family Guy produced a fresh clean Home frame and resumed the same episode near the saved position with its buffer retained. Playback checks were under ten seconds each. Settings/remote-learning restoration passed a recreation check. CloudStream next-episode advancement remains unverified on-device: the tested episode advertised no Next action. Physical remote/HDMI behavior remains unverified over the USB-only connection. Android controls capture consent; apps control their own buffer retention.
+
+14 October: Touch macros now resolve the same guarded top-window owner during recording and replay, allowing a vendor dialog to differ from Android's active app. Screen identity, orientation, private-input and protected-window checks remain enforced. The Home Favourites heading inherits its panel's glass surface. All three editions passed build/lint and 81 tests; reverting the owner fix caused two regression tests to fail. On the Mate a temporary three-step recording replayed once to Settings and stopped. Actual Huawei Wired Projection dialog replay awaits the hub retest. The user confirmed HDMI recovered after power-cycling the hub and normal remote mappings work; physical Power already sleeps/wakes the phone directly through Android.
