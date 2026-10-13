@@ -715,9 +715,16 @@ class RemoteActionService : AccessibilityService() {
                 else finishReplay("Macro stopped: the recorded app did not open.")
                 return@postDelayed
             }
-            if (currentPackage != expected) {
+            // Touch recording identifies the top guarded window, which can be a vendor dialog
+            // above a different active app. Replay must use that same owner before checking geometry.
+            val gestureOwner = if (kind == "gesture") touchGuard()?.optString("package") else null
+            if (!MacroContext.targetMatches(expected, currentPackage, gestureOwner, kind == "gesture")) {
                 if (attempt < 15) runStep(target, steps, index, generation, attempt + 1)
                 else finishReplay("Macro stopped: the expected app is not visible.")
+                return@postDelayed
+            }
+            if (kind == "gesture") {
+                replayTouch(step, generation) { runStep(target, steps, index + 1, generation) }
                 return@postDelayed
             }
             val root = rootInActiveWindow
@@ -730,11 +737,6 @@ class RemoteActionService : AccessibilityService() {
                 root.recycle()
                 if (performGlobalAction(GLOBAL_ACTION_BACK)) runStep(target, steps, index + 1, generation)
                 else finishReplay("Macro stopped: Android could not go back.")
-                return@postDelayed
-            }
-            if (kind == "gesture") {
-                root.recycle()
-                replayTouch(step, generation) { runStep(target, steps, index + 1, generation) }
                 return@postDelayed
             }
             val matches = mutableListOf<AccessibilityNodeInfo>()

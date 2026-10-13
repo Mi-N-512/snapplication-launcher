@@ -10,6 +10,21 @@ import org.junit.Test
  * Add boundary cases here when changing that helper so its existing callers retain correct behaviour.
  */
 class MacroContextTest {
+    // A vendor dialog remains the gesture target even when Android reports the launcher as active.
+    @Test fun gestureUsesGuardedDialogOwner() {
+        assertTrue(MacroContext.targetMatches("vendor.dialog", "launcher", "vendor.dialog", true))
+        assertFalse(MacroContext.targetMatches("launcher", "launcher", "vendor.dialog", true))
+    }
+    // Missing or rejected guard data must never fall back to a seemingly matching active app.
+    @Test fun gestureRejectsUnavailableGuard() {
+        assertFalse(MacroContext.targetMatches("vendor.dialog", "vendor.dialog", null, true))
+        assertFalse(MacroContext.targetMatches("", "launcher", "", true))
+    }
+    // Semantic controls continue to require the active app instead of an unrelated top window.
+    @Test fun semanticActionUsesActiveOwner() {
+        assertTrue(MacroContext.targetMatches("launcher", "launcher", "vendor.dialog", false))
+        assertFalse(MacroContext.targetMatches("vendor.dialog", "launcher", "vendor.dialog", false))
+    }
     // An unchanged container accepts a control whose toggle wording may have changed.
     @Test fun acceptsSameContainer() {
         assertTrue(MacroContext.matches(listOf("player|FrameLayout", "root|LinearLayout"), listOf("player|FrameLayout", "root|LinearLayout")))
