@@ -38,6 +38,13 @@ data class LibraryItem(val uri: String, val title: String, val mime: String, val
  */
 class LauncherState(context: Context) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    var previewWarnings: Boolean
+        get() = prefs.getBoolean("previewWarnings", true)
+        set(value) { prefs.edit().putBoolean("previewWarnings", value).apply() }
+
+    var watchPreviewExpected: Boolean
+        get() = prefs.getBoolean("watchPreviewExpected", true)
+        set(value) { prefs.edit().putBoolean("watchPreviewExpected", value).apply() }
     // Enforces the reading edition even when older preferences contain a TV or Watch choice.
     val readerOnly: Boolean get() = BuildConfig.FLAVOR == "ereader"
     // Start recognised e-paper hardware in a legible reader layout even with the universal APK.

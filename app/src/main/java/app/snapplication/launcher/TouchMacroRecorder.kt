@@ -51,6 +51,7 @@ class TouchMacroRecorder(
             if (!busy && context == null) {
                 val available = guard() != null
                 if (!available && !paused) pauseRecording()
+                else if (!available && paused) pausedChanged(true)
                 else if (available && paused) resumeRecording()
             }
             if (!closed) handler.postDelayed(this, 250)

@@ -73,7 +73,10 @@ class PreviewCaptureService : Service() {
     // Starts a visible, user-stoppable capture session; Android never restarts it without new consent.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (LauncherState(this).mode == "Read") { stopSelf(); return START_NOT_STICKY }
-        if (intent?.action == "STOP") { stopped = true; stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == "STOP") {
+            LauncherState(this).watchPreviewExpected = false
+            stopped = true; stopSelf(); return START_NOT_STICKY
+        }
         if (starting) return START_NOT_STICKY
         val consent = intent?.getParcelableExtra<Intent>("consent")
         if (consent == null) { stopSelf(); return START_NOT_STICKY }

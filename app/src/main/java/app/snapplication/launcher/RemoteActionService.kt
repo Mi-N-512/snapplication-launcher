@@ -56,6 +56,7 @@ class RemoteActionService : AccessibilityService() {
     // Avoids rotating a retained player when the launcher explicitly uses the same landscape layout.
     fun onLauncherResume(keepLandscape: Boolean) { landscapeLaunch.onLauncherResume(keepLandscape) }
     private var recordingName: String? = null
+    private var macroWindowTrace: MacroWindowTrace? = null
     private var recordingPackage: String? = null
     private var recordingStarted = false
     private var lastRecordedPackage: String? = null
@@ -64,6 +65,8 @@ class RemoteActionService : AccessibilityService() {
     private var lastScrollKey = ""
     private var lastScrollTime = 0L
     private var touchRecorder: TouchMacroRecorder? = null
+    private var touchPauseReason = "screen changed during the touch"
+    private var lastTouchDiagnostic: String? = null
     private var ignoreClicksUntil = 0L
     private var stopButton: Button? = null
     private var confirmation: AlertDialog? = null
@@ -509,6 +512,7 @@ class RemoteActionService : AccessibilityService() {
         replayGeneration++
         confirmation?.dismiss()
         recordingName = name.trim()
+        if (BuildConfig.DEBUG && touch) macroWindowTrace = MacroWindowTrace(this)
         recordingPackage = targetPackage
         recordingStarted = targetPackage.isBlank()
         lastRecordedPackage = null
@@ -539,8 +543,9 @@ class RemoteActionService : AccessibilityService() {
                         appendRecordedStep(step)
                     }
                 }, { reason -> stopRecording(); message(reason) }, { paused ->
-                    stopButton?.text = if (paused) "Paused on this screen · Stop (${recordingSteps.length()}/20)"
+                    val label = if (paused) "Paused: $touchPauseReason · Stop (${recordingSteps.length()}/20)"
                         else "Stop recording (${recordingSteps.length()}/20)"
+                    if (stopButton?.text?.toString() != label) stopButton?.text = label
                 })
                 check(recorder.start())
                 touchRecorder = recorder
@@ -558,6 +563,7 @@ class RemoteActionService : AccessibilityService() {
             true
         }.getOrElse {
             touchRecorder?.close(); touchRecorder = null
+            macroWindowTrace?.close(); macroWindowTrace = null
             stopButton?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
             stopButton = null
             recordingName = null
@@ -569,6 +575,7 @@ class RemoteActionService : AccessibilityService() {
     // Ends explicit recording, removes its overlay and saves only a nonempty macro to local preferences.
     fun stopRecording(): Boolean {
         touchRecorder?.close(); touchRecorder = null
+        macroWindowTrace?.close(); macroWindowTrace = null
         stopButton?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         stopButton = null
         val name = recordingName
@@ -720,7 +727,8 @@ class RemoteActionService : AccessibilityService() {
             val gestureOwner = if (kind == "gesture") touchGuard()?.optString("package") else null
             if (!MacroContext.targetMatches(expected, currentPackage, gestureOwner, kind == "gesture")) {
                 if (attempt < 15) runStep(target, steps, index, generation, attempt + 1)
-                else finishReplay("Macro stopped: the expected app is not visible.")
+                else finishReplay(if (kind == "gesture" && gestureOwner == null)
+                    "Macro stopped: $touchPauseReason." else "Macro stopped: the expected app is not visible.")
                 return@postDelayed
             }
             if (kind == "gesture") {
@@ -751,34 +759,73 @@ class RemoteActionService : AccessibilityService() {
         }, if (attempt > 0) 250 else (step.optLong("delay", 350).coerceIn(0, 10000) / replaySpeed).toLong().coerceIn(40, 10000))
     }
 
+    // Records only a rejection category and window metadata, never screen text or entered values.
+    private fun rejectTouch(reason: String, detail: String = ""): JSONObject? {
+        touchPauseReason = reason
+        val diagnostic = "$reason $detail".trim()
+        if (diagnostic != lastTouchDiagnostic) {
+            lastTouchDiagnostic = diagnostic
+            getSharedPreferences("remoteMacros", MODE_PRIVATE).edit().putString("lastTouchPause", diagnostic).apply()
+            if (BuildConfig.DEBUG) android.util.Log.i("SnappMacro", diagnostic)
+        }
+        return null
+    }
+
     /* Describes the visible app layout without text; coordinate macros stop on a different screen,
      * keyboard, password or lock screen. Vendor dialogs are eligible; Android permission surfaces are not. */
     private fun touchGuard(): JSONObject? {
         if (!getSystemService(android.os.PowerManager::class.java).isInteractive ||
-            getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) return null
+            getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) return rejectTouch("unlock the phone first")
         val visible = windows
         try {
+            if (macroWindowTrace != null) {
+                val activeRoot = rootInActiveWindow
+                try { macroWindowTrace?.capture(visible, activeRoot) } finally { activeRoot?.recycle() }
+            }
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            val display = getSystemService(WindowManager::class.java).defaultDisplay
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(metrics)
+            val navigationBars = visible.filter { candidate ->
+                if (candidate.type != AccessibilityWindowInfo.TYPE_SYSTEM) false else {
+                    val candidateRoot = candidate.root
+                    try {
+                        val box = Rect().also { candidate.getBoundsInScreen(it) }
+                        MacroWindowPolicy.navigationBar(candidateRoot?.packageName?.toString(), candidateRoot?.viewIdResourceName,
+                            box.left, box.top, box.right, box.bottom, metrics.widthPixels, metrics.heightPixels)
+                    } finally { candidateRoot?.recycle() }
+                }
+            }.map { it.id }.toSet()
             val window = visible.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION ||
-                (it.type == AccessibilityWindowInfo.TYPE_SYSTEM && (it.isActive || it.isFocused)) }
-                .maxByOrNull { it.layer } ?: return null
-            val root = window.root ?: return null
+                (it.type == AccessibilityWindowInfo.TYPE_SYSTEM && it.id !in navigationBars && (it.isActive || it.isFocused)) }
+                .maxByOrNull { it.layer } ?: return rejectTouch("no active app window")
+            val root = window.root ?: return rejectTouch("Android has not exposed this window", "type=${window.type}")
             try {
-                val owner = root.packageName?.toString() ?: return null
-                if (!recordablePackage(owner)) return null
+                val owner = root.packageName?.toString() ?: return rejectTouch("window owner unavailable")
+                if (!recordablePackage(owner)) return rejectTouch("protected system screen",
+                    "owner=$owner type=${window.type} root=${root.viewIdResourceName.orEmpty()}")
                 val bounds = Rect().also { window.getBoundsInScreen(it) }
+                val excluded = JSONArray()
+                // Ignore verified navigation chrome as a target but never record touches inside it.
+                visible.filter { it.id in navigationBars }.forEach { bar ->
+                    val box = Rect().also { bar.getBoundsInScreen(it) }
+                    excluded.put(JSONArray().put(box.left).put(box.top).put(box.right).put(box.bottom))
+                }
                 for (other in visible.filter { it.layer > window.layer }) {
-                    if (other.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) return null
+                    if (other.id in navigationBars) continue
+                    if (other.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) return rejectTouch("close the keyboard")
                     if (other.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) {
                         if (touchRecorder?.ownsWindow(other.id) == true || landscapeLaunch.ownsWindow(other.id)) continue
                         val overlayRoot = other.root
                         val ours = try { overlayRoot?.packageName?.toString() == packageName } finally { overlayRoot?.recycle() }
-                        if (!ours) return null
+                        if (!ours) return rejectTouch("another accessibility overlay is covering the screen")
                     } else {
                         val region = Rect().also { other.getBoundsInScreen(it) }
-                        if (Rect.intersects(region, bounds) && region.width() > bounds.width() / 10 && region.height() > bounds.height() / 10) return null
+                        if (Rect.intersects(region, bounds) && region.width() > bounds.width() / 10 && region.height() > bounds.height() / 10)
+                            return rejectTouch("another window is covering the app", "owner=$owner coveringType=${other.type} active=${other.isActive} focused=${other.isFocused}")
                     }
                 }
-                val excluded = JSONArray()
                 val structure = StringBuilder()
                 var inspected = 0
                 fun inspect(node: AccessibilityNodeInfo, depth: Int): Boolean {
@@ -802,14 +849,10 @@ class RemoteActionService : AccessibilityService() {
                     }
                     return true
                 }
-                if (!inspect(root, 0) || inspected == 0) return null
-                val metrics = android.util.DisplayMetrics()
-                @Suppress("DEPRECATION")
-                val display = getSystemService(WindowManager::class.java).defaultDisplay
-                @Suppress("DEPRECATION")
-                display.getRealMetrics(metrics)
+                if (!inspect(root, 0) || inspected == 0) return rejectTouch("private input or unreadable screen layout", "owner=$owner")
                 val digest = java.security.MessageDigest.getInstance("SHA-256").digest(structure.toString().toByteArray())
                     .joinToString("") { "%02x".format(it) }
+                touchPauseReason = "screen changed during the touch"
                 return JSONObject().put("package", owner).put("screenGuard", digest)
                     .put("rotation", display.rotation).put("width", metrics.widthPixels).put("height", metrics.heightPixels)
                     .put("window", JSONArray().put(bounds.left).put(bounds.top).put(bounds.right).put(bounds.bottom))

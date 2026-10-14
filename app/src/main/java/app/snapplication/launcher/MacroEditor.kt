@@ -12,7 +12,7 @@ import org.json.JSONObject
  *
  * Related classes: MainActivity opens it; RemoteActionService reads saved macros; MacroPreviewView rehearses
  * timing.
- * UI: Dialogs for speed, starting screen, step timing/order, naming, deletion and preview.
+ * UI: Full-screen preview workspace with timing, reference screenshot, step editing and remote controls.
  * Edit or extend: Add editable macro options here together with validation and corresponding replay support in
  * RemoteActionService.
  */
@@ -29,26 +29,174 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         onChanged()
     }
 
-    // Presents explicit speed, start behavior, step editing, rename and deletion controls.
+    private var editor: android.app.Dialog? = null
+    private var selectedIndex = 0
+
+    // Keeps timing, reference image, editable steps and rehearsal in one full-screen workspace.
     fun show(name: String) {
         val macro = all().optJSONObject(name) ?: return
-        val choices = arrayOf("Speed: ${macro.optDouble("speed", 1.0)}×", "Start: ${if (macro.optBoolean("currentScreen")) "current screen" else "open recorded app"}",
-            "Edit steps (${macro.optJSONArray("steps")?.length() ?: 0})", "Rename", "Delete action", "Preview timing and touches")
-        AlertDialog.Builder(activity).setTitle(name).setItems(choices) { _, index ->
-            when (index) {
-                0 -> AlertDialog.Builder(activity).setTitle("Playback speed").setItems(arrayOf("0.5× — slower", "1× — recorded timing", "2× — faster", "4× — fastest")) { _, choice ->
-                    save(name, macro.put("speed", listOf(.5, 1.0, 2.0, 4.0)[choice])); show(name)
+        editor?.dismiss()
+        val state = LauncherState(activity)
+        val ui = LauncherUi(activity, state, false)
+        val dialog = android.app.Dialog(activity)
+        editor = dialog
+        val shell = ui.column().apply { setBackgroundColor(ui.background) }
+        val header = ui.column(true)
+        header.addView(ui.button("‹") { dialog.dismiss() }.apply {
+            contentDescription = "Close macro editor"; ui.flatFocus(this, ui.surface, outline = false)
+        }, android.widget.LinearLayout.LayoutParams(ui.dp(52), ui.dp(52)))
+        header.addView(ui.label(name, 20f), android.widget.LinearLayout.LayoutParams(0, ui.dp(52), 1f))
+        shell.addView(header)
+        val landscape = activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val workspace = ui.column(landscape)
+        shell.addView(workspace, android.widget.LinearLayout.LayoutParams(-1, 0, 1f))
+        val stage = ui.column()
+        val status = ui.label("", 16f)
+        val preview = MacroPreviewView.create(activity, macro, ::title) { status.text = it }
+        stage.addView(preview, android.widget.LinearLayout.LayoutParams(-1, 0, 1f))
+        stage.addView(status)
+        workspace.addView(stage, if (landscape) android.widget.LinearLayout.LayoutParams(0, -1, 2f)
+            else android.widget.LinearLayout.LayoutParams(-1, 0, 1.25f))
+        val tools = ui.column()
+        workspace.addView(android.widget.ScrollView(activity).apply { addView(tools) },
+            if (landscape) android.widget.LinearLayout.LayoutParams(0, -1, 1f) else android.widget.LinearLayout.LayoutParams(-1, 0, 1f))
+        tools.addView(ui.label("PREVIEW & EDIT", 16f))
+        tools.addView(ui.label("Edits save automatically. Use an uncropped screenshot matching the recorded screen.", 14f))
+        tools.addView(ui.button("Play preview") { preview.restart() })
+        tools.addView(ui.button("Stop preview") { preview.stop() })
+        tools.addView(ui.button("Live test…") {
+            preview.stop()
+            AlertDialog.Builder(activity).setTitle("Run this action on the phone?")
+                .setMessage("This opens the recorded app and performs your saved steps. Use the floating Stop action button to cancel. Current-screen actions require their actual target screen; this editor is not a substitute.")
+                .setNegativeButton("Cancel", null).setPositiveButton("Run") { _, _ ->
+                    val service = RemoteActionService.instance
+                    if (service == null) android.widget.Toast.makeText(activity, "Enable Snapplication accessibility support first.", android.widget.Toast.LENGTH_LONG).show()
+                    else { dialog.dismiss(); service.openForReplay(name) }
+                }.show()
+        })
+        tools.addView(ui.button("Choose reference screenshot") {
+            prefs.edit().putString("overlayForMacro", name).apply()
+            dialog.dismiss()
+            activity.startActivityForResult(android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "image/*"; addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }, 203)
+        })
+        if (macro.optString("overlayUri").isNotBlank()) tools.addView(ui.button("Remove reference screenshot") {
+            save(name, macro.apply { remove("overlayUri") }); show(name)
+        })
+        tools.addView(ui.button("Speed: ${macro.optDouble("speed", 1.0)}×") {
+            AlertDialog.Builder(activity).setTitle("Playback speed").setItems(arrayOf("0.5× — slower", "1× — recorded timing", "2× — faster", "4× — fastest")) { _, choice ->
+                save(name, macro.put("speed", listOf(.5, 1.0, 2.0, 4.0)[choice])); show(name)
+            }.setNegativeButton("Cancel", null).show()
+        })
+        tools.addView(ui.button("Start: ${if (macro.optBoolean("currentScreen")) "current screen" else "open recorded app"}") {
+            AlertDialog.Builder(activity).setTitle("Where should this action start?")
+                .setItems(arrayOf("Open recorded app", "Current screen · skip initial app launches")) { _, choice ->
+                    save(name, macro.put("currentScreen", choice == 1)); show(name)
                 }.setNegativeButton("Cancel", null).show()
-                1 -> AlertDialog.Builder(activity).setTitle("Where should this action start?")
-                    .setItems(arrayOf("Open recorded app", "Run on current screen (skip initial app launches)")) { _, choice ->
-                        save(name, macro.put("currentScreen", choice == 1)); show(name)
-                    }.setNegativeButton("Cancel", null).show()
-                2 -> steps(name)
-                5 -> MacroPreviewView.show(activity, name, macro, ::title)
-                3 -> rename(name)
-                4 -> confirmDelete(name)
+        })
+        val sequence = macro.optJSONArray("steps") ?: JSONArray()
+        selectedIndex = selectedIndex.coerceIn(0, (sequence.length() - 1).coerceAtLeast(0))
+        val selected = sequence.optJSONObject(selectedIndex)
+        if (selected != null) {
+            preview.select(selected)
+            tools.addView(ui.label("Selected: ${selectedIndex + 1}. ${title(selected)}", 16f))
+            tools.addView(ui.button("Timing, order & remove step") { preview.stop(); editStep(name, selectedIndex) })
+            val points = selected.optJSONArray("points")
+            val stationary = points != null && points.length() in 1..2 &&
+                (0 until points.length()).all { i ->
+                    kotlin.math.hypot(points.getJSONArray(i).optDouble(0) - points.getJSONArray(0).optDouble(0),
+                        points.getJSONArray(i).optDouble(1) - points.getJSONArray(0).optDouble(1)) <= .005
+                }
+            if (selected.optString("kind") == "gesture" && stationary) {
+                tools.addView(ui.button("Set tap coordinates") { editCoordinates(name, macro, selected) })
+                tools.addView(android.widget.CheckBox(activity).apply {
+                    text = "Tap preview to move this marker"; setTextColor(ui.text)
+                    setOnCheckedChangeListener { _, checked ->
+                        preview.onPosition = if (!checked) null else { x, y ->
+                            moveTap(selected, x, y); save(name, macro); show(name)
+                        }
+                    }
+                })
             }
-        }.setNegativeButton("Done", null).show()
+        }
+        tools.addView(ui.label("STEPS · ${sequence.length()}", 16f))
+        if (sequence.length() == 0) tools.addView(ui.label("No steps remain. Record a new action to add touches.", 14f))
+        for (i in 0 until sequence.length()) {
+            val step = sequence.getJSONObject(i)
+            tools.addView(ui.button("${i + 1}. ${title(step)} · ${step.optLong("delay", 350)} ms") {
+                selectedIndex = i; show(name)
+            }.apply { isSelected = i == selectedIndex })
+        }
+        tools.addView(ui.button("Assign remote button") {
+            preview.stop()
+            RemoteControls(activity).learn("Macro: $name") { show(name) }
+        })
+        tools.addView(ui.button("Rename") { preview.stop(); rename(name) })
+        tools.addView(ui.button("Delete action") { preview.stop(); confirmDelete(name) })
+        dialog.setContentView(shell)
+        dialog.setOnDismissListener { preview.stop() }
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(ui.background))
+            setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT)
+            val flags = if (state.fullscreen) android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+                android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY else 0
+            if (state.fullscreen) addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            decorView.systemUiVisibility = flags
+            // Android's file picker may reveal system bars; restore the editor's layout when focus returns.
+            decorView.viewTreeObserver.addOnWindowFocusChangeListener { focused ->
+                if (focused) decorView.systemUiVisibility = flags
+            }
+        }
+    }
+
+    // Moves an existing recorded tap only; its original app/window guards remain required during replay.
+    private fun moveTap(step: JSONObject, x: Double, y: Double) {
+        val points = step.optJSONArray("points") ?: return
+        for (i in 0 until points.length()) points.getJSONArray(i).put(0, x).put(1, y)
+    }
+
+    // Numeric positioning gives remote and screen-reader users the same editing ability as touch users.
+    private fun editCoordinates(name: String, macro: JSONObject, step: JSONObject) {
+        val point = step.getJSONArray("points").getJSONArray(0)
+        val form = android.widget.LinearLayout(activity).apply { orientation = android.widget.LinearLayout.VERTICAL }
+        fun field(label: String, value: Double) = EditText(activity).apply {
+            hint = label; contentDescription = label
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(java.util.Locale.US, "%.2f", value * 100)); form.addView(this)
+        }
+        val x = field("Horizontal position, 0–100 percent", point.optDouble(0))
+        val y = field("Vertical position, 0–100 percent", point.optDouble(1))
+        val dialog = AlertDialog.Builder(activity).setTitle("Tap position · percent of recorded screen").setView(form)
+            .setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val nx = x.text.toString().toDoubleOrNull(); val ny = y.text.toString().toDoubleOrNull()
+            if (nx == null || !nx.isFinite() || nx !in 0.0..100.0) { x.error = "Enter 0–100"; return@setOnClickListener }
+            if (ny == null || !ny.isFinite() || ny !in 0.0..100.0) { y.error = "Enter 0–100"; return@setOnClickListener }
+            moveTap(step, nx / 100, ny / 100); save(name, macro); dialog.dismiss(); show(name)
+        } }
+        dialog.show()
+    }
+
+    companion object {
+        // Persists only the explicitly selected image URI and reopens the editor after Android's picker.
+        fun handleOverlayResult(activity: Activity, resultCode: Int, data: android.content.Intent?) {
+            val prefs = activity.getSharedPreferences("remoteMacros", Context.MODE_PRIVATE)
+            val name = prefs.getString("overlayForMacro", null) ?: return
+            prefs.edit().remove("overlayForMacro").apply()
+            val editor = MacroEditor(activity) {}
+            if (resultCode == Activity.RESULT_OK && data?.data != null) {
+                val uri = data.data!!
+                runCatching {
+                    activity.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    val macro = editor.all().optJSONObject(name) ?: return@runCatching
+                    editor.save(name, macro.put("overlayUri", uri.toString()))
+                }.onFailure { android.widget.Toast.makeText(activity, "Screenshot could not be kept. Please choose another image.", android.widget.Toast.LENGTH_LONG).show() }
+            }
+            editor.show(name)
+        }
     }
 
     // Shares explicit confirmation across the list and editor; deleting saved data needs no accessibility grant.
@@ -63,7 +211,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
                     prefs.edit().putString("macros", root.toString()).apply()
                 }
                 if (prefs.getString("pendingAssignment", null) == name) prefs.edit().remove("pendingAssignment").apply()
-                onChanged()
+                editor?.dismiss(); onChanged()
             }.show()
     }
 
@@ -77,17 +225,8 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         else -> "Tap " + step.optString("label").ifBlank { step.optString("id").substringAfterLast('/').replace('_', ' ').ifBlank { "button" } }
     }
 
-    // Lists individual delays so the user can inspect and shorten an existing routine.
-    private fun steps(name: String) {
-        val macro = all().optJSONObject(name) ?: return
-        val steps = macro.optJSONArray("steps") ?: return
-        val labels = (0 until steps.length()).map { index ->
-            val step = steps.getJSONObject(index)
-            "${index + 1}. ${title(step)} · wait ${step.optLong("delay", 350)} ms"
-        }
-        AlertDialog.Builder(activity).setTitle("Steps · $name").setItems(labels.toTypedArray()) { _, index -> editStep(name, index) }
-            .setNegativeButton("Back") { _, _ -> show(name) }.show()
-    }
+    // Returns step edits to the same full-screen workspace.
+    private fun steps(name: String) { show(name) }
 
     // Changes timing or order and permits removal without re-recording the whole macro.
     private fun editStep(name: String, index: Int) {
