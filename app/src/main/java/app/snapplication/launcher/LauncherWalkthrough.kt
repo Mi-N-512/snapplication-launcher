@@ -31,9 +31,14 @@ class LauncherWalkthrough(private val context: Context, private val ui: Launcher
             if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
         })
         explanation.addView(ui.label(detail, 14f).apply { setBackgroundColor(Color.TRANSPARENT) })
-        panel.addView(ScrollView(context).apply { addView(explanation); isFillViewport = false },
-            LinearLayout.LayoutParams(-1, ui.dp(84)))
-        panel.addView(ui.button(action, onAction).apply {
+        val wide = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val body = ui.column(wide)
+        panel.addView(body)
+        body.addView(ScrollView(context).apply { addView(explanation); isFillViewport = false },
+            if (wide) LinearLayout.LayoutParams(0, ui.dp(96), 1f) else LinearLayout.LayoutParams(-1, ui.dp(84)))
+        val controls = ui.column()
+        body.addView(controls, if (wide) LinearLayout.LayoutParams(0, ui.dp(96), 1f) else LinearLayout.LayoutParams(-1, -2))
+        controls.addView(ui.button(action, onAction).apply {
             textSize = 15f; ui.flatFocus(this, ui.surface, outline = false)
         }, LinearLayout.LayoutParams(-1, ui.dp(48)))
         val navigation = ui.column(true)
@@ -45,7 +50,7 @@ class LauncherWalkthrough(private val context: Context, private val ui: Launcher
                 if (index == 0) { isEnabled = step > 0; alpha = if (isEnabled) 1f else 0.5f }
             }, LinearLayout.LayoutParams(0, ui.dp(48), 1f))
         }
-        panel.addView(navigation)
+        controls.addView(navigation)
         return panel
     }
 }
