@@ -1,27 +1,28 @@
 package app.snapplication.launcher
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.RectF
+import android.net.Uri
+import android.view.MotionEvent
 import android.os.SystemClock
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import org.json.JSONObject
 import java.util.Locale
 import kotlin.math.hypot
 
 /*
- * Safe blank-screen rehearsal opened by MacroEditor. Draws recorded gestures and timing only; it never calls
+ * Fitted screenshot and touch rehearsal embedded in MacroEditor's full-screen workspace. It never calls
  * RemoteActionService, opens another app, or injects a touch.
  *
  * Related classes: MacroEditor opens this view using locally saved macro JSON.
- * UI: Blank fitted display, animated touch marks, duration, step timeline and Play/Stop/Close controls.
+ * UI: Fitted display, optional reference screenshot, touch markers and editable tap position.
  * Edit or extend: Edit rehearsal drawing and timing here; keep it visual only and in step with the real replay
  * rules.
  */
@@ -39,6 +40,12 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
     private var elapsed = 0L
     private var started = 0L
     private var running = false
+    private var selected: PreviewStep? = null
+    private var overlay: Bitmap? = null
+    private var closed = false
+    private val imageWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val displayRect = RectF()
+    var onPosition: ((Double, Double) -> Unit)? = null
     private val tick = object : Runnable {
         override fun run() {
             if (!running) return
@@ -52,31 +59,91 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
 
     // Rehearses once from zero; a second press cancels the previous visual timeline.
     fun restart() {
-        stop(); elapsed = 0; started = SystemClock.uptimeMillis(); running = true; post(tick)
+        stop(); selected = null; elapsed = 0; started = SystemClock.uptimeMillis(); running = true; post(tick)
     }
 
     // Cancels every scheduled frame, including when the dialog closes or its activity leaves.
     fun stop() { running = false; removeCallbacks(tick) }
 
     // Stops visual playback when Android removes the preview, including activity recreation.
-    override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() {
+        stop(); closed = true; imageWorker.shutdownNow(); overlay?.recycle(); overlay = null
+        super.onDetachedFromWindow()
+    }
+
+    // Selects a saved step without injecting touches; semantic steps keep their text description.
+    fun select(source: JSONObject) {
+        stop(); selected = sequence.firstOrNull { it.source === source }
+        elapsed = selected?.ends ?: 0L; updateStatus(); invalidate()
+    }
+
+    // Decodes a bounded, user-chosen screenshot off the UI thread; it never becomes an automation target.
+    fun loadOverlay(uri: String) {
+        if (uri.isBlank()) return
+        imageWorker.execute {
+            val result = runCatching {
+                val target = Uri.parse(uri)
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(target).use { BitmapFactory.decodeStream(it, null, options) }
+                require(options.outWidth > 0 && options.outHeight > 0)
+                val recorded = sequence.firstOrNull { it.source.has("width") }?.source
+                if (recorded != null) {
+                    val expected = recorded.optDouble("width") / recorded.optDouble("height")
+                    val actual = options.outWidth.toDouble() / options.outHeight
+                    require(expected.isFinite() && kotlin.math.abs(actual / expected - 1.0) <= .01)
+                }
+                options.inSampleSize = 1
+                while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > 1600) options.inSampleSize *= 2
+                options.inJustDecodeBounds = false
+                context.contentResolver.openInputStream(target).use { BitmapFactory.decodeStream(it, null, options) }
+            }.getOrNull()
+            (context as Activity).runOnUiThread {
+                if (closed) result?.recycle() else {
+                    overlay = result; invalidate()
+                    if (result == null) status("Use a full-screen screenshot with the recorded orientation and proportions. Image unavailable or incompatible; macro unchanged.")
+                }
+            }
+        }
+    }
+
+    // Allows explicit tap editing inside the fitted display; side-panel coordinates offer remote access.
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (onPosition == null) return super.onTouchEvent(event)
+        if (event.action == MotionEvent.ACTION_UP && displayRect.contains(event.x, event.y)) {
+            performClick()
+            onPosition?.invoke(((event.x - displayRect.left) / displayRect.width()).toDouble(),
+                ((event.y - displayRect.top) / displayRect.height()).toDouble())
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean { super.performClick(); return true }
 
     // Reports exact programmed waits/gesture durations; app-loading delays are explicitly excluded.
     private fun updateStatus() {
-        val next = sequence.firstOrNull { it.ends >= elapsed }
-        val action = if (elapsed >= duration) "Finished" else if (next != null && elapsed < next.begins) "Waiting · ${next.title}" else next?.title.orEmpty()
+        val next = selected ?: sequence.firstOrNull { it.ends >= elapsed }
+        val action = if (selected != null) "Selected · ${selected?.title}" else if (elapsed >= duration) "Finished" else if (next != null && elapsed < next.begins) "Waiting · ${next.title}" else next?.title.orEmpty()
         status("${seconds(elapsed)} / ${seconds(duration)} s · $action")
     }
 
     // Fits the recorded display in the blank canvas without distorting touch coordinates.
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val step = sequence.firstOrNull { it.ends >= elapsed } ?: sequence.lastOrNull() ?: return
+        val step = selected ?: sequence.firstOrNull { it.ends >= elapsed } ?: sequence.lastOrNull() ?: return
         val source = step.source
-        val sw = source.optInt("width", 1080).coerceAtLeast(1).toFloat()
-        val sh = source.optInt("height", 1920).coerceAtLeast(1).toFloat()
+        val recorded = sequence.firstOrNull { it.source.has("width") }?.source
+        val sw = source.optInt("width", recorded?.optInt("width", 1080) ?: 1080).coerceAtLeast(1).toFloat()
+        val sh = source.optInt("height", recorded?.optInt("height", 1920) ?: 1920).coerceAtLeast(1).toFloat()
         val scale = minOf((width - 24 * density).coerceAtLeast(1f) / sw, (height - 24 * density).coerceAtLeast(1f) / sh)
         val left = (width - sw * scale) / 2; val top = (height - sh * scale) / 2
+        displayRect.set(left, top, left + sw * scale, top + sh * scale)
+        overlay?.let { bitmap ->
+            val fit = minOf(displayRect.width() / bitmap.width, displayRect.height() / bitmap.height)
+            val w = bitmap.width * fit; val h = bitmap.height * fit
+            val x = displayRect.centerX() - w / 2; val y = displayRect.centerY() - h / 2
+            ink.style = Paint.Style.FILL
+            canvas.drawBitmap(bitmap, null, RectF(x, y, x + w, y + h), ink)
+        }
         ink.color = Color.LTGRAY; ink.style = Paint.Style.STROKE; ink.strokeWidth = density
         canvas.drawRect(left, top, left + sw * scale, top + sh * scale, ink)
         if (elapsed < step.begins) return
@@ -111,8 +178,8 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
         private fun seconds(value: Long) = String.format(Locale.getDefault(), "%.3f", value / 1000.0)
 
         // Matches replay speed, bounded waits, gesture limits and initial-launch skipping.
-        fun show(activity: Activity, name: String, macro: JSONObject, label: (JSONObject) -> String) {
-            val steps = macro.optJSONArray("steps") ?: return
+        fun create(activity: Activity, macro: JSONObject, label: (JSONObject) -> String, status: (String) -> Unit): MacroPreviewView {
+            val steps = macro.optJSONArray("steps") ?: org.json.JSONArray()
             val speed = macro.optDouble("speed", 1.0).let { if (it.isFinite()) it.coerceIn(.25, 4.0) else 1.0 }
             var skipLaunch = macro.optBoolean("currentScreen", false)
             var time = 0L
@@ -127,31 +194,10 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
                 if (kind == "gesture") time += (source.optLong("duration", 40) / speed).toLong().coerceIn(40, 3000)
                 sequence.add(PreviewStep(source, label(source), starts, time))
             }
-            val density = activity.resources.displayMetrics.density
-            val body = LinearLayout(activity).apply {
-                orientation = LinearLayout.VERTICAL; setPadding((16 * density).toInt(), 0, (16 * density).toInt(), 0)
+            return MacroPreviewView(activity, sequence, status).also {
+                it.updateStatus(); it.loadOverlay(macro.optString("overlayUri"))
             }
-            val status = TextView(activity).apply { text = "Programmed duration: ${seconds(time)} s at ${speed}×"; textSize = 16f }
-            body.addView(status)
-            val canvas = MacroPreviewView(activity, sequence) { status.text = it }
-            body.addView(canvas, LinearLayout.LayoutParams(-1, (180 * density).toInt()))
-            body.addView(TextView(activity).apply {
-                text = "Visual preview only. Real playback may take longer while apps open. Touch positions are shown on a blank screen; named actions appear in the timeline."
-                textSize = 12f
-            })
-            body.addView(TextView(activity).apply {
-                text = sequence.mapIndexed { i, step -> "${i + 1}. ${seconds(step.begins)} s · ${step.title}${if (step.ends > step.begins) " · ${seconds(step.ends - step.begins)} s" else ""}" }.joinToString("\n")
-                setPadding(0, (8 * density).toInt(), 0, (8 * density).toInt())
-            })
-            val scroll = ScrollView(activity).apply { addView(body) }
-            val dialog = AlertDialog.Builder(activity).setTitle("Preview · $name").setView(scroll)
-                .setPositiveButton("Play preview", null).setNeutralButton("Stop", null).setNegativeButton("Close", null).create()
-            dialog.setOnDismissListener { canvas.stop() }
-            dialog.setOnShowListener {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { canvas.restart() }
-                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { canvas.stop() }
-            }
-            dialog.show()
         }
+
     }
 }

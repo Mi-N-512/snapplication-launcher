@@ -73,6 +73,22 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         panel.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         val setup = ui.button("Enable page previews") { onResumeCapture() }.apply { visibility = View.GONE }
         panel.addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+        // Keep the saved image and playback controls usable while exposing stopped Watch capture.
+        val repair = ui.button("Preview updates stopped · Repair previews") { onResumeCapture() }.apply {
+            visibility = View.GONE
+        }
+        panel.addView(repair, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END))
+        val healthCheck = object : Runnable {
+            override fun run() {
+                repair.visibility = if (mode == "Watch" && component != null && state.previewWarnings &&
+                    state.watchPreviewExpected && (!PreviewCaptureService.active || RemoteActionService.instance == null)) View.VISIBLE else View.GONE
+                if (panel.isAttachedToWindow && panel.windowVisibility == View.VISIBLE) panel.postDelayed(this, 2000)
+            }
+        }
+        panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) { if (mode == "Watch") panel.post(healthCheck) }
+            override fun onViewDetachedFromWindow(v: View) { panel.removeCallbacks(healthCheck) }
+        })
         val actions = active()?.playbackState?.actions ?: 0L
         previous.isEnabled = actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS != 0L
         next.isEnabled = actions and PlaybackState.ACTION_SKIP_TO_NEXT != 0L
@@ -85,7 +101,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
         reveal.contentDescription = "Open preview app"
         reveal.setOnClickListener { if (component == null) onChoose() else openApp(resumePlayback = true) }
-        // Capture status lives in settings; the saved page/frame stays unobstructed on Home.
+        // The optional repair control leaves the saved image and resume target available.
         // Disk decoding and artwork compression run away from input/rendering; detaching cancels display delivery.
         val executor = Executors.newSingleThreadExecutor()
         var detached = false
