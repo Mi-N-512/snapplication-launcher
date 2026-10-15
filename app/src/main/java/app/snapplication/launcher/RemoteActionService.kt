@@ -39,6 +39,7 @@ class RemoteActionService : AccessibilityService() {
     private val controls by lazy { RemoteControls(this) }
     private val landscapeLaunch by lazy { LandscapeLaunch(this) }
     private val cloudStreamControls by lazy { CloudStreamControls(this) }
+    private val projectionImageRunner by lazy { ProjectionImageRunner(this) }
 
     // Uses the visible CloudStream player when its session has no exported Next transport action.
     fun nextCloudStreamEpisode(owner: String, isCurrent: () -> Boolean, result: (Boolean) -> Unit) {
@@ -621,6 +622,15 @@ class RemoteActionService : AccessibilityService() {
         awaitReplayApp(name, target, request, 0)
     }
 
+    // Rehearses visual recognition without sending any touch or requiring an external display.
+    fun testProjectionImage(name: String) {
+        val macro = macros(this).optJSONObject(name) ?: return
+        if (macro.optString("type") != ProjectionImageAction.KIND || recordingName != null) return
+        finishReplay()
+        runningMacro = name
+        projectionImageRunner.start(macro, true) { finishReplay(it) }
+    }
+
     // Waits briefly for the requested app without sending any recorded click during its transition.
     private fun awaitReplayApp(name: String, target: String, request: Int, attempt: Int) {
         handler.postDelayed({
@@ -690,6 +700,7 @@ class RemoteActionService : AccessibilityService() {
 
     // Invalidates queued steps and removes replay controls on cancellation, completion or failure.
     private fun finishReplay(feedback: String? = null) {
+        projectionImageRunner.cancel()
         replayGeneration++
         runningMacro = null
         replayStop?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
@@ -708,6 +719,12 @@ class RemoteActionService : AccessibilityService() {
             if (generation != replayGeneration) return@postDelayed
             updateForeground()
             val kind = step.optString("kind", "click")
+            if (kind == ProjectionImageAction.KIND) {
+                val macro = runningMacro?.let { macros(this).optJSONObject(it) }
+                if (macro == null) finishReplay("Image action is unavailable.")
+                else projectionImageRunner.start(macro, false) { finishReplay(it) }
+                return@postDelayed
+            }
             if (!recordablePackage(expected)) { finishReplay("Macro stopped: unavailable or protected app."); return@postDelayed }
             if (kind == "launch" || kind == "home") {
                 val destination = if (kind == "home") packageName else expected

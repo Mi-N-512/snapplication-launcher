@@ -35,6 +35,10 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
     // Keeps timing, reference image, editable steps and rehearsal in one full-screen workspace.
     fun show(name: String) {
         val macro = all().optJSONObject(name) ?: return
+        if (macro.optString("type") == ProjectionImageAction.KIND) {
+            ProjectionImageAction.show(activity, name, macro) { confirmDelete(name) }
+            return
+        }
         editor?.dismiss()
         val state = LauncherState(activity)
         val ui = LauncherUi(activity, state, false)
