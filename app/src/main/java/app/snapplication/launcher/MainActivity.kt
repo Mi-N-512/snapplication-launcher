@@ -495,6 +495,10 @@ class MainActivity : Activity() {
     @Deprecated("Legacy Activity result API retained for the minimal native Activity host")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ProjectionImageAction.REQUEST) {
+            ProjectionImageAction.accept(this, resultCode, data) { macroSettings() }
+            return
+        }
         if (requestCode == 203) {
             MacroEditor.handleOverlayResult(this, resultCode, data)
             return
@@ -1042,6 +1046,7 @@ class MainActivity : Activity() {
             macroPrefs.edit().putBoolean("confirmReplay", !macroPrefs.getBoolean("confirmReplay", false)).apply(); macroSettings()
         })
         content.addView(ui.button("Record new action") { recordMacro() })
+        if (!state.readerOnly) content.addView(ui.button("Add image-matched Wired Projection action") { ProjectionImageAction.choose(this) })
         content.addView(ui.button("Map a Record/stop button") { remote.learn("Record/stop macro") { macroSettings() } })
         content.addView(ui.button("Stop recording") { RemoteActionService.instance?.stopRecording(); macroSettings() })
         RemoteActionService.savedMacroNames(this).forEach { name ->

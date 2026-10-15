@@ -18,7 +18,8 @@ import java.io.ByteArrayOutputStream
  * ExternalPreview displays it.
  *
  * Related classes: MainActivity requests consent; RemoteActionService supplies eligible bounds; ExternalPreview
- * reads saved frames.
+ * reads saved frames. ProjectionImageRunner can request one fresh memory-only frame during an explicit visual
+ * action. That comparison does not save a screenshot or change which media previews are cached.
  * UI: Foreground capture notification; no full page of its own.
  * Edit or extend: Edit bounded capture, per-app caching and lifecycle cleanup here. New modes require explicit
  * eligibility rules, not unrestricted capture.
@@ -36,6 +37,7 @@ class PreviewCaptureService : Service() {
     private var captureWidth = 0
     private var captureHeight = 0
     private var eligibleSince = Long.MIN_VALUE
+    private var visualFrame: ((Bitmap) -> Unit)? = null
     // Requests one fresh frame after eligibility settles, including paused video and static book pages.
     private val eligibilityRefresh = object : Runnable {
         override fun run() {
@@ -91,6 +93,7 @@ class PreviewCaptureService : Service() {
         if (Build.VERSION.SDK_INT >= 29) startForeground(41, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         else startForeground(41, notification)
         active = true
+        visualInstance = this
         handler.post { runCatching {
             if (stopped || synchronized(cacheLock) { sessionEpoch != cacheEpoch }) { stopSelf(); return@runCatching }
             projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(Activity.RESULT_OK, consent)
@@ -162,15 +165,31 @@ class PreviewCaptureService : Service() {
         }.onFailure { replacement.close(); stopped = true; stopSelf() }
     }
 
-    // Discards all other apps, system windows and locked screens before touching pixel data.
+    // Services explicit memory-only visual requests first, otherwise saves only eligible media; locked screens are discarded.
     private fun saveEligibleFrame(source: ImageReader) {
         if (source !== reader || stopped) return
         val frame = runCatching { source.acquireLatestImage() }.getOrNull() ?: return
         frame.use {
             val now = SystemClock.elapsedRealtimeNanos()
-            if (stopped || now - lastFrame < 750_000_000L) return
+            if (stopped) return
             val power = getSystemService(PowerManager::class.java)
             if (!power.isInteractive || getSystemService(KeyguardManager::class.java).isKeyguardLocked) return
+            // An explicit image-action request compares one fresh frame in memory; it never enters the preview cache.
+            val visual = visualFrame
+            if (visual != null) {
+                visualFrame = null
+                var padded: Bitmap? = null
+                var exact: Bitmap? = null
+                try {
+                    val plane = frame.planes[0]
+                    padded = Bitmap.createBitmap(plane.rowStride / plane.pixelStride, frame.height, Bitmap.Config.ARGB_8888)
+                    padded.copyPixelsFromBuffer(plane.buffer)
+                    exact = Bitmap.createBitmap(padded, 0, 0, frame.width, frame.height)
+                    visual(exact)
+                } finally { if (exact !== padded) exact?.recycle(); padded?.recycle() }
+                return
+            }
+            if (now - lastFrame < 750_000_000L) return
             val target = RemoteActionService.capturePackage ?: return
             val since = RemoteActionService.capturePackageSinceNanos
             if (now - since < 500_000_000L) return
@@ -226,6 +245,7 @@ class PreviewCaptureService : Service() {
     // Stops projection and discards queued images without deleting the intentionally saved last frame.
     override fun onDestroy() {
         active = false; stopped = true
+        visualInstance = null
         handler.removeCallbacks(eligibilityRefresh)
         handler.post {
             getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
@@ -240,6 +260,25 @@ class PreviewCaptureService : Service() {
     // Reports only the current process's live session; never persists consent tokens.
     companion object {
         @Volatile var active = false; private set
+        @Volatile private var visualInstance: PreviewCaptureService? = null
+
+        // Replaces the queue before sampling, so an old video frame can never satisfy an image action.
+        internal fun requestVisualFrame(compare: (Bitmap) -> Unit): Boolean {
+            val service = visualInstance ?: return false
+            if (!active || service.stopped) return false
+            service.handler.post {
+                if (!service.stopped && service.display != null) {
+                    service.visualFrame = compare
+                    service.refreshEligibleSurface(Long.MIN_VALUE)
+                }
+            }
+            return true
+        }
+
+        // Cancels a pending visual sample without affecting ordinary media previews or their consent session.
+        internal fun cancelVisualFrame() {
+            visualInstance?.let { service -> service.handler.post { service.visualFrame = null } }
+        }
         internal val cacheLock = Any()
         internal var cacheEpoch = 0L
 

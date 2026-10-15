@@ -56,10 +56,8 @@ class RemoteMappingPanel(
         body.addView(ui.section("Recorded actions"))
         body.addView(ui.label("1. Record the steps you want.\n2. Stop and save the recording.\n3. Assign it to a remote button.", 16f))
         body.addView(ui.button("Record an action", onRecordAction))
-        val names = RemoteActionService.savedMacroNames(activity)
-        if (names.isNotEmpty()) {
-            body.addView(ui.button("Edit recordings and timing", onManageActions))
-        }
+        // Keep creation reachable when there are no recordings, including image-matched actions.
+        body.addView(ui.button("Recorded actions & image matching", onManageActions))
         body.addView(ui.section("Saved buttons"))
         val mappings = remote.savedMappings()
         if (mappings.isEmpty()) {
