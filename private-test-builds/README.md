@@ -1,6 +1,6 @@
-# Private test builds - 14 October 2026
+# Private test builds - 15 October 2026
 
-Source commit: 57ec168. Development builds only; no public release.
+Source commit: 886a37e. Development builds only; no public release.
 
 - [Universal APK](snapplication-universal-debug.apk)
 - [E-reader APK](snapplication-ereader-debug.apk)
@@ -30,3 +30,5 @@ All three editions passed build, lint and 72 unit tests. On the Mate, Family Guy
 14 October: Touch macros now resolve the same guarded top-window owner during recording and replay, allowing a vendor dialog to differ from Android's active app. Screen identity, orientation, private-input and protected-window checks remain enforced. The Home Favourites heading inherits its panel's glass surface. All three editions passed build/lint and 81 tests; reverting the owner fix caused two regression tests to fail. On the Mate a temporary three-step recording replayed once to Settings and stopped. Actual Huawei Wired Projection dialog replay awaits the hub retest. The user confirmed HDMI recovered after power-cycling the hub and normal remote mappings work; physical Power already sleeps/wakes the phone directly through Android.
 
 14 October editor update: Full-screen macro workspace adds a reference screenshot, visual rehearsal, editable tap positions, timing, speed, ordering, deletion and remote assignment. The launcher tour now coaches on real Home, favourites and settings screens, retaining the initial mode/colour chooser. Settings uses a flat shared header. Preview warnings offer a consent-based repair action. All three editions passed build, lint and unit tests. On the Mate, screenshot import, rehearsal, live replay and the wait-time form were checked using a temporary macro. The actual Huawei Wired Projection Agree action remains unresolved; a reference screenshot does not bypass real-screen checks. Reader device checks were not repeated for this UI update.
+
+15 October image matching: Added a specific Wired Projection - Agree preset from a user-selected screenshot. It requires active Watch capture, two fresh matching frames and a public external display before sending one tap. Eight-second timeout; no blind fallback or retry. Reference and capture use the same resizing path. Captured comparison frames stay in memory. The no-tap reference rehearsal and no-external-display refusal passed on the Mate. All three editions passed build, lint and 41 unit tests each (123 total). Actual HDMI dialog recognition/tap remains unverified; this is a private test build, not a claim that Android-protected dialogs can always be operated. Reader hardware checks were not repeated.
