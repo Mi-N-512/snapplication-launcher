@@ -431,7 +431,7 @@ class MainActivity : Activity() {
     // Hosts the alphabetical drawer; DrawerPanel owns search, remote focus and favourite editing.
     private fun drawer(editFavourites: Boolean = false) {
         begin("Apps")
-        val panel = DrawerPanel(this, state, ui, { launch(it) }, { settings() }, { home() })
+        val panel = DrawerPanel(this, state, ui, { launch(it) }, { settings() }, { home() }, guidedSetup = guideActive)
         root.addView(panel.view, LinearLayout.LayoutParams(-1, 0, 1f))
         if (editFavourites) panel.beginFavouriteEditing()
         drawerGestureAreas.add((panel.view.getChildAt(0) as ViewGroup).getChildAt(0))

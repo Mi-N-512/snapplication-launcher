@@ -43,7 +43,8 @@ class DrawerPanel(
     private val ui: LauncherUi,
     private val onLaunch: (ComponentName) -> Unit,
     private val onSettings: () -> Unit,
-    private val onHome: () -> Unit
+    private val onHome: () -> Unit,
+    private val guidedSetup: Boolean = false
 ) {
     /*
      * One installed app entry owned by DrawerPanel. ComponentName identifies the launch target; label and
@@ -398,7 +399,9 @@ class DrawerPanel(
             val count = if (state.dynamicBlocks) shown.size.coerceAtLeast(2) else state.favouriteCount
             miniature.addView(previewSlots(shown, true, count, shown), LinearLayout.LayoutParams(-1, 0, .43f))
         }
-        val previewHeight = (if (landscape) 100 else 160) - (if (ordered.size > shown.size) 40 else 0)
+        // Keep room for selectable app rows while the landscape tutorial coach is visible.
+        val previewHeight = (if (landscape && guidedSetup) 48 else if (landscape) 100 else 160) -
+            (if (ordered.size > shown.size && !(landscape && guidedSetup)) 40 else 0)
         preview.addView(miniature, LinearLayout.LayoutParams(-1, ui.dp(previewHeight)))
         // Hidden entries remain editable without misrepresenting them as visible Home slots.
         if (ordered.size > shown.size) {
