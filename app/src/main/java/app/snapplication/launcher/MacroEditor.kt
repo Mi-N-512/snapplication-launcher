@@ -94,7 +94,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
                 save(name, macro.put("speed", listOf(.5, 1.0, 2.0, 4.0)[choice])); show(name)
             }.setNegativeButton("Cancel", null).show()
         })
-        tools.addView(ui.button("Start: ${if (macro.optBoolean("currentScreen")) "current screen" else "open recorded app"}") {
+        tools.addView(ui.button("Start: ${if (RemoteActionService.startsOnCurrentScreen(macro)) "current screen" else "open recorded app"}") {
             AlertDialog.Builder(activity).setTitle("Where should this action start?")
                 .setItems(arrayOf("Open recorded app", "Current screen · skip initial app launches")) { _, choice ->
                     save(name, macro.put("currentScreen", choice == 1)); show(name)

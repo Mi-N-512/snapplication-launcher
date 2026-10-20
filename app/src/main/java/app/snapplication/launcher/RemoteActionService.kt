@@ -101,6 +101,14 @@ class RemoteActionService : AccessibilityService() {
         @Volatile var capturePackageSinceNanos: Long = 0L
             private set
 
+        // Shares start behavior with the editor, including older touch recordings without an explicit choice.
+        fun startsOnCurrentScreen(macro: JSONObject): Boolean {
+            val steps = macro.optJSONArray("steps") ?: JSONArray()
+            val gestures = (0 until steps.length()).any { steps.optJSONObject(it)?.optString("kind") == "gesture" }
+            return MacroContext.startOnCurrentScreen(if (macro.has("currentScreen")) macro.optBoolean("currentScreen") else null,
+                macro.optInt("version", 1), gestures)
+        }
+
         // Returns local macro names for the settings screen and per-device mapping chooser.
         fun savedMacroNames(context: Context): List<String> = macros(context).keys().asSequence().sorted().toList()
 
@@ -404,11 +412,14 @@ class RemoteActionService : AccessibilityService() {
             controls.assignment(event) { false }
             return true
         }
-        if (RemoteControls.learning || currentPackage == packageName) return false
+        if (!RemoteInputPolicy.handleInService(RemoteControls.learning, RemoteControls.launcherHasFocus())) return false
         val device = event.device ?: return false
         // Learned hybrid remotes can report mouse sources for their buttons; the saved descriptor/key
         // is the authority. Avoid a full window-tree scan here: Android's key-filter deadline is short.
         if (device.isVirtual || event.keyCode in setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)) return false
+        // Native arrows/OK must still reach dialogs whose controls Android does not expose to accessibility.
+        if (event.keyCode in setOf(19, 20, 21, 22, 23, 66) &&
+            RemoteInputPolicy.nativeNavigation(controls.action(event), event.keyCode)) return false
         // Only text-sensitive shortcuts need a cross-process focus read. Navigation, locking,
         // unmapped keys and latched repeats/releases must not wait for another app's window tree.
         val action = controls.assignment(event) {
@@ -610,7 +621,7 @@ class RemoteActionService : AccessibilityService() {
         if (runningMacro == name) return
         finishReplay()
         val macro = macros(this).optJSONObject(name) ?: return
-        if (macro.optBoolean("currentScreen", false)) { replay(name); return }
+        if (startsOnCurrentScreen(macro)) { replay(name); return }
         val target = macro.optString("package")
         runningMacro = name
         val intent = packageManager.getLaunchIntentForPackage(target)
@@ -658,7 +669,7 @@ class RemoteActionService : AccessibilityService() {
         replaySpeed = macro.optDouble("speed", 1.0).coerceIn(0.25, 4.0)
         val original = macro.optJSONArray("steps") ?: run { finishReplay(); return }
         val steps = JSONArray()
-        var skipLaunch = macro.optBoolean("currentScreen", false)
+        var skipLaunch = startsOnCurrentScreen(macro)
         for (index in 0 until original.length()) {
             val step = original.optJSONObject(index) ?: continue
             if (skipLaunch && step.optString("kind") in setOf("home", "launch")) continue
