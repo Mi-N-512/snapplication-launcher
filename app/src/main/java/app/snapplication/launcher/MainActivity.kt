@@ -93,6 +93,7 @@ class MainActivity : Activity() {
     // Restores launcher preferences and builds the appropriate mode without requesting root privileges.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        RemoteControls.trackLauncherWindow(window.decorView)
         state = LauncherState(this)
         state.initializeReaderProfile()
         remote = RemoteControls(this)

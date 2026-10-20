@@ -11,7 +11,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1-dev"
-        testInstrumentationRunner = "android.test.InstrumentationTestRunner"
+        testInstrumentationRunner = "app.snapplication.launcher.RemoteLearningLifecycleTest"
     }
     // A local, ignored key keeps development updates compatible across Android Studio and test tooling.
     signingConfigs.getByName("debug") {

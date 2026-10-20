@@ -38,4 +38,23 @@ class RemoteInputPolicyTest {
         assertEquals("Macro: accept display", RemoteInputPolicy.permitted("Macro: accept display") { false })
         assertEquals("Play/pause", RemoteInputPolicy.permitted("Play/pause") { false })
     }
+    // A system dialog must receive mapped shortcuts through the service even if the cached package is Home.
+    @Test fun coveredLauncherUsesService() {
+        assertEquals(true, RemoteInputPolicy.handleInService(false, false))
+        assertEquals(false, RemoteInputPolicy.handleInService(false, true))
+    }
+
+    // Learning owns all keys until the dialog detaches or closes, regardless of the launcher's focus.
+    @Test fun learningNeverRunsAssignedActions() {
+        assertEquals(false, RemoteInputPolicy.handleInService(true, false))
+        assertEquals(false, RemoteInputPolicy.handleInService(true, true))
+    }
+    // Native directions/OK remain usable in vendor dialogs; differently mapped keys still run their assignment.
+    @Test fun nativeDirectionsPassThroughWithoutLosingRemaps() {
+        for ((action, code) in listOf("Up" to 19, "Down" to 20, "Left" to 21, "Right" to 22, "Select" to 23, "Select" to 66))
+            assertEquals(true, RemoteInputPolicy.nativeNavigation(action, code))
+        assertEquals(false, RemoteInputPolicy.nativeNavigation("Down", 19))
+        assertEquals(false, RemoteInputPolicy.nativeNavigation("Macro: Agree", 23))
+        assertEquals(false, RemoteInputPolicy.nativeNavigation(null, 19))
+    }
 }

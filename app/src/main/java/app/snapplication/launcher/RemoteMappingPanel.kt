@@ -47,7 +47,8 @@ class RemoteMappingPanel(
         body.addView(ui.label("Tap an action on this remote, then press the physical button to assign it. Press a mapped button here to see its action light up.", 16f))
         body.addView(ui.label("Android receives buttons first. Reserved keys, often Power and Home, may never reach the launcher. If a key is not detected, assign another button to that action.", 14f))
         if (RemoteActionService.instance == null) {
-            body.addView(ui.button("Enable controls in other apps", onAccessibility))
+            body.addView(ui.label("Your assignments are saved, but remote support is not running. Enable it below; you do not need to bind the buttons again.", 16f))
+            body.addView(ui.button("Restore remote support", onAccessibility))
         }
         body.addView(diagram(onChanged))
         body.addView(ui.label("Generic remote · choose an action to learn a physical button. Your remote may have a different layout.", 13f))

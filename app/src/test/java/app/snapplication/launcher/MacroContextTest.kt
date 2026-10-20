@@ -38,4 +38,12 @@ class MacroContextTest {
         assertFalse(MacroContext.matches(listOf("|FrameLayout"), listOf("|LinearLayout")))
         assertFalse(MacroContext.matches(listOf("root|FrameLayout"), emptyList()))
     }
+    // Older touch macros must not reset Home before replaying coordinates from settings or an in-app page.
+    @Test fun touchMacroDefaultsToCurrentScreen() { assertTrue(MacroContext.startOnCurrentScreen(null, 2, true)) }
+    @Test fun explicitLaunchChoiceIsPreserved() { assertFalse(MacroContext.startOnCurrentScreen(false, 2, true)) }
+    @Test fun semanticAndLegacyDefaultsStayUnchanged() {
+        assertFalse(MacroContext.startOnCurrentScreen(null, 2, false))
+        assertFalse(MacroContext.startOnCurrentScreen(null, 1, true))
+        assertTrue(MacroContext.startOnCurrentScreen(true, 1, false))
+    }
 }

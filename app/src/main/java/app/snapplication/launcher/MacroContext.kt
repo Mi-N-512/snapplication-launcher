@@ -9,6 +9,10 @@ package app.snapplication.launcher
  * identity.
  */
 internal object MacroContext {
+    // Touch recordings need their recorded starting screen; explicit launch choices and legacy semantic macros retain their behavior.
+    fun startOnCurrentScreen(explicit: Boolean?, version: Int, hasGestures: Boolean): Boolean =
+        explicit ?: (version >= 2 && hasGestures)
+
     // Exact paths reject reused IDs in other containers; missing paths are handled by the legacy caller.
     fun matches(expected: List<String>, actual: List<String>): Boolean = expected == actual
 

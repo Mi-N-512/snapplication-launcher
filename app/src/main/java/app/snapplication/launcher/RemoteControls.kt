@@ -34,10 +34,19 @@ class RemoteControls(private val context: Context) {
     private val held = mutableMapOf<Pair<Int, Int>, String?>()
     private val reserved = setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)
     private var learningDialog: AlertDialog? = null
+    private var cancelLearningTimeout: (() -> Unit)? = null
+    private var removeLearningObserver: (() -> Unit)? = null
     var learningAction: String? = null
         private set
 
     companion object {
+        private var learningOwner: RemoteControls? = null
+        private var launcherWindow = java.lang.ref.WeakReference<android.view.View>(null)
+
+        // Actual window focus, unlike a cached accessibility package, changes when a vendor dialog covers Home.
+        fun trackLauncherWindow(view: android.view.View) { launcherWindow = java.lang.ref.WeakReference(view) }
+        fun launcherHasFocus(): Boolean = launcherWindow.get()?.hasWindowFocus() == true
+
         // Prevents the global accessibility filter from stealing the button being learned by the dialog.
         // Exists only while RemoteMappingPanel is attached; callers may report keys without changing them.
         var keyObserver: ((KeyEvent) -> Unit)? = null
@@ -54,8 +63,20 @@ class RemoteControls(private val context: Context) {
 
     // Reads the saved assignment for this input device and physical key without altering the event.
     fun action(event: KeyEvent): String? {
-        val descriptor = event.device?.descriptor ?: return null
-        return mappings().optJSONObject(descriptor)?.optJSONObject(event.keyCode.toString())
+        val current = event.device ?: return null
+        val root = mappings()
+        // Normal key presses keep the exact descriptor's fast path and respect intentionally unassigned keys.
+        if (root.has(current.descriptor)) return root.optJSONObject(current.descriptor)
+            ?.optJSONObject(event.keyCode.toString())?.optString("action")?.takeIf { it in actions }
+        fun profile(device: android.view.InputDevice) = RemoteDeviceMatch.Profile(device.descriptor, device.name, device.vendorId, device.productId)
+        val saved = root.keys().asSequence().mapNotNull { descriptor ->
+            val entries = root.optJSONObject(descriptor) ?: return@mapNotNull null
+            val entry = entries.keys().asSequence().mapNotNull { entries.optJSONObject(it) }.firstOrNull() ?: return@mapNotNull null
+            RemoteDeviceMatch.Profile(descriptor, entry.optString("name"), entry.optInt("vendor", -1), entry.optInt("product", -1))
+        }.toList()
+        val connected = android.view.InputDevice.getDeviceIds().asIterable().mapNotNull { android.view.InputDevice.getDevice(it) }.map(::profile)
+        val descriptor = RemoteDeviceMatch.resolve(profile(current), saved, connected) ?: return null
+        return root.optJSONObject(descriptor)?.optJSONObject(event.keyCode.toString())
             ?.optString("action")?.takeIf { it in actions }
     }
 
@@ -97,7 +118,9 @@ class RemoteControls(private val context: Context) {
     fun learn(action: String, onSaved: () -> Unit) {
         require(action in actions)
         val activity = context as? Activity ?: return
+        learningOwner?.closeLearning()
         closeLearning()
+        if (activity.isFinishing || activity.isDestroyed) return
         val status = TextView(activity).apply {
             text = "Press and release the remote button for ${displayLabel(action)}.\n\nAny existing assignment on that button will be replaced. Use Cancel to exit. Android receives remote keys first. It may reserve Home, Power or other keys so the launcher never receives them. If nothing appears, try a different physical button."
             setPadding(32, 24, 32, 24)
@@ -123,8 +146,8 @@ class RemoteControls(private val context: Context) {
             if (event.action == KeyEvent.ACTION_UP && press?.keyCode == code && press.deviceId == event.deviceId) {
                 if (!event.isCanceled) {
                     save(device.descriptor, device.name, code, action)
-                    dialog.dismiss()
-                    onSaved()
+                    closeLearning()
+                    if (!activity.isFinishing && !activity.isDestroyed) onSaved()
                 } else {
                     captured = null
                     status.text = "Press cancelled. Try again."
@@ -135,29 +158,51 @@ class RemoteControls(private val context: Context) {
         dialog.setCanceledOnTouchOutside(false)
         val timeoutHandler = Handler(Looper.getMainLooper())
         val timeout = Runnable {
-            if (dialog.isShowing) {
-                dialog.dismiss()
-                Toast.makeText(activity, "No button received. Android may reserve this key. Tap the action and try another remote button.", Toast.LENGTH_LONG).show()
-            }
-        }
-        dialog.setOnDismissListener {
             if (learningDialog === dialog) {
-                learning = false; learningDialog = null; learningAction = null
+                val visible = dialog.window?.decorView?.isAttachedToWindow == true
+                closeLearning()
+                if (visible && !activity.isFinishing && !activity.isDestroyed)
+                    Toast.makeText(activity, "No button received. Android may reserve this key. Tap the action and try another remote button.", Toast.LENGTH_LONG).show()
             }
-            timeoutHandler.removeCallbacks(timeout)
         }
+        dialog.setOnDismissListener { if (learningDialog === dialog) releaseLearning() }
         learningDialog = dialog
+        learningOwner = this
         learningAction = action
         learning = true
+        cancelLearningTimeout = { timeoutHandler.removeCallbacks(timeout) }
+        val decor = dialog.window!!.decorView
+        val observer = object : android.view.View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: android.view.View) {}
+            // Android can remove a dialog during display recreation without calling its dismiss listener.
+            override fun onViewDetachedFromWindow(view: android.view.View) {
+                if (learningDialog === dialog) releaseLearning()
+            }
+        }
+        decor.addOnAttachStateChangeListener(observer)
+        removeLearningObserver = { decor.removeOnAttachStateChangeListener(observer) }
         dialog.show()
         timeoutHandler.postDelayed(timeout, 30_000)
     }
 
-    // Releases the old activity's dialog and key-learning state before a display/input recreation.
-    fun closeLearning() {
-        learningDialog?.dismiss()
-        learningDialog = null; learningAction = null; learning = false
+    // Cancels the callback first, including dialogs created by temporary editor-owned RemoteControls instances.
+    private fun releaseLearning() {
+        cancelLearningTimeout?.invoke(); cancelLearningTimeout = null
+        removeLearningObserver?.invoke(); removeLearningObserver = null
+        learningDialog = null; learningAction = null
+        if (learningOwner === this) { learningOwner = null; learning = false }
         clearHeldButtons()
+    }
+
+    // The window manager may already have removed the decor during an external-display change.
+    fun closeLearning() {
+        val dialog = learningDialog
+        releaseLearning()
+        if (dialog != null) {
+            try { dialog.dismiss() } catch (_: IllegalArgumentException) {
+                // Android already removed the window; pending work is already cancelled.
+            }
+        }
     }
 
     // Describes real saved assignments for the settings screen without claiming remote pairing.
@@ -218,9 +263,14 @@ class RemoteControls(private val context: Context) {
     private fun save(descriptor: String, name: String, key: Int, action: String) {
         val root = mappings()
         val device = root.optJSONObject(descriptor) ?: JSONObject()
+        val previous = device.optJSONObject(key.toString())
         val replaced = device.keys().asSequence().filter { device.optJSONObject(it)?.optString("action") == action }.toList()
         replaced.forEach { device.remove(it) }
-        device.put(key.toString(), JSONObject().put("action", action).put("name", name))
+        val hardware = android.view.InputDevice.getDeviceIds().asIterable().mapNotNull { android.view.InputDevice.getDevice(it) }
+            .firstOrNull { it.descriptor == descriptor }
+        device.put(key.toString(), JSONObject().put("action", action).put("name", name)
+            .put("vendor", hardware?.vendorId ?: previous?.optInt("vendor", -1) ?: -1)
+            .put("product", hardware?.productId ?: previous?.optInt("product", -1) ?: -1))
         root.put(descriptor, device)
         prefs.edit().putString("mappings", root.toString()).apply()
         clearHeldButtons()

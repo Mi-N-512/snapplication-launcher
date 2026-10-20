@@ -11,6 +11,19 @@ object RemoteInputPolicy {
     private val duringTextEntry = setOf("Up", "Down", "Left", "Right", "Select", "Home", "Back", "Apps",
         "Screen off", "Record/stop macro", "Stop action")
 
+    // Leave already-native directions with Android, including vendor dialogs that expose no accessibility nodes.
+    fun nativeNavigation(action: String?, code: Int): Boolean = when (action) {
+        "Up" -> code == 19
+        "Down" -> code == 20
+        "Left" -> code == 21
+        "Right" -> code == 22
+        "Select" -> code == 23 || code == 66
+        else -> false
+    }
+
+    // A vendor dialog can cover the launcher while accessibility still reports the launcher package.
+    fun handleInService(learning: Boolean, launcherHasFocus: Boolean): Boolean = !learning && !launcherHasFocus
+
     // Avoids cross-process focus reads for unmapped keys and actions independent of text-entry state.
     fun permitted(action: String?, isEditing: () -> Boolean): String? {
         if (action == null) return null
