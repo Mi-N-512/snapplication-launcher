@@ -65,7 +65,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         workspace.addView(android.widget.ScrollView(activity).apply { addView(tools) },
             if (landscape) android.widget.LinearLayout.LayoutParams(0, -1, 1f) else android.widget.LinearLayout.LayoutParams(-1, 0, 1f))
         tools.addView(ui.label("PREVIEW & EDIT", 16f))
-        tools.addView(ui.label("Edits save automatically. Use an uncropped screenshot matching the recorded screen.", 14f))
+        tools.addView(ui.label("Edits save automatically. A reference screenshot is a visual guide only; ordinary actions still require their recorded app and screen.", 14f))
         tools.addView(ui.button("Play preview") { preview.restart() })
         tools.addView(ui.button("Stop preview") { preview.stop() })
         tools.addView(ui.button("Live test…") {
@@ -86,6 +86,12 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             }, 203)
         })
+        if (macro.optString("overlayUri").isNotBlank()) {
+            tools.addView(ui.button("Use screenshot to match Wired Projection") {
+                preview.stop()
+                ProjectionImageAction.convertRecording(activity, name, macro) { dialog.dismiss(); show(name) }
+            })
+        }
         if (macro.optString("overlayUri").isNotBlank()) tools.addView(ui.button("Remove reference screenshot") {
             save(name, macro.apply { remove("overlayUri") }); show(name)
         })
@@ -108,11 +114,9 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
             tools.addView(ui.label("Selected: ${selectedIndex + 1}. ${title(selected)}", 16f))
             tools.addView(ui.button("Timing, order & remove step") { preview.stop(); editStep(name, selectedIndex) })
             val points = selected.optJSONArray("points")
-            val stationary = points != null && points.length() in 1..2 &&
-                (0 until points.length()).all { i ->
-                    kotlin.math.hypot(points.getJSONArray(i).optDouble(0) - points.getJSONArray(0).optDouble(0),
-                        points.getJSONArray(i).optDouble(1) - points.getJSONArray(0).optDouble(1)) <= .005
-                }
+            val stationary = points != null && GestureShape.isTap((0 until points.length()).map { i ->
+                points.getJSONArray(i).optDouble(0) to points.getJSONArray(i).optDouble(1)
+            })
             if (selected.optString("kind") == "gesture" && stationary) {
                 tools.addView(ui.button("Set tap coordinates") { editCoordinates(name, macro, selected) })
                 tools.addView(android.widget.CheckBox(activity).apply {
@@ -221,7 +225,12 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
 
     // Names a recorded step using its visible label when available.
     private fun title(step: JSONObject): String = when (step.optString("kind", "click")) {
-        "gesture" -> if ((step.optJSONArray("points")?.length() ?: 0) > 2) "Swipe on screen" else "Tap on screen"
+        "gesture" -> {
+            val points = step.optJSONArray("points") ?: JSONArray()
+            if (GestureShape.isTap((0 until points.length()).map { i ->
+                points.getJSONArray(i).optDouble(0) to points.getJSONArray(i).optDouble(1)
+            })) "Tap on screen" else "Swipe on screen"
+        }
         "text" -> "Enter text: " + step.optString("value").take(60)
         "home" -> "Go Home"
         "back" -> "Go Back"

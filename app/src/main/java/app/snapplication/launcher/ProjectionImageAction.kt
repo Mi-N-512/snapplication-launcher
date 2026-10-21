@@ -67,6 +67,40 @@ internal object ProjectionImageAction {
         }
     }
 
+    // Converts an explicitly selected recording while retaining its name, remote mapping and original steps.
+    fun convertRecording(activity: Activity, name: String, original: JSONObject, saved: () -> Unit) {
+        AlertDialog.Builder(activity).setTitle("Match the Wired Projection screenshot?")
+            .setMessage("Use only a full landscape screenshot of Huawei's Wired Projection dialog. This replaces the recorded Home/tap steps with image recognition and one Agree tap. The remote assignment stays unchanged. Original steps are retained locally. Watch capture and the external display must be active; no match means no tap.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Convert") { _, _ ->
+                val worker = Executors.newSingleThreadExecutor()
+                worker.execute {
+                    val valid = runCatching {
+                        val bitmap = load(activity, Uri.parse(original.optString("overlayUri")))
+                        try { val grid = sample(bitmap); check(ProjectionImageMatch.matches(grid, grid)) }
+                        finally { bitmap.recycle() }
+                    }.isSuccess
+                    activity.runOnUiThread {
+                        if (!activity.isFinishing && !activity.isDestroyed) {
+                            if (valid) {
+                                RemoteActionService.instance?.performMappedAction("Stop action")
+                                val prefs = activity.getSharedPreferences("remoteMacros", Context.MODE_PRIVATE)
+                                val macros = JSONObject(prefs.getString("macros", "{}")!!)
+                                val replacement = JSONObject(original.toString())
+                                    .put("originalRecording", JSONObject(original.toString()))
+                                    .put("version", 2).put("type", KIND).put("package", activity.packageName)
+                                    .put("currentScreen", true)
+                                    .put("steps", JSONArray().put(JSONObject().put("kind", KIND).put("delay", 0)))
+                                prefs.edit().putString("macros", macros.put(name, replacement).toString()).apply()
+                                saved()
+                            } else AlertDialog.Builder(activity).setMessage("Reference unavailable or unsuitable. Choose a full, uncropped landscape Wired Projection screenshot first.")
+                                .setPositiveButton("OK", null).show()
+                        }
+                    }
+                    worker.shutdown()
+                }
+            }.show()
+    }
+
     // Reads a local URI with bounded decode size; the full-frame aspect is part of the match contract.
     fun load(context: Context, uri: Uri): Bitmap {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
