@@ -39,10 +39,13 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
             getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
             getTargetContext().getSharedPreferences("launcher", 0).edit()
                 .putBoolean("tutorialSeen", true).putBoolean("profileSetupComplete", true).commit();
+            getTargetContext().getSharedPreferences("remoteMacros", 0).edit().remove("pendingAssignment").commit();
             activity = (MainActivity) startActivitySync(new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
-            checkLearning();
-            result.putString("dialogs", "PASS: detached window and replacement owner");
+            if (args == null || !args.containsKey("clock")) {
+                checkLearning();
+                result.putString("dialogs", "PASS: detached window and replacement owner");
+            }
             shell("settings delete secure enabled_accessibility_services");
             SystemClock.sleep(500);
             shell("settings put secure enabled_accessibility_services app.snapplication.launcher/app.snapplication.launcher.RemoteActionService");
@@ -54,6 +57,11 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
             JSONObject original = new JSONObject(prefs.getString("macros", "{}"));
             original.remove("QA_TOUCH_ONCE"); savedMacros = original.toString();
             prefs.edit().putString("macros", savedMacros).remove("pendingAssignment").commit();
+            if (args != null && args.containsKey("clock")) {
+                checkClock(prefs);
+                result.putString("clock", "PASS: recorded app launch, Tokyo search and result selection; replayed from Settings and Launcher Home");
+            }
+            if (args == null || !args.containsKey("clock")) {
             ui(() -> {
                 FrameLayout page = new FrameLayout(activity);
                 target = new Button(activity); target.setId(87654); target.setText("Macro tap target");
@@ -83,6 +91,7 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
             awaitHits(2); SystemClock.sleep(5000);
             require(hits.get() == 2, "Macro repeated unexpectedly: " + hits.get());
             result.putString("touch", "PASS: recorded tap forwarded once, saved once, replayed once at 4x speed; no repeat after 5 seconds");
+            }
         } catch (Throwable error) {
             result.putString("failure", android.util.Log.getStackTraceString(error));
             code = Activity.RESULT_CANCELED;
@@ -92,6 +101,103 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
                 .putString("macros", savedMacros).remove("pendingAssignment").commit();
         }
         finish(code, result);
+    }
+
+    // Records real Clock navigation, text and selection; no hand-written macro steps substitute for recording.
+    private void checkClock(SharedPreferences prefs) throws Exception {
+        shell("pm clear com.google.android.deskclock");
+        shell("am start -n app.snapplication.launcher/.MainActivity"); SystemClock.sleep(1500);
+        ui(() -> require(service.beginRecording("QA_CLOCK_SEARCH", "", true), "Clock recorder did not start"));
+        tapLabel("ALL APPS"); tapLabel("Clock"); tapLabel("Clock"); tapLabel("Add city");
+        shell("input text Tokyo"); SystemClock.sleep(1800);
+        shell("input keyevent 66"); SystemClock.sleep(1200);
+        shell("input keyevent 4"); SystemClock.sleep(900);
+        tapLabel("Tokyo, Japan");
+        android.view.accessibility.AccessibilityNodeInfo tokyo = findLabel("Tokyo");
+        if (tokyo == null) {
+            StringBuilder labels = new StringBuilder();
+            android.view.accessibility.AccessibilityNodeInfo root = getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+            dumpLabels(root, labels); if (root != null) root.recycle();
+            ui(() -> service.stopRecording());
+            throw new AssertionError("Recording did not add Tokyo; visible=" + labels + "; steps=" + prefs.getString("macros", "{}"));
+        }
+        tokyo.recycle();
+        ui(() -> service.stopRecording()); SystemClock.sleep(400);
+        JSONObject macro = new JSONObject(prefs.getString("macros", "{}")).getJSONObject("QA_CLOCK_SEARCH");
+        Bundle trace = new Bundle(); trace.putString("recordedClock", macro.toString()); sendStatus(1, trace);
+        JSONArray steps = macro.getJSONArray("steps");
+        boolean text = false;
+        for (int i=0; i<steps.length(); i++) {
+            JSONObject step = steps.getJSONObject(i);
+            if ("text".equals(step.optString("kind")) && "Tokyo".equals(step.optString("value"))) text = true;
+        }
+        require(text, "No recorded Tokyo text step");
+        require(!RemoteActionService.Companion.startsOnCurrentScreen(macro), "App workflow unexpectedly starts on current screen");
+        // Clear only this disposable emulator's Clock data to ensure replay must genuinely add the city.
+        for (String start : new String[]{"android.settings.SETTINGS", "launcher"}) {
+        shell("pm clear com.google.android.deskclock");
+        if ("launcher".equals(start)) ui(() -> service.performMappedAction("Home"));
+        else shell("am start -a " + start);
+        SystemClock.sleep(1200);
+        ui(() -> service.replay("QA_CLOCK_SEARCH"));
+        boolean finished = false;
+        for (int i=0; i<120; i++) {
+            SystemClock.sleep(500);
+            android.view.accessibility.AccessibilityNodeInfo node = findLabel("Tokyo");
+            if (node != null) { node.recycle(); finished = true; break; }
+        }
+        require(finished, "Replay from " + start + " did not add Tokyo: " + prefs.getString("lastReplayResult", "no result"));
+        SystemClock.sleep(5000);
+        require("Action finished".equals(prefs.getString("lastReplayResult", "")), "Replay did not finish exactly once");
+        }
+        ui(() -> service.performMappedAction("Home")); SystemClock.sleep(700);
+    }
+
+    // Resolves live visible labels across app windows, excluding the recorder's own controls.
+    private android.view.accessibility.AccessibilityNodeInfo findLabel(String label) {
+        for (android.view.accessibility.AccessibilityWindowInfo window : getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getWindows()) {
+            android.view.accessibility.AccessibilityNodeInfo root = window.getRoot();
+            if (root == null) continue;
+            android.view.accessibility.AccessibilityNodeInfo found = findLabel(root, label);
+            root.recycle(); if (found != null) return found;
+        }
+        android.view.accessibility.AccessibilityNodeInfo active = getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+        if (active == null) return null;
+        try { return findLabel(active, label); } finally { active.recycle(); }
+    }
+    private android.view.accessibility.AccessibilityNodeInfo findLabel(android.view.accessibility.AccessibilityNodeInfo node, String label) {
+        if (node.isVisibleToUser() && ((!("Clock".equals(label) && "com.google.android.deskclock".contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) && label.contentEquals(node.getText() == null ? "" : node.getText())) ||
+            label.contentEquals(node.getContentDescription() == null ? "" : node.getContentDescription())))
+            return android.view.accessibility.AccessibilityNodeInfo.obtain(node);
+        for (int i=0; i<node.getChildCount(); i++) {
+            android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) continue;
+            android.view.accessibility.AccessibilityNodeInfo found = findLabel(child, label);
+            child.recycle(); if (found != null) return found;
+        }
+        return null;
+    }
+    private void tapLabel(String label) {
+        android.view.accessibility.AccessibilityNodeInfo node = null;
+        for (int i=0; i<30 && node==null; i++) { SystemClock.sleep(200); node = findLabel(label); }
+        if (node == null) {
+            android.view.accessibility.AccessibilityNodeInfo root = getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+            StringBuilder labels = new StringBuilder(); dumpLabels(root, labels);
+            if (root != null) root.recycle();
+            throw new AssertionError("Missing control: " + label + "; visible=" + labels);
+        }
+        android.graphics.Rect bounds = new android.graphics.Rect(); node.getBoundsInScreen(bounds); node.recycle();
+        tap(bounds.centerX(), bounds.centerY()); SystemClock.sleep(1500);
+    }
+
+    // Includes visible labels only on the disposable test device to explain failed navigation.
+    private void dumpLabels(android.view.accessibility.AccessibilityNodeInfo node, StringBuilder labels) {
+        if (node == null || labels.length() > 1500) return;
+        if (node.getText() != null) labels.append(node.getText()).append(" | ");
+        for (int i=0; i<node.getChildCount(); i++) {
+            android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
+            dumpLabels(child, labels); if (child != null) child.recycle();
+        }
     }
 
     // Only the disposable emulator test changes accessibility settings; no physical-device permission is automated.

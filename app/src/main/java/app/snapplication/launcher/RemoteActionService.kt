@@ -24,7 +24,8 @@ import org.json.JSONObject
 
 /*
  * Opt-in remote accessibility bridge used by MainActivity and RemoteControls. Records explicit, local, bounded
- * cross-app macros; never records typing, injects raw keys, or grants its own permissions.
+ * cross-app macros, including ordinary text entered during an explicit recording. Password fields are excluded;
+ * this service never injects raw keys or grants its own permissions.
  *
  * Related classes: MainActivity, RemoteControls, RemoteMappingPanel, TouchMacroRecorder, LandscapeLaunch and
  * PreviewCaptureService.
@@ -140,7 +141,7 @@ class RemoteActionService : AccessibilityService() {
         if (android.os.Build.VERSION.SDK_INT >= 30) readingSnapshots?.changed()
     }
 
-    // Records explicit clicks and app transitions across allowed apps; text input is never stored.
+    // Records explicit actions and ordinary text only during the visible, user-started recording session.
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.className?.toString()?.endsWith("Activity") == true) {
@@ -152,7 +153,7 @@ class RemoteActionService : AccessibilityService() {
         if (recordingName == null) return
         // Touch callbacks persist the mirrored gesture after completion. Accessibility echoes and
         // intermediate app switches must not insert semantic duplicates before that gesture.
-        if (touchRecorder != null) return
+        if (touchRecorder != null && event?.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) return
         val active = currentPackage ?: return
         if (!recordablePackage(active)) return
         if (!recordingStarted) {
@@ -172,6 +173,22 @@ class RemoteActionService : AccessibilityService() {
             lastRecordedPackage = active
         }
         if (recordingName == null || SystemClock.uptimeMillis() < ignoreClicksUntil || event?.packageName?.toString() != active) return
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            val field = event.source ?: return
+            try {
+                if (!field.isEditable || field.isPassword || field.packageName?.toString() != active) return
+                val id = field.viewIdResourceName?.takeIf { it.isNotBlank() } ?: return
+                val value = field.text?.toString().orEmpty()
+                if (value.length > 2000) return
+                val previous = recordingSteps.optJSONObject(recordingSteps.length() - 1)
+                if (previous?.optString("kind") == "text" && previous.optString("id") == id && previous.optString("package") == active) {
+                    previous.put("value", value)
+                    lastRecordTime = SystemClock.uptimeMillis()
+                } else appendRecordedStep(JSONObject().put("kind", "text").put("package", active)
+                    .put("id", id).put("value", value).put("guardClass", field.className?.toString()))
+            } finally { field.recycle() }
+            return
+        }
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
             recordScroll(event, active)
             return
@@ -597,8 +614,19 @@ class RemoteActionService : AccessibilityService() {
         recordingStarted = false
         lastRecordedPackage = null
         if (name == null || recordingSteps.length() == 0) return false
-        val initial = recordingSteps.optJSONObject(0)?.optString("package").orEmpty().ifBlank { target.orEmpty() }
-        val saved = macros(this).put(name, JSONObject().put("version", 2).put("package", initial).put("steps", recordingSteps))
+        // Launching from Home is setup, not a coordinate dependency on the drawer's current layout.
+        val firstApp = (0 until recordingSteps.length()).firstOrNull {
+            recordingSteps.optJSONObject(it)?.optString("kind") == "launch"
+        }
+        val startsAtHome = recordingSteps.optJSONObject(0)?.optString("kind") == "home"
+        val savedSteps = if (startsAtHome && firstApp != null) JSONArray().apply {
+            for (index in firstApp until recordingSteps.length()) put(recordingSteps.getJSONObject(index))
+        } else recordingSteps
+        val initial = savedSteps.optJSONObject(0)?.optString("package").orEmpty().ifBlank { target.orEmpty() }
+        val savedMacro = JSONObject().put("version", 2).put("package", initial).put("steps", savedSteps)
+        if (firstApp != null) savedMacro.put("currentScreen", false)
+        val saved = macros(this).put(name, savedMacro)
+
         getSharedPreferences("remoteMacros", Context.MODE_PRIVATE).edit().putString("macros", saved.toString())
             .putString("pendingAssignment", name).apply()
         message("Saved macro: $name")
@@ -717,7 +745,10 @@ class RemoteActionService : AccessibilityService() {
         replayStop?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         replayStop = null
         confirmation?.dismiss(); confirmation = null
-        if (feedback != null) message(feedback)
+        if (feedback != null) {
+            getSharedPreferences("remoteMacros", MODE_PRIVATE).edit().putString("lastReplayResult", feedback).apply()
+            message(feedback)
+        }
     }
 
     // Replays legacy clicks and v2 cross-app actions, waiting for verified app transitions.
@@ -739,6 +770,11 @@ class RemoteActionService : AccessibilityService() {
             if (!recordablePackage(expected)) { finishReplay("Macro stopped: unavailable or protected app."); return@postDelayed }
             if (kind == "launch" || kind == "home") {
                 val destination = if (kind == "home") packageName else expected
+                if (attempt == 0 && kind == "launch" && LauncherState(this).landscapeApps) {
+                    val geometry = (index + 1 until steps.length()).mapNotNull { steps.optJSONObject(it) }
+                        .firstOrNull { it.optString("package") == expected && it.optString("kind") == "gesture" }
+                    if (geometry != null && geometry.optInt("width") > geometry.optInt("height")) prepareLandscape(expected)
+                }
                 if (kind == "home" && attempt == 0) {
                     // Even when already in this package, reset Settings/Drawer to the recorded Home.
                     if (openRecordedApp(destination)) runStep(target, steps, index, generation, 1)
@@ -760,6 +796,12 @@ class RemoteActionService : AccessibilityService() {
                 return@postDelayed
             }
             if (kind == "gesture") {
+                val screen = touchGuard()
+                if (screen == null || !TouchMacroRecorder.sameScreen(step, screen)) {
+                    if (attempt < 15) runStep(target, steps, index, generation, attempt + 1)
+                    else finishReplay("Macro stopped: return to the recorded screen and orientation.")
+                    return@postDelayed
+                }
                 replayTouch(step, generation) { runStep(target, steps, index + 1, generation) }
                 return@postDelayed
             }
@@ -778,11 +820,21 @@ class RemoteActionService : AccessibilityService() {
             val matches = mutableListOf<AccessibilityNodeInfo>()
             collectMatches(root, step, matches)
             root.recycle()
-            val action = if (kind == "scroll") step.optInt("action") else AccessibilityNodeInfo.ACTION_CLICK
+            val action = when (kind) { "text" -> AccessibilityNodeInfo.ACTION_SET_TEXT; "scroll" -> step.optInt("action"); else -> AccessibilityNodeInfo.ACTION_CLICK }
             val allowed = kind != "scroll" || action in setOf(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-            val success = allowed && matches.size == 1 && matches[0].performAction(action)
+            val arguments = if (kind == "text") android.os.Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, step.optString("value"))
+            } else null
+            val success = allowed && matches.size == 1 && matches[0].performAction(action, arguments)
+            if (success && kind == "text") {
+                val currentWindows = windows
+                try {
+                    if (currentWindows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }) performGlobalAction(GLOBAL_ACTION_BACK)
+                } finally { currentWindows.forEach { it.recycle() } }
+            }
             matches.forEach { it.recycle() }
-            if (!success) finishReplay("Macro stopped: a recorded control is unavailable or ambiguous.")
+            if (!success && matches.isEmpty() && attempt < 15) runStep(target, steps, index, generation, attempt + 1)
+            else if (!success) finishReplay("Macro stopped: a recorded control is unavailable or ambiguous.")
             else runStep(target, steps, index + 1, generation)
         }, if (attempt > 0) 250 else (step.optLong("delay", 350).coerceIn(0, 10000) / replaySpeed).toLong().coerceIn(40, 10000))
     }
@@ -825,7 +877,7 @@ class RemoteActionService : AccessibilityService() {
                     } finally { candidateRoot?.recycle() }
                 }
             }.map { it.id }.toSet()
-            val window = visible.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION ||
+            val window = visible.filter { (it.type == AccessibilityWindowInfo.TYPE_APPLICATION && (it.isActive || it.isFocused)) ||
                 (it.type == AccessibilityWindowInfo.TYPE_SYSTEM && it.id !in navigationBars && (it.isActive || it.isFocused)) }
                 .maxByOrNull { it.layer } ?: return rejectTouch("no active app window")
             val root = window.root ?: return rejectTouch("Android has not exposed this window", "type=${window.type}")
@@ -859,11 +911,7 @@ class RemoteActionService : AccessibilityService() {
                 fun inspect(node: AccessibilityNodeInfo, depth: Int): Boolean {
                     if (!node.isVisibleToUser) return true
                     if (depth > 25 || ++inspected > 300) return false
-                    if (node.isPassword || (node.isEditable && (node.isFocused || node.isAccessibilityFocused))) return false
-                    if (node.isEditable) {
-                        val box = Rect().also { node.getBoundsInScreen(it) }
-                        excluded.put(JSONArray().put(box.left).put(box.top).put(box.right).put(box.bottom))
-                    }
+                    if (node.isPassword) return false
                     structure.append(depth).append(':').append(node.viewIdResourceName.orEmpty()).append(':')
                         .append(node.className).append(':').append(node.isClickable).append(';')
                     if (node.isClickable || node.isEditable) {
@@ -934,15 +982,16 @@ class RemoteActionService : AccessibilityService() {
         val value = if (step.optBoolean("description")) root.contentDescription else root.text
         val labelMatches = !step.has("label") || value?.toString() == step.optString("label")
         val matchesSelector = if (id.isNotBlank()) root.viewIdResourceName == id && labelMatches else labelMatches && step.has("label")
-        if (matchesSelector && parentContextMatches(root, step) && (!step.has("guardClass") || root.className?.toString() == step.optString("guardClass")) && root.isVisibleToUser && root.isEnabled && !root.isEditable && !root.isPassword) {
+        if (matchesSelector && parentContextMatches(root, step) && (!step.has("guardClass") || root.className?.toString() == step.optString("guardClass")) && root.isVisibleToUser && root.isEnabled && (step.optString("kind") == "text" || !root.isEditable) && !root.isPassword) {
             var candidate: AccessibilityNodeInfo? = AccessibilityNodeInfo.obtain(root)
             var levels = 0
             while (candidate != null && !candidate.isClickable && step.optBoolean("ancestor") && levels++ < 5) {
                 val parent = candidate.parent; candidate.recycle(); candidate = parent
             }
-            val supported = if (step.optString("kind") == "scroll") candidate?.isScrollable == true &&
+            val supported = if (step.optString("kind") == "text") candidate?.isEditable == true &&
+                candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } else if (step.optString("kind") == "scroll") candidate?.isScrollable == true &&
                 candidate.actionList.any { it.id == step.optInt("action") } else candidate?.isClickable == true
-            if (supported && candidate != null && candidate.isEnabled && !candidate.isEditable && !candidate.isPassword) matches.add(candidate) else candidate?.recycle()
+            if (supported && candidate != null && candidate.isEnabled && (step.optString("kind") == "text" || !candidate.isEditable) && !candidate.isPassword) matches.add(candidate) else candidate?.recycle()
         }
         for (i in 0 until root.childCount.coerceAtMost(300)) {
             val child = root.getChild(i) ?: continue
@@ -950,7 +999,7 @@ class RemoteActionService : AccessibilityService() {
         }
     }
 
-    // Rejects password/editable screens entirely so recordings never capture credentials or text entry.
+    // Always rejects password fields; preview capture additionally excludes ordinary editable fields.
     private fun containsSensitiveInput(root: AccessibilityNodeInfo, depth: Int = 0, blockEditable: Boolean = true): Boolean {
         if (depth > 40) return true
         if (root.isVisibleToUser && (root.isPassword || (blockEditable && root.isEditable))) return true
