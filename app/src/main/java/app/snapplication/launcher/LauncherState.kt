@@ -74,7 +74,8 @@ class LauncherState(private val context: Context) {
         val reader = profile == "Reader"
         prefs.edit().putString("mode", if (reader) "Read" else "Watch")
             .putString("theme", if (reader) "E-paper" else "Dark")
-            .putString("orientation", if (profile == "TV") "Landscape" else if (reader) "Portrait" else "Mode default")
+            .putString("orientation:Read", "Portrait")
+            .putString("orientation:Watch", "Landscape")
             .putBoolean("animations", !reader).putBoolean("useWallpaper", !reader)
             .putBoolean("landscapeApps", !reader).putBoolean("playVideosInLauncher", false)
             .putBoolean("roundedCorners", false).apply()
@@ -83,8 +84,6 @@ class LauncherState(private val context: Context) {
 
     // Matches the owner's Mate TV setup; never copies personal content, bindings or Android permission grants.
     private fun applyTvDefaults() {
-        val delta = "website.leifs.delta.foss"
-        val iconPack = runCatching { context.packageManager.getApplicationInfo(delta, 0); delta }.getOrDefault("")
         prefs.edit().putString("theme", "Material You")
             .putBoolean("fullscreen", true).putBoolean("showLabels", true)
             .putBoolean("grid", true).putBoolean("dynamicBlocks", true).putBoolean("asymmetricBlocks", true)
@@ -93,7 +92,7 @@ class LauncherState(private val context: Context) {
             .putBoolean("showReaderControls", false).putBoolean("previewWarnings", true)
             .putString("viewerSource:Watch", "App").putBoolean("followMediaApps:Watch", true)
             .putString("contentScale:Watch", "Fill").putInt("completion", 90)
-            .putString("iconPack", iconPack).apply()
+            .putString("iconPack", "").apply()
     }
 
     var mode: String
@@ -109,8 +108,12 @@ class LauncherState(private val context: Context) {
             change.apply()
         }
     var orientation: String
-        get() = prefs.getString("orientation", if (BuildConfig.FLAVOR == "tv") "Landscape" else if (readerDevice) "Portrait" else "Mode default")!!
-        set(value) { prefs.edit().putString("orientation", value).apply() }
+        get() = prefs.getString("orientation:$mode", null)
+            ?: if (mode == "Read") {
+                // Only the reading-only edition can safely inherit an old global reader choice.
+                if (readerOnly) prefs.getString("orientation", "Portrait")!! else "Portrait"
+            } else prefs.getString("orientation", "Landscape")!!
+        set(value) { prefs.edit().putString("orientation:$mode", value).apply() }
     var showLabels: Boolean
         get() = prefs.getBoolean("showLabels", true)
         set(value) { prefs.edit().putBoolean("showLabels", value).apply() }
@@ -168,7 +171,7 @@ class LauncherState(private val context: Context) {
         set(value) { prefs.edit().putBoolean("tutorialSeen", value).apply() }
     // Keeps apps launched from landscape Home wide, through the enabled accessibility bridge.
     var landscapeApps: Boolean
-        get() = !readerOnly && prefs.getBoolean("landscapeApps", !readerDevice && theme != "E-paper")
+        get() = mode == "Watch" && !readerOnly && prefs.getBoolean("landscapeApps", !readerDevice && theme != "E-paper")
         set(value) { prefs.edit().putBoolean("landscapeApps", value).apply() }
 
     var fullscreen: Boolean

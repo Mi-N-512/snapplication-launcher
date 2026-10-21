@@ -6,8 +6,8 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $gradleArguments = @('-p', $projectRoot, '--console=plain',
     ':app:assembleDebug',
-    ':app:lintUniversalDebug', ':app:lintEreaderDebug', ':app:lintTvDebug',
-    ':app:testUniversalDebugUnitTest', ':app:testEreaderDebugUnitTest', ':app:testTvDebugUnitTest')
+    ':app:lintUniversalDebug', ':app:lintModernDebug', ':app:lintEreaderDebug', ':app:lintTvDebug',
+    ':app:testUniversalDebugUnitTest', ':app:testModernDebugUnitTest', ':app:testEreaderDebugUnitTest', ':app:testTvDebugUnitTest')
 if ($Offline) { $gradleArguments += '--offline' }
 & (Join-Path $projectRoot 'gradlew.bat') @gradleArguments
 if ($LASTEXITCODE -ne 0) { throw "Android acceptance checks failed (exit $LASTEXITCODE)." }

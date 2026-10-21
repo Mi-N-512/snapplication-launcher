@@ -31,6 +31,11 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         int code = Activity.RESULT_OK;
         try {
             require(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.MODEL.contains("sdk"), "Use a disposable emulator for this test");
+            if (args != null && args.containsKey("profiles")) {
+                checkModePreferences();
+                result.putString("profiles", "PASS: legacy TV switches to portrait Read; independent overrides persist; TV uses built-in icons; Reader stays reading-only");
+                finish(Activity.RESULT_OK, result); return;
+            }
             if (args != null && args.containsKey("reconnect")) {
                 checkReconnect("seed".equals(args.getString("reconnect")));
                 result.putString("reconnect", "PASS: persisted assignment resolves with changed descriptor");
@@ -101,6 +106,37 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
                 .putString("macros", savedMacros).remove("pendingAssignment").commit();
         }
         finish(code, result);
+    }
+
+    // Exercises the real preference migration and settings setters on a disposable emulator.
+    private void checkModePreferences() {
+        SharedPreferences prefs = getTargetContext().getSharedPreferences("launcher", 0);
+        prefs.edit().clear().putString("deviceProfile", "TV").putString("mode", "Watch")
+            .putString("orientation", "Landscape").putBoolean("landscapeApps", true).commit();
+        LauncherState state = new LauncherState(getTargetContext());
+        if (state.getReaderOnly()) {
+            state.setMode("Watch");
+            require("Read".equals(state.getMode()), "Reader must remain reading-only");
+            require(!state.getLandscapeApps(), "Reader cannot force player landscape");
+            return;
+        }
+        require("Landscape".equals(state.getOrientation()), "Preserve legacy Watch orientation");
+        state.setMode("Read");
+        require("Portrait".equals(state.getOrientation()), "Legacy TV setting leaked into Read");
+        require(!state.getLandscapeApps(), "Read retained external player landscape override");
+        state.setOrientation("Auto");
+        state.setMode("Watch");
+        require("Landscape".equals(state.getOrientation()), "Read override changed Watch");
+        state.setOrientation("Portrait");
+        state.setMode("Read");
+        require("Auto".equals(new LauncherState(getTargetContext()).getOrientation()), "Read override was not persisted");
+        state.applyDeviceProfile("TV");
+        require("".equals(prefs.getString("iconPack", "missing")), "TV preset depends on external icon pack");
+        require("Landscape".equals(state.getOrientation()), "TV Watch default must be landscape");
+        state.setMode("Read");
+        require("Portrait".equals(state.getOrientation()), "TV Read default must be portrait");
+        require(!state.getReadPagePreviews(), "Screenshot opt-in was granted without user choice");
+        prefs.edit().putBoolean("tutorialSeen", true).putBoolean("profileSetupComplete", true).commit();
     }
 
     // Records real Clock navigation, text and selection; no hand-written macro steps substitute for recording.

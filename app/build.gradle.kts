@@ -28,6 +28,13 @@ android {
             resValue("string", "app_name", "Snapplication")
             resValue("string", "remote_support_name", "Snapplication remote and preview support")
         }
+        create("modern") {
+            dimension = "edition"
+            applicationIdSuffix = ".modern"
+            minSdk = 30
+            resValue("string", "app_name", "Snapplication Modern")
+            resValue("string", "remote_support_name", "Snapplication Modern remote and page preview support")
+        }
         create("ereader") {
             dimension = "edition"
             applicationIdSuffix = ".ereader"

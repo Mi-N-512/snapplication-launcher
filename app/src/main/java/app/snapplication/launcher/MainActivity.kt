@@ -141,11 +141,16 @@ class MainActivity : Activity() {
 
     // Keeps Watch landscape while allowing reading in the device's preferred orientation.
     private fun applyOrientation() {
+        if (state.mode == "Read") {
+            stopService(Intent(this, PreviewCaptureService::class.java))
+            RemoteActionService.instance?.cancelLandscape()
+        }
+        RemoteActionService.instance?.refreshReadingSnapshots()
         requestedOrientation = when (state.orientation) {
             "Landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             "Portrait" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             "Auto" -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-            else -> if (state.mode == "Watch") ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> if (state.mode == "Watch") ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         }
     }
 
@@ -627,7 +632,7 @@ class MainActivity : Activity() {
                 state.orientation = choices[index]; applyOrientation(); settings()
             }.setNegativeButton("Cancel", null).show()
         })
-        if (state.deviceProfile != "Reader") content.addView(ui.setting("Open apps in landscape", "Match landscape Home; request player fullscreen when available. Requires accessibility support.", if (state.landscapeApps) "On" else "Off") {
+        if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("Open apps in landscape", "Match landscape Home; request player fullscreen when available. Requires accessibility support.", if (state.landscapeApps) "On" else "Off") {
             state.landscapeApps = !state.landscapeApps
             if (!state.landscapeApps) RemoteActionService.instance?.cancelLandscape()
             settings()
