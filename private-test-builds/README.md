@@ -1,6 +1,6 @@
 # Private test builds - 21 October 2026
 
-Source commit: e35dfb3. Development builds only; no public release.
+Source commit: 6f95c4b. Development builds only; no public release.
 
 - [Universal APK](snapplication-universal-debug.apk) — Android 8+
 - [Modern Universal APK](snapplication-modern-debug.apk) — Android 11+
@@ -47,3 +47,5 @@ TV preset update: Material You, transparency, landscape/fullscreen, animated ang
 Both Universal editions now store separate Read and Watch orientation choices. Read defaults to portrait, Watch to landscape. Read releases the external-player landscape request and stops Watch recording. Modern is a separate package with the same shared reading-page screenshot implementation as E-reader. Existing Universal users on Android 11+ retain that capability too. Neither edition includes or automatically selects Delta; icon packs remain optional.
 
 Verification: four editions passed build/lint/unit checks. The legacy TV-to-Read orientation regression failed against the previous APK and passed in both new Universal editions. Modern launched in portrait on the emulator. A fresh macro recorded through the Mate's UI opened Calculator, cleared its value, replayed 2 + 3 = 5, and stopped. This verifies ordinary tap playback, not Huawei Wired Projection dialog interaction. The Mate reports Android 10 and therefore receives current Universal. No new physical Reader page-capture claim is made in this update.
+
+Macro editor correction: stationary multi-sample touches are labelled as taps and remain position-editable. A screenshot is explicitly described as a visual guide; an attached Wired Projection screenshot can be converted to the existing image-matched action while retaining its name, bindings and original recording. All four editions passed build/lint/unit checks. The physical accept. 1 macro was converted; live hub acceptance remains unverified.
