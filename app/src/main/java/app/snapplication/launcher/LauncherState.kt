@@ -36,7 +36,7 @@ data class LibraryItem(val uri: String, val title: String, val mime: String, val
  * Existing mode-scoped keys can separate future state, but do not themselves implement
  * gaming, save-state capture, or suspension. Watch queues remain explicitly video-only.
  */
-class LauncherState(context: Context) {
+class LauncherState(private val context: Context) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
     var previewWarnings: Boolean
         get() = prefs.getBoolean("previewWarnings", true)
@@ -58,9 +58,12 @@ class LauncherState(context: Context) {
         get() = prefs.getBoolean("profileSetupComplete", false)
         set(value) { prefs.edit().putBoolean("profileSetupComplete", value).apply() }
 
-    // Repairs older universal reader installs once, without resetting later theme choices.
+    // Initializes device editions once; existing saved profiles and custom choices are preserved.
     fun initializeReaderProfile() {
-        if (readerDevice && !prefs.contains("deviceProfile")) applyDeviceProfile("Reader")
+        if (!prefs.contains("deviceProfile")) {
+            if (readerDevice) applyDeviceProfile("Reader")
+            else if (BuildConfig.FLAVOR == "tv") applyDeviceProfile("TV")
+        }
     }
 
     // Applies the chosen device's initial defaults; later settings remain individually editable.
@@ -75,6 +78,22 @@ class LauncherState(context: Context) {
             .putBoolean("animations", !reader).putBoolean("useWallpaper", !reader)
             .putBoolean("landscapeApps", !reader).putBoolean("playVideosInLauncher", false)
             .putBoolean("roundedCorners", false).apply()
+        if (profile == "TV") applyTvDefaults()
+    }
+
+    // Matches the owner's Mate TV setup; never copies personal content, bindings or Android permission grants.
+    private fun applyTvDefaults() {
+        val delta = "website.leifs.delta.foss"
+        val iconPack = runCatching { context.packageManager.getApplicationInfo(delta, 0); delta }.getOrDefault("")
+        prefs.edit().putString("theme", "Material You")
+            .putBoolean("fullscreen", true).putBoolean("showLabels", true)
+            .putBoolean("grid", true).putBoolean("dynamicBlocks", true).putBoolean("asymmetricBlocks", true)
+            .putBoolean("experimentalBlocks", false).putInt("favouriteCount", 8)
+            .putBoolean("showFavouriteHeading", false).putBoolean("readInLauncher", false)
+            .putBoolean("showReaderControls", false).putBoolean("previewWarnings", true)
+            .putString("viewerSource:Watch", "App").putBoolean("followMediaApps:Watch", true)
+            .putString("contentScale:Watch", "Fill").putInt("completion", 90)
+            .putString("iconPack", iconPack).apply()
     }
 
     var mode: String
