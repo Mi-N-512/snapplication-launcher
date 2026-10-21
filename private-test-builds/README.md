@@ -1,12 +1,13 @@
 # Private test builds - 21 October 2026
 
-Source commit: 1c084a0. Development builds only; no public release.
+Source commit: e35dfb3. Development builds only; no public release.
 
-- [Universal APK](snapplication-universal-debug.apk)
+- [Universal APK](snapplication-universal-debug.apk) — Android 8+
+- [Modern Universal APK](snapplication-modern-debug.apk) — Android 11+
 - [E-reader APK](snapplication-ereader-debug.apk)
 - [TV APK](snapplication-tv-debug.apk)
 
-Sign in to the private repository and use Download raw file. Android 8 or newer; automatic still reading-page previews require Android 11 or newer. Packages can coexist. Existing local development signing key retained; the key is not uploaded. SHA256SUMS.txt verifies the files.
+Sign in to the private repository and use Download raw file. Current Universal, E-reader and TV support Android 8+. Modern Universal requires Android 11+. Automatic still reading-page previews require Android 11+ and optional accessibility permission. Both Universal editions include Read and Watch; Read never starts continuous recording. Packages can coexist. Existing local development signing key retained; the key is not uploaded. SHA256SUMS.txt verifies the files.
 
 Reader now uses automatic still screenshots instead of continuous recording, resumes supported Meebook Read books from internal or SD storage, keeps its settings reading-only, and enlarges the portrait preview to 72% of the main area. Fit, Crop and Stretch are selectable in Reading > Home preview > Picture sizing. Watch capture remains available in Universal/TV.
 
@@ -38,5 +39,11 @@ All three editions passed build, lint and 72 unit tests. On the Mate, Family Guy
 21 October macro search fix: Explicit recordings now save ordinary text as an editable local step, excluding password fields. New app-starting recordings open the recorded app directly rather than replaying the launcher drawer navigation. Replay waits for controls and layout transitions and restores recorded landscape when enabled. The emulator recorded Clock > city search > Tokyo > selection, then successfully replayed it from Android Settings and Launcher Home. The separate one-tap recording/replay, no-repeat and detached-dialog checks passed. All three editions passed build/lint and 54 unit tests each (162 total). Existing recordings remain intact; re-record actions that previously omitted typing. This does not bypass lock screens, Android permission prompts or unavailable target layouts. Phone, physical remote and Huawei projection dialog tests were not repeated.
 
 
-TV preset update: Material You, transparency, landscape/fullscreen, animated angular eight-block asymmetrical grid, crop-to-fill app previews, media-app following and 90% episode threshold. Prefer installed Delta FOSS icons, otherwise system icons. Applies on choosing TV or first launch of the TV edition; existing installations retain their settings. No personal favourites, macros or permissions are copied. Fresh TV emulator preferences verified; all three editions passed build/lint/unit tests.
+TV preset update: Material You, transparency, landscape/fullscreen, animated angular eight-block asymmetrical grid, crop-to-fill app previews, media-app following and 90% episode threshold. Use built-in system icons; installed packs are optional. Applies on choosing TV or first launch of the TV edition; existing installations retain their settings. No personal favourites, macros or permissions are copied. Fresh TV emulator preferences verified; all three editions passed build/lint/unit tests.
 
+
+## Universal and Modern update
+
+Both Universal editions now store separate Read and Watch orientation choices. Read defaults to portrait, Watch to landscape. Read releases the external-player landscape request and stops Watch recording. Modern is a separate package with the same shared reading-page screenshot implementation as E-reader. Existing Universal users on Android 11+ retain that capability too. Neither edition includes or automatically selects Delta; icon packs remain optional.
+
+Verification: four editions passed build/lint/unit checks. The legacy TV-to-Read orientation regression failed against the previous APK and passed in both new Universal editions. Modern launched in portrait on the emulator. A fresh macro recorded through the Mate's UI opened Calculator, cleared its value, replayed 2 + 3 = 5, and stopped. This verifies ordinary tap playback, not Huawei Wired Projection dialog interaction. The Mate reports Android 10 and therefore receives current Universal. No new physical Reader page-capture claim is made in this update.
