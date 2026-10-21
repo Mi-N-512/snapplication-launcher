@@ -1,6 +1,6 @@
 # Private test builds - 21 October 2026
 
-Source commit: 522af59. Development builds only; no public release.
+Source commit: 1c084a0. Development builds only; no public release.
 
 - [Universal APK](snapplication-universal-debug.apk)
 - [E-reader APK](snapplication-ereader-debug.apk)
@@ -36,4 +36,7 @@ All three editions passed build, lint and 72 unit tests. On the Mate, Family Guy
 20 October remote and tap fixes: Saved bindings can recover after a changed receiver descriptor when its hardware identity is unambiguous; exact matches and intentionally unassigned keys retain priority. Remote settings distinguish saved bindings from inactive accessibility support. Detached mapping windows cancel their timeout and release key ownership. Native directions and OK pass through to Android. Touch macros default to the current screen instead of resetting Home before replay; explicit start choices remain intact. The emulator test reproduced a missing replayed tap with the old default and passed after the fix: one recorded tap, one replayed tap at 4x speed, no repeat after five seconds. Detached-window and saved-binding recovery checks passed, including a real emulator reboot with a simulated descriptor change. Universal, E-reader and TV each passed build/lint and 54 unit tests (162 total). Physical remote reconnection and the Huawei Wired Projection Agree action remain unverified by these emulator tests. No phone update was performed for this task.
 
 21 October macro search fix: Explicit recordings now save ordinary text as an editable local step, excluding password fields. New app-starting recordings open the recorded app directly rather than replaying the launcher drawer navigation. Replay waits for controls and layout transitions and restores recorded landscape when enabled. The emulator recorded Clock > city search > Tokyo > selection, then successfully replayed it from Android Settings and Launcher Home. The separate one-tap recording/replay, no-repeat and detached-dialog checks passed. All three editions passed build/lint and 54 unit tests each (162 total). Existing recordings remain intact; re-record actions that previously omitted typing. This does not bypass lock screens, Android permission prompts or unavailable target layouts. Phone, physical remote and Huawei projection dialog tests were not repeated.
+
+
+TV preset update: Material You, transparency, landscape/fullscreen, animated angular eight-block asymmetrical grid, crop-to-fill app previews, media-app following and 90% episode threshold. Prefer installed Delta FOSS icons, otherwise system icons. Applies on choosing TV or first launch of the TV edition; existing installations retain their settings. No personal favourites, macros or permissions are copied. Fresh TV emulator preferences verified; all three editions passed build/lint/unit tests.
 
