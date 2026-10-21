@@ -25,7 +25,8 @@ import org.json.JSONObject
  * Related classes: RemoteActionService owns recording, consent checks, Stop overlay and saved steps.
  * UI: Transparent single-finger interception layer with tap rings/swipe trails; it pauses on unavailable screens.
  * Edit or extend: Edit gesture sampling, marker drawing and pause/forwarding lifecycle here. Preserve one-shot
- * dispatch and guard checks; never record typing or protected screens.
+ * dispatch and guard checks; keyboard taps and protected screens remain excluded. RemoteActionService separately
+ * records ordinary text as editable semantic steps during an explicit recording.
  */
 class TouchMacroRecorder(
     private val service: AccessibilityService,

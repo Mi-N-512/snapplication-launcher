@@ -1001,7 +1001,7 @@ class MainActivity : Activity() {
                 val touch = android.widget.CheckBox(this).apply { text = "Record taps and swipes"; isChecked = getSharedPreferences("remoteMacros", MODE_PRIVATE).getBoolean("touchRecording", true) }
                 val form = ui.column().apply { addView(name); addView(touch) }
                 val dialog = AlertDialog.Builder(this).setTitle("Record an action").setView(form)
-                    .setMessage("Start at Home and perform your steps. Each touch is repeated after you lift your finger. Stop saves the action; return here to assign a remote button. Turn off taps and swipes to record accessible buttons instead.")
+                    .setMessage("Start at Home and perform your steps. Each touch is repeated after you lift your finger. Ordinary typed text is saved locally in this macro; passwords are excluded. Stop saves the action; return here to assign a remote button. Turn off taps and swipes to record accessible buttons instead.")
                     .setNegativeButton("Cancel", null).setPositiveButton("Record", null).create()
                 // Preserve the form on invalid names so the user can correct them without starting over.
                 dialog.setOnShowListener {
@@ -1038,7 +1038,7 @@ class MainActivity : Activity() {
         begin("Recorded actions")
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        content.addView(ui.label("Record up to 20 actions across apps, then assign the routine to a remote button. App changes count as steps. Use Record/stop from your remote at any time. Text entry and protected screens are excluded; replay stops when a target is missing or ambiguous.", 17f))
+        content.addView(ui.label("Record up to 20 actions across apps, then assign the routine to a remote button. App changes count as steps. Use Record/stop from your remote at any time. Ordinary text entered while recording is saved locally; passwords and protected screens are excluded. App-starting recordings open their app automatically. Replay stops when a target is missing or ambiguous.", 17f))
         val macroPrefs = getSharedPreferences("remoteMacros", MODE_PRIVATE)
         macroPrefs.getString("lastTouchPause", null)?.let {
             content.addView(ui.label("Last recording/playback pause: $it", 14f))

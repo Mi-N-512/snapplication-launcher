@@ -222,6 +222,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
     // Names a recorded step using its visible label when available.
     private fun title(step: JSONObject): String = when (step.optString("kind", "click")) {
         "gesture" -> if ((step.optJSONArray("points")?.length() ?: 0) > 2) "Swipe on screen" else "Tap on screen"
+        "text" -> "Enter text: " + step.optString("value").take(60)
         "home" -> "Go Home"
         "back" -> "Go Back"
         "scroll" -> if (step.optBoolean("forward", true)) "Scroll forward" else "Scroll back"
@@ -238,6 +239,7 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
         val sequence = macro.optJSONArray("steps") ?: return
         val step = sequence.optJSONObject(index) ?: return
         val options = mutableListOf("Change wait time")
+        if (step.optString("kind") == "text") options.add("Edit text")
         if (index > 0) options.add("Move earlier")
         if (index < sequence.length() - 1) options.add("Move later")
         options.add("Remove step")
@@ -259,6 +261,14 @@ class MacroEditor(private val activity: Activity, private val onChanged: () -> U
                     }
                 }
                 dialog.show()
+            } else if (options[chosen] == "Edit text") {
+                val input = EditText(activity).apply { setText(step.optString("value")); maxLines = 5; filters = arrayOf(android.text.InputFilter.LengthFilter(2000)) }
+                AlertDialog.Builder(activity).setTitle("Text to enter").setView(input)
+                    .setMessage("Stored locally in this macro. Do not enter passwords or verification codes.")
+                    .setNegativeButton("Cancel", null).setPositiveButton("Save") { _, _ ->
+                        if (input.length() <= 2000) { step.put("value", input.text.toString()); save(name, macro) }
+                        steps(name)
+                    }.show()
             } else {
                 val list = (0 until sequence.length()).map { sequence.getJSONObject(it) }.toMutableList()
                 when (options[chosen]) {
