@@ -5,10 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /*
- * Verifies the narrow chrome exception used by RemoteActionService during macro recording and replay.
- * Related classes: MacroWindowPolicy. No Android UI is created by these local regression tests.
- * Extend these cases when adding verified bar identities; preserve rejection of dialogs and panels.
- */
+Verifies the narrow chrome exception used by RemoteActionService during macro recording and replay.
+Used by or used with: MacroWindowPolicy. No Android UI is created by these local regression tests.
+Extend these cases when adding verified bar identities; preserve rejection of dialogs and panels.
+*/
 class MacroWindowPolicyTest {
     private val owner = "com.android.systemui"
     private val id = "com.android.systemui:id/navigation_bar_frame"

@@ -15,14 +15,21 @@ import java.io.InputStream
 import java.io.StringReader
 
 /*
- * Resolves optional installed icon packs for MainActivity's favourites and app drawer. Remote resources remain data
- * only; missing or unsupported icons use the supplied native icon.
- *
- * Related classes: MainActivity and DrawerPanel request icons; LauncherState retains launcher preferences.
- * UI: No screen; supplies themed drawables to favourite tiles and app rows.
- * Edit or extend: Extend supported icon-pack lookup formats and fallbacks here; preserve normal app icons when a
- * pack has no match.
- */
+Resolves optional installed icon packs for MainActivity's favourites and app drawer. Remote
+resources remain data only; missing or unsupported icons use the supplied native icon.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+themeActions lists the Android actions used to discover installed packs. cache keeps their parsed
+icon indexes, and drawableNamePattern checks resource names before lookup. load looks for an icon
+matching the app component and calls fallback when none is available. MainActivity and DrawerPanel
+use this shared helper; installed packs supply resources rather than executable launcher code.
+
+Used by or used with: MainActivity and DrawerPanel request icons; LauncherState retains launcher
+preferences. Screen controls: No screen; supplies themed drawables to favourite tiles and app rows.
+Changes belong here: Extend supported icon-pack lookup formats and fallbacks here; preserve normal
+app icons when a pack has no match.
+*/
 object IconPacks {
     private val themeActions = listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME", "com.gau.go.launcherex.theme")
     private const val MAX_BYTES = 8 * 1024 * 1024
@@ -32,12 +39,14 @@ object IconPacks {
     private val drawableNamePattern = Regex("[a-zA-Z0-9_]{1,160}")
 
     /*
-     * Cached icon-pack lookup data owned by IconPacks. Version/update fields invalidate stale mappings; icons
-     * maps components to drawable names. No UI. Add cache metadata here when supporting another pack format.
-     */
+    Cached icon-pack lookup data owned by IconPacks. Version/update fields invalidate stale
+    mappings; icons maps components to drawable names. No UI. Add cache metadata here when
+    supporting another pack format.
+    */
     private data class PackIndex(val version: Long, val updated: Long, val icons: Map<String, String>)
 
-    // Lists only installed packs advertising a supported theme intent; never installs or contacts a provider.
+    // Lists only installed packs advertising a supported theme intent; never installs or contacts a
+    // provider.
     fun listInstalled(context: Context): List<Pair<String, String>> {
         val manager = context.packageManager
         val discovered = linkedMapOf<String, String>()
@@ -92,7 +101,8 @@ object IconPacks {
         return themed ?: fallback()
     }
 
-    // Reads a compiled appfilter resource first, or a bounded asset; malformed packs get an empty index.
+    // Reads a compiled appfilter resource first, or a limited asset; malformed packs get an empty
+    // index.
     @SuppressLint("DiscouragedApi")
     private fun readIndex(resources: Resources, packageName: String): Map<String, String> {
         var compiled: XmlResourceParser? = null
@@ -103,7 +113,8 @@ object IconPacks {
                 return parse(compiled)
             }
             val text = resources.assets.open("appfilter.xml").use { readBounded(it) }.toString(Charsets.UTF_8)
-            // Refuse DTDs/entities before giving text to the parser; no network/entity resolver is used.
+            // Refuse DTDs/entities before giving text to the parser; no network/entity resolver is
+            // used.
             if (text.contains("<!DOCTYPE", ignoreCase = true) || text.contains("<!ENTITY", ignoreCase = true)) return emptyMap()
             val parser = Xml.newPullParser().apply {
                 setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)

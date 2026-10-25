@@ -9,19 +9,21 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 
 /*
- * Builds MainActivity's guided setup cards; permission requests remain owned by Android and the activity.
- *
- * Related classes: MainActivity supplies Page entries and permission actions; LauncherUi styles the cards.
- * UI: Static progress marks, explanation, one setup action and Previous/Next/Finish later buttons.
- * Edit or extend: Edit walkthrough presentation here; change actual steps and Android permission entry points in
- * MainActivity. Future Gaming setup can supply more Page entries.
- */
+Builds the older static setup cards. The active introduction uses LauncherWalkthrough.
+
+This class is a helper and does not inherit from another launcher class.
+
+activity creates the controls, ui supplies colours and spacing, and reading chooses the reading
+illustration. build selects a Page from pages using index and connects the navigation buttons to its
+caller. Page holds the wording and action callback. This is an older card-based helper: the current
+MainActivity uses LauncherWalkthrough instead. Neither helper inherits from MainActivity.
+*/
 class SetupGuide(private val activity: Activity, private val ui: LauncherUi, private val reading: Boolean = false) {
     /*
-     * One setup-card description supplied by MainActivity and rendered by SetupGuide. Holds the heading,
-     * explanation, status, action label and click callback. Add future mode-specific setup content through
-     * these fields; permission requests remain with the host activity.
-     */
+    One setup-card description supplied by MainActivity and rendered by SetupGuide. Holds the
+    heading, explanation, status, action label and click callback. Add future mode-specific setup
+    content through these fields; permission requests remain with the host activity.
+    */
     data class Page(val title: String, val explanation: String, val action: String, val status: String,
                     val onAction: () -> Unit)
 
@@ -63,7 +65,8 @@ class SetupGuide(private val activity: Activity, private val ui: LauncherUi, pri
         body.addView(ui.label(page.status, 14f).apply {
             setTextColor(ui.muted); background = ui.homeSurface()
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(12) })
-        // Keep the permission/setup action reachable without scrolling on a television or small phone.
+        // Keep the permission/setup action reachable without scrolling on a television or small
+        // phone.
         result.addView(ui.button(page.action, page.onAction), LinearLayout.LayoutParams(-1, -2).apply {
             marginStart = ui.dp(12); marginEnd = ui.dp(12); topMargin = ui.dp(6)
         })

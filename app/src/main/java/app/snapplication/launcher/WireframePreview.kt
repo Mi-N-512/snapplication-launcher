@@ -7,12 +7,20 @@ import android.graphics.Paint
 import android.view.View
 
 /*
- * Draws miniature theme and favourite layouts for MainActivity's settings, using LauncherUi colours.
- *
- * Related classes: MainActivity displays layout/theme samples using LauncherUi colours.
- * UI: Small painted layout previews; these are illustrations, not interactive app tiles.
- * Edit or extend: Edit the sample geometry and colours here when available layout choices change.
- */
+Draws miniature theme and favourite layouts for MainActivity's settings, using LauncherUi colours.
+
+WireframePreview is a child of Android's View class, which supplies its drawing area and onDraw
+callback.
+
+backgroundColour and foreground supply the sample colours. columns chooses the list or grid
+illustration, count sets the number of grid tiles, and paint holds drawing settings. Android calls
+onDraw when the sample needs repainting. MainActivity places these samples in theme settings; they
+are child views in that layout, not child classes of MainActivity.
+
+Used by or used with: MainActivity displays layout/theme samples using LauncherUi colours. Screen
+controls: Small painted layout previews; these are illustrations, not interactive app tiles. Changes
+belong here: Edit the sample geometry and colours here when available layout choices change.
+*/
 class WireframePreview(context: Context, private val backgroundColour: Int, private val foreground: Int,
     private val columns: Int = 0, private val count: Int = 3) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)

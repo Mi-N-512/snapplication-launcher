@@ -28,15 +28,23 @@ import android.widget.ScrollView
 import java.text.Collator
 
 /*
- * Owns MainActivity's alphabetical app drawer, remote navigation and in-place favourite editing. LauncherState
- * stores Home choices; LauncherUi supplies styling; IconPacks supplies optional icons. Navigation callbacks keep
- * activity lifecycle and launching responsibilities in MainActivity.
- *
- * Related classes: MainActivity, LauncherState, LauncherUi and IconPacks.
- * UI: Search, alphabetical rail, app rows, favourites editing and the live ordering preview.
- * Edit or extend: Change app browsing, focus navigation and favourite editing here. A future games filter can reuse
- * installed-app entries without changing the reader/player.
- */
+Owns MainActivity's alphabetical app drawer, remote navigation and in-place favourite editing.
+LauncherState stores Home choices; LauncherUi supplies styling; IconPacks supplies optional icons.
+Navigation callbacks keep activity lifecycle and launching responsibilities in MainActivity.
+
+This class is a helper and does not inherit from another launcher class.
+
+entries contains the installed apps; visibleEntries contains the current search results. editing
+changes a tap from opening an app to adding or removing a favourite. preview draws the current
+favourite order, while sectionStarts and sectionCounts help the A-Z rail find each group.
+MainActivity creates this panel and supplies its navigation functions. The panel uses LauncherState
+to save favourites and IconPacks to load their pictures.
+
+Used by or used with: MainActivity, LauncherState, LauncherUi and IconPacks. Screen controls:
+Search, alphabetical rail, app rows, favourites editing and the live ordering preview. Changes
+belong here: Change app browsing, focus navigation and favourite editing here. A future games filter
+can reuse installed-app entries without changing the reader/player.
+*/
 class DrawerPanel(
     private val activity: Activity,
     private val state: LauncherState,
@@ -47,10 +55,10 @@ class DrawerPanel(
     private val guidedSetup: Boolean = false
 ) {
     /*
-     * One installed app entry owned by DrawerPanel. ComponentName identifies the launch target; label and
-     * ResolveInfo supply each app row. No independent UI. Add app-list metadata here only when drawer sorting,
-     * filtering or display needs it.
-     */
+    One installed app entry owned by DrawerPanel. ComponentName identifies the launch target; label
+    and ResolveInfo supply each app row. No independent UI. Add app-list metadata here only when
+    drawer sorting, filtering or display needs it.
+    */
     private data class Entry(val component: ComponentName, val label: String, val info: ResolveInfo)
 
     val view: LinearLayout = ui.column(true)
@@ -62,7 +70,7 @@ class DrawerPanel(
     private val search = EditText(activity)
     private val list = ListView(activity)
     private val adapter = AppAdapter()
-    private val editButton = ui.button("Favourites") { toggleEditing() }
+    private val editButton = ui.button(if (state.separateFavourites) "${state.mode} favourites" else "Favourites") { toggleEditing() }
     private val preview = ui.column()
     private val sectionStarts = mutableMapOf<String, Int>()
     private val sectionCounts = mutableMapOf<String, Int>()
@@ -96,7 +104,8 @@ class DrawerPanel(
         list.requestFocus()
     }
 
-    // Queries phone and TV launchers once, excludes this app and sorts labels using the user's locale.
+    // Queries phone and TV launchers once, excludes this app and sorts labels using the user's
+    // locale.
     private fun discoverApps(): List<Entry> {
         val manager = activity.packageManager
         val found = listOf(Intent.CATEGORY_LAUNCHER, Intent.CATEGORY_LEANBACK_LAUNCHER).flatMap { category ->
@@ -161,7 +170,8 @@ class DrawerPanel(
             setSelector(GradientDrawable().apply { setColor(android.graphics.Color.TRANSPARENT); setStroke(ui.dp(2), ui.accent) })
             setDrawSelectorOnTop(true)
             setOnScrollListener(object : android.widget.AbsListView.OnScrollListener {
-                // Keeps the index aligned with touch scrolling without fighting an active index gesture.
+                // Keeps the index aligned with touch scrolling without fighting an active index
+                // gesture.
                 override fun onScroll(v: android.widget.AbsListView?, first: Int, visible: Int, total: Int) {
                     if (!alphabetRail.hasFocus()) visibleEntries.getOrNull(first)?.let { alphabetRail.follow(it.label) }
                 }
@@ -204,13 +214,14 @@ class DrawerPanel(
         else { list.requestFocus(); list.setSelection(0) }
     }
 
-    // Switches Select between launching and Home membership without rebuilding rows or losing scroll.
+    // Switches Select between launching and Home membership without rebuilding rows or losing
+    // scroll.
     // Opens Settings' favourites entry in the same selection and drag-reorder mode.
     fun beginFavouriteEditing() { if (!editing) toggleEditing() }
 
     private fun toggleEditing() {
         editing = !editing
-        editButton.text = if (editing) "Done" else "Favourites"
+        editButton.text = if (editing) "Done" else if (state.separateFavourites) "${state.mode} favourites" else "Favourites"
         updateHint()
         refreshVisibleRows()
         refreshPreview()
@@ -234,7 +245,8 @@ class DrawerPanel(
         Toast.makeText(activity, "${entry.label} ${if (added) "added to" else "removed from"} Home", Toast.LENGTH_SHORT).show()
     }
 
-    // Refreshes existing text only; off-screen rows receive current state when ListView recycles them.
+    // Refreshes existing text only; off-screen rows receive current state when ListView recycles
+    // them.
     private fun refreshVisibleRows() {
         for (index in 0 until list.childCount) {
             val entry = visibleEntries.getOrNull(list.firstVisiblePosition + index) ?: continue
@@ -252,14 +264,18 @@ class DrawerPanel(
         }
     }
 
-    // Keeps every alphabet group visible; touch scrubs the rail and remote arrows skip empty groups.
+    // Keeps every alphabet group visible; touch scrubs the rail and remote arrows skip empty
+    // groups.
     private fun createAlphabetRail(): View = AlphabetRail().also { alphabetRail = it }
 
     /*
-     * DrawerPanel's touch and remote alphabet selector. Draws the side index and moves focus to matching app
-     * rows. Edit letter grouping, hit targets and directional navigation here; keep selection in sync with the
-     * drawer list.
-     */
+    DrawerPanel's touch and remote alphabet selector. Draws the side index and moves focus to
+    matching app rows. Edit letter grouping, hit targets and directional navigation here; keep
+    selection in sync with the drawer list.
+
+    AlphabetRail is a child of Android's View, which provides drawing and input callbacks.
+    It belongs to DrawerPanel and reads the panel's letter groups and current selection.
+    */
     private inner class AlphabetRail : View(activity) {
         private val letters = alphabet
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
@@ -346,14 +362,16 @@ class DrawerPanel(
         }
     }
 
-    // Groups accents under their base letter; digits and other scripts have predictable dedicated groups.
+    // Groups accents under their base letter; digits and other scripts have predictable dedicated
+    // groups.
     private fun sectionFor(label: String): String {
         val first = java.text.Normalizer.normalize(label.trim(), java.text.Normalizer.Form.NFD)
             .firstOrNull()?.uppercaseChar() ?: return "#"
         return when { first.isDigit() -> "0-9"; first in 'A'..'Z' -> first.toString(); else -> "#" }
     }
 
-    // Indexes filtered data once, avoiding repeated app scans during every index draw and pointer move.
+    // Indexes filtered data once, avoiding repeated app scans during every index draw and pointer
+    // move.
     private fun rebuildSections() {
         sectionStarts.clear(); sectionCounts.clear()
         visibleEntries.forEachIndexed { index, entry ->
@@ -372,7 +390,8 @@ class DrawerPanel(
         sectionStarts[letter]?.let { list.setSelectionFromTop(it, 0) }
     }
 
-    // Rebuilds the actual Home proportions and slot rules in miniature after each membership change.
+    // Rebuilds the actual Home proportions and slot rules in miniature after each membership
+    // change.
     private fun refreshPreview() {
         preview.visibility = if (editing) View.VISIBLE else View.GONE
         if (!editing) return
@@ -503,10 +522,13 @@ class DrawerPanel(
     }
 
     /*
-     * Connects DrawerPanel's installed entries to visible app rows and IconPacks artwork. Edit row binding, app
-     * labels and favourite state presentation here; keep launch and long-press behaviour consistent with the
-     * outer panel.
-     */
+    Connects DrawerPanel's installed entries to visible app rows and IconPacks artwork. Edit row
+    binding, app labels and favourite state presentation here; keep launch and long-press behaviour
+    consistent with the outer panel.
+
+    AppAdapter is a child of Android's BaseAdapter. The list calls its functions to count
+    apps and create or reuse each row. It reads the outer panel's filtered app list.
+    */
     private inner class AppAdapter : BaseAdapter() {
         // Supplies the filtered result count to ListView.
         override fun getCount(): Int = visibleEntries.size

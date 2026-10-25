@@ -5,10 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /*
- * Regression checks for MacroContext; run by the local Gradle unit-test tasks.
- * Related code: MacroContext. No UI or Android device is created here.
- * Add boundary cases here when changing that helper so its existing callers retain correct behaviour.
- */
+Regression checks for MacroContext; run by the local Gradle unit-test tasks. Related code:
+MacroContext. No UI or Android device is created here. Add boundary cases here when changing that
+helper so its existing callers retain correct behaviour.
+*/
 class MacroContextTest {
     // A vendor dialog remains the gesture target even when Android reports the launcher as active.
     @Test fun gestureUsesGuardedDialogOwner() {
@@ -38,7 +38,8 @@ class MacroContextTest {
         assertFalse(MacroContext.matches(listOf("|FrameLayout"), listOf("|LinearLayout")))
         assertFalse(MacroContext.matches(listOf("root|FrameLayout"), emptyList()))
     }
-    // Older touch macros must not reset Home before replaying coordinates from settings or an in-app page.
+    // Older touch macros must not reset Home before replaying coordinates from settings or an
+    // in-app page.
     @Test fun touchMacroDefaultsToCurrentScreen() { assertTrue(MacroContext.startOnCurrentScreen(null, 2, true)) }
     @Test fun explicitLaunchChoiceIsPreserved() { assertFalse(MacroContext.startOnCurrentScreen(false, 2, true)) }
     @Test fun semanticAndLegacyDefaultsStayUnchanged() {

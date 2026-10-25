@@ -7,14 +7,22 @@ import android.net.Uri
 import android.view.accessibility.AccessibilityNodeInfo
 
 /*
- * Finds visible document pages for RemoteActionService; rejects generic web views and library grids. PDF, EPUB and
- * comics belong to their reader app: this inspects its displayed page, never its files.
- *
- * Related classes: RemoteActionService uses this helper before ReadingSnapshots saves a still page.
- * UI: No UI; returns eligible visible page bounds from another reader app.
- * Edit or extend: Extend recognised reader activities/page controls conservatively here. PDF/EPUB file parsing
- * belongs elsewhere.
- */
+Finds visible document pages for RemoteActionService; rejects generic web views and library grids.
+PDF, EPUB and comics belong to their reader app: this inspects its displayed page, never its files.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+pageIds and readerActivities list recognised page controls and reading screens. documentHandlers
+caches whether an app can open document types. find checks the current reader, then scan looks for a
+visible page large enough to capture. RemoteActionService uses the returned rectangle before
+ReadingSnapshots saves a picture. This object inspects another app; it does not parse that app's
+books.
+
+Used by or used with: RemoteActionService uses this helper before ReadingSnapshots saves a still
+page. Screen controls: none; returns eligible visible page bounds from another reader app. Changes
+belong here: Extend recognised reader activities/page controls conservatively here. PDF/EPUB file
+parsing belongs elsewhere.
+*/
 object ReaderSurface {
     private val documentHandlers = mutableMapOf<String, Pair<Long, Boolean>>()
     private val pageIds = setOf("pdfview", "pdf_view", "pdf_reader", "epub_view", "epub_reader",
@@ -49,7 +57,8 @@ object ReaderSurface {
         return bounds.takeIf { reader && !hasControls(root, 0) }
     }
 
-    // Checks public document-opening capabilities without opening files or enumerating their contents.
+    // Checks public document-opening capabilities without opening files or enumerating their
+    // contents.
     private fun handlesDocuments(context: Context, owner: String): Boolean {
         val now = android.os.SystemClock.elapsedRealtime()
         documentHandlers[owner]?.takeIf { now - it.first < 300_000 }?.let { return it.second }
@@ -62,7 +71,8 @@ object ReaderSurface {
         return supported
     }
 
-    // A page-sized, explicit reader widget is evidence; thumbnails, lists and arbitrary WebViews are not.
+    // A page-sized, explicit reader widget is evidence; thumbnails, lists and arbitrary WebViews
+    // are not.
     private fun scan(node: AccessibilityNodeInfo, minimum: Long, depth: Int): Rect? {
         if (depth > 30 || !node.isVisibleToUser) return null
         val id = node.viewIdResourceName.orEmpty().substringAfterLast('/').lowercase()
@@ -78,7 +88,8 @@ object ReaderSurface {
         return null
     }
 
-    // Keeps the previous page when menus, search, page sliders or navigation buttons cover the page.
+    // Keeps the previous page when menus, search, page sliders or navigation buttons cover the
+    // page.
     private fun hasControls(node: AccessibilityNodeInfo, depth: Int): Boolean {
         if (depth > 30) return true
         if (!node.isVisibleToUser) return false

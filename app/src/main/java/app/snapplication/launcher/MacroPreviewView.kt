@@ -18,21 +18,29 @@ import java.util.Locale
 import kotlin.math.hypot
 
 /*
- * Fitted screenshot and touch rehearsal embedded in MacroEditor's full-screen workspace. It never calls
- * RemoteActionService, opens another app, or injects a touch.
- *
- * Related classes: MacroEditor opens this view using locally saved macro JSON.
- * UI: Fitted display, optional reference screenshot, touch markers and editable tap position.
- * Edit or extend: Edit rehearsal drawing and timing here; keep it visual only and in step with the real replay
- * rules.
- */
+Fitted screenshot and touch rehearsal embedded in MacroEditor's full-screen workspace. It never
+calls RemoteActionService, opens another app, or injects a touch.
+
+MacroPreviewView is a child of Android's View class, which supplies drawing and touch callbacks.
+
+sequence holds the timed steps. duration is their total time, elapsed is the current rehearsal
+position, and running controls the timer. overlay contains the reference picture; displayRect is the
+fitted screen area used to place touch markers. MacroEditor creates this view. restart starts the
+visual rehearsal, onDraw paints it, and stop removes the timer. This view never sends the shown
+touches to another app.
+
+Used by or used with: MacroEditor opens this view using locally saved macro JSON. Screen controls:
+Fitted display, optional reference screenshot, touch markers and editable tap position. Changes
+belong here: Edit rehearsal drawing and timing here; keep it visual only and in step with the real
+replay rules.
+*/
 class MacroPreviewView private constructor(context: Context, private val sequence: List<PreviewStep>,
     private val status: (String) -> Unit) : View(context) {
     /*
-     * One scheduled item in MacroPreviewView's visual rehearsal. Source contains saved action data, title
-     * labels its timeline, and begins/ends define drawing time. No independent controls. Extend timing/display
-     * metadata here without injecting real input.
-     */
+    One scheduled item in MacroPreviewView's visual rehearsal. Source contains saved action data,
+    title labels its timeline, and begins/ends define drawing time. No independent controls. Extend
+    timing/display metadata here without injecting real input.
+    */
     private data class PreviewStep(val source: JSONObject, val title: String, val begins: Long, val ends: Long)
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG)
     private val density = resources.displayMetrics.density
@@ -77,7 +85,8 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
         elapsed = selected?.ends ?: 0L; updateStatus(); invalidate()
     }
 
-    // Decodes a bounded, user-chosen screenshot off the UI thread; it never becomes an automation target.
+    // Decodes a limited, user-chosen screenshot off the UI thread; it never becomes an automation
+    // target.
     fun loadOverlay(uri: String) {
         if (uri.isBlank()) return
         imageWorker.execute {
@@ -106,7 +115,8 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
         }
     }
 
-    // Allows explicit tap editing inside the fitted display; side-panel coordinates offer remote access.
+    // Allows explicit tap editing inside the fitted display; side-panel coordinates offer remote
+    // access.
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (onPosition == null) return super.onTouchEvent(event)
         if (event.action == MotionEvent.ACTION_UP && displayRect.contains(event.x, event.y)) {
@@ -156,7 +166,8 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
             }
         }
         if (coordinates.isEmpty()) return
-        // Android follows the path by distance; mirror that visual progression rather than point count.
+        // Android follows the path by distance; mirror that visual progression rather than point
+        // count.
         val lengths = coordinates.zipWithNext { a, b -> hypot(b.first - a.first, b.second - a.second) }
         val progress = ((elapsed - step.begins).toFloat() / (step.ends - step.begins).coerceAtLeast(1)).coerceIn(0f, 1f)
         var remaining = lengths.sum() * progress
@@ -177,7 +188,7 @@ class MacroPreviewView private constructor(context: Context, private val sequenc
     companion object {
         private fun seconds(value: Long) = String.format(Locale.getDefault(), "%.3f", value / 1000.0)
 
-        // Matches replay speed, bounded waits, gesture limits and initial-launch skipping.
+        // Matches replay speed, limited waits, gesture limits and initial-launch skipping.
         fun create(activity: Activity, macro: JSONObject, label: (JSONObject) -> String, status: (String) -> Unit): MacroPreviewView {
             val steps = macro.optJSONArray("steps") ?: org.json.JSONArray()
             val speed = macro.optDouble("speed", 1.0).let { if (it.isFinite()) it.coerceIn(.25, 4.0) else 1.0 }

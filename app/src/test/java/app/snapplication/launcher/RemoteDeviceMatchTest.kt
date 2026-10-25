@@ -3,8 +3,10 @@ package app.snapplication.launcher
 import org.junit.Assert.*
 import org.junit.Test
 
-/* Tests reconnect identity selection used by RemoteControls; no Android device or UI is mocked.
- * Includes old saved profiles, duplicate receivers and mismatched hardware to prevent wrong-key reuse. */
+/*
+Tests reconnect identity selection used by RemoteControls; no Android device or UI is mocked.
+Includes old saved profiles, duplicate receivers and mismatched hardware to prevent wrong-key reuse.
+*/
 class RemoteDeviceMatchTest {
     private val old = RemoteDeviceMatch.Profile("old", "Receiver", 12, 34)
     private val now = old.copy(descriptor = "new")

@@ -5,14 +5,20 @@ import android.content.Context
 import android.content.pm.PackageManager
 
 /*
- * Switches the launcher icon aliases for MainActivity's Settings without disabling the HOME activity. Android
- * PackageManager persists the choice across process death; no separate preference can drift.
- *
- * Related classes: MainActivity and the BlueIcon/GoldIcon manifest aliases.
- * UI: No screen of its own; changes the installed launcher icon selected in Settings.
- * Edit or extend: Add icon choices together with their manifest aliases and preview artwork; keep the HOME activity
- * enabled.
- */
+Switches the launcher icon aliases for MainActivity's Settings without disabling the HOME activity.
+Android PackageManager saves the choice across process death; no separate preference can drift.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+choices holds the two icon names. showChooser draws their previews and remembers the selected name
+until Apply is pressed. apply enables that icon first, then hides the other one. MainActivity calls
+this helper; it is not its parent class.
+
+Used by or used with: MainActivity and the BlueIcon/GoldIcon manifest aliases. Screen controls: No
+screen of its own; changes the installed launcher icon selected in Settings. Changes belong here:
+Add icon choices together with their manifest aliases and preview artwork; keep the HOME activity
+enabled.
+*/
 object AppIconTheme {
     val choices = listOf("Blue / white", "Gold / black")
 
@@ -52,7 +58,8 @@ object AppIconTheme {
         context.packageManager.getComponentEnabledSetting(alias(context, "GoldIcon")) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
     ) choices[1] else choices[0]
 
-    // Enables the destination first, then hides the previous icon while leaving the running app alive.
+    // Enables the destination first, then hides the previous icon while leaving the running app
+    // alive.
     fun apply(context: Context, choice: String): Boolean {
         if (choice !in choices) return false
         val gold = choice == choices[1]

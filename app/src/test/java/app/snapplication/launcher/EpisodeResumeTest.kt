@@ -4,10 +4,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /*
- * Regression checks for EpisodeResume; run by the local Gradle unit-test tasks.
- * Related code: EpisodeResume. No UI or Android device is created here.
- * Add boundary cases here when changing that helper so its existing callers retain correct behaviour.
- */
+Regression checks for EpisodeResume; run by the local Gradle unit-test tasks. Related code:
+EpisodeResume. No UI or Android device is created here. Add boundary cases here when changing that
+helper so its existing callers retain correct behaviour.
+*/
 class EpisodeResumeTest {
     // A threshold is inclusive and must not advance before the configured point.
     @Test fun thresholdBoundary() {

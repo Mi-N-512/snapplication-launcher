@@ -12,13 +12,22 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /*
- * Builds consistent accessible native controls for MainActivity and ReaderPanel using LauncherState colours.
- *
- * Related classes: MainActivity and the panel classes use LauncherState theme values through this shared factory.
- * UI: Reusable labels, rows, buttons, focus treatment, borders and transparency surfaces.
- * Edit or extend: Edit shared spacing, colours and control styling here so screens stay consistent. Future Gaming
- * screens should reuse these controls.
- */
+Builds consistent accessible native controls for MainActivity and ReaderPanel using LauncherState
+colours.
+
+This class is a helper and does not inherit from another launcher class.
+
+state supplies saved appearance choices. glass chooses translucent surfaces, while background, text,
+surface and accent hold the calculated colours. focusAccent makes the currently selected remote
+button visible. Functions such as label, button and setting build ordinary Android controls using
+those values. MainActivity and its panels use this helper so their controls look alike; they do not
+inherit from it.
+
+Used by or used with: MainActivity and the panel classes use LauncherState theme values through this
+shared factory. Screen controls: Reusable labels, rows, buttons, focus treatment, borders and
+transparency surfaces. Changes belong here: Edit shared spacing, colours and control styling here so
+screens stay consistent. Future Gaming screens should reuse these controls.
+*/
 class LauncherUi(private val context: Context, private val state: LauncherState, private val glass: Boolean = false) {
     val background: Int = when (state.theme) {
         "OLED Black" -> Color.BLACK
@@ -42,12 +51,38 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
     val border: Int = if (state.theme == "E-paper") 0xff777777.toInt() else if (text == Color.BLACK) 0xffe0e0e0.toInt() else 0xff383838.toInt()
     val muted: Int = if (state.theme == "E-paper") Color.BLACK else if (text == Color.BLACK) 0xff666666.toInt() else 0xffaaaaaa.toInt()
     val accent: Int = when {
+        glass -> if (text == Color.BLACK) 0xffdadada.toInt() else 0xffbdbdbd.toInt()
         state.theme == "Custom" -> state.accent
         state.theme == "Material You" && Build.VERSION.SDK_INT >= 31 -> context.getColor(android.R.color.system_accent1_200)
+        state.theme == "Light" -> 0xffedb5c8.toInt()
+        state.theme == "Dark" || state.theme == "OLED Black" -> 0xff004225.toInt()
         else -> text
     }
 
-    // Layers translucent highlights over the live wallpaper; controls remain sharp above the surface.
+    // Pale pink and deep green need a separate contrasting edge for remote focus on their own
+    // surfaces.
+    val focusAccent: Int = if (glass) text else when (state.theme) {
+        "Light" -> 0xff8b3c5a.toInt()
+        "Dark", "OLED Black" -> 0xffb4d8c1.toInt()
+        else -> accent
+    }
+
+    // Styles the primary setup action without inheriting Android's rounded button background.
+    fun primaryButton(value: String, action: () -> Unit): Button = button(value, action).apply {
+        setTextColor(if (Color.luminance(accent) > 0.45) Color.BLACK else Color.WHITE)
+        onFocusChangeListener = null
+        background = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), GradientDrawable().apply {
+                setColor(accent); setStroke(dp(3), focusAccent)
+            })
+            addState(intArrayOf(), GradientDrawable().apply {
+                setColor(accent); setStroke(dp(1), focusAccent)
+            })
+        }
+    }
+
+    // Layers translucent highlights over the live wallpaper; controls remain sharp above the
+    // surface.
     fun homeSurface(): android.graphics.drawable.Drawable = if (glass) GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
         if (text == Color.BLACK) intArrayOf(0x70ffffff, 0x40ffffff, 0x60ffffff)
@@ -70,6 +105,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
 
     // Creates readable text with generous line spacing for television and touch use.
     fun label(value: String, size: Float = 20f): TextView = TextView(context).apply {
+        typeface = LauncherFont.get(context) ?: android.graphics.Typeface.DEFAULT
         text = value; textSize = size; setTextColor(this@LauncherUi.text)
         if (glass) setBackgroundColor(if (this@LauncherUi.text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt())
         setPadding(dp(12), dp(8), dp(12), dp(8))
@@ -78,6 +114,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
 
     // Creates a focusable control with a visible directional-navigation focus ring.
     fun button(value: String, action: () -> Unit): Button = Button(context).apply {
+        typeface = LauncherFont.get(context) ?: android.graphics.Typeface.DEFAULT
         text = value; textSize = 17f; isAllCaps = false
         minHeight = dp(48); setTextColor(this@LauncherUi.text)
         backgroundTintList = null
@@ -86,7 +123,7 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         fun decorate(focused: Boolean) {
             background = GradientDrawable().apply {
                 setColor(if (glass) (if (this@LauncherUi.text == Color.BLACK) 0xcceeeeee.toInt() else 0xaa181818.toInt()) else surface); cornerRadius = if (this@LauncherUi.state.roundedCorners) dp(10).toFloat() else 0f
-                setStroke(dp(if (focused) 3 else 1), if (focused) accent else surface)
+                setStroke(dp(if (focused) 3 else 1), if (focused) focusAccent else surface)
             }
         }
         decorate(false)
@@ -110,13 +147,13 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         view.onFocusChangeListener = null
         view.background = android.graphics.drawable.StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), GradientDrawable().apply {
-                setColor(colour); setStroke(dp(2), accent)
+                setColor(colour); setStroke(dp(2), focusAccent)
             })
             addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { setColor(surface) })
             addState(intArrayOf(), GradientDrawable().apply {
                 if (glass && colour != Color.TRANSPARENT) {
                     orientation = GradientDrawable.Orientation.TL_BR
-                    colors = intArrayOf(if (text == Color.BLACK) 0xddffffff.toInt() else 0x99505768.toInt(), colour)
+                    colors = intArrayOf(if (text == Color.BLACK) 0xddffffff.toInt() else 0x99484848.toInt(), colour)
                 } else setColor(colour)
                 if (outline) setStroke(dp(1), if (glass) 0x40ffffff else border)
             })
@@ -137,13 +174,16 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
             setTextColor(muted); setPadding(0, 0, 0, 0); setBackgroundColor(Color.TRANSPARENT)
         })
         addView(words, LinearLayout.LayoutParams(0, -2, 1f))
-        addView(label(value, 17f).apply { setBackgroundColor(Color.TRANSPARENT) })
+        addView(label(value, 17f).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            maxWidth = dp(120); setSingleLine(true); ellipsize = android.text.TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(-2, -2))
         setOnClickListener { action() }
     }
 
     // Labels a group using the reference's spaced, small uppercase type.
     fun section(value: String): TextView = label(value.uppercase(), 11f).apply {
-        typeface = android.graphics.Typeface.MONOSPACE
+        typeface = LauncherFont.get(context) ?: android.graphics.Typeface.MONOSPACE
         letterSpacing = 0.12f
         setTextColor(muted)
         setPadding(dp(16), dp(20), dp(16), dp(8))

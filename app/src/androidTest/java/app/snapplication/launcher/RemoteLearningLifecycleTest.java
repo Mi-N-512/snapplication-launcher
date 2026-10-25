@@ -11,11 +11,12 @@ import org.json.*;
 import kotlin.Unit;
 
 /*
- * Emulator-only instrumentation exercises real remote dialog windows and recorded gesture delivery.
- * Uses MainActivity as a controlled tap target and RemoteActionService's actual recorder/replay pipeline.
- * No production test entry points are exported. Run on a disposable emulator with accessibility enabled.
- * Assertions count delivered clicks, ensure one-shot replay and verify detached mapping-window cleanup.
- */
+Emulator-only instrumentation exercises real remote dialog windows and recorded gesture delivery.
+Uses MainActivity as a controlled tap target and RemoteActionService's actual recorder/replay
+pipeline. No production test entry points are exported. Run on a disposable emulator with
+accessibility enabled. Assertions count delivered clicks, ensure one-shot replay and verify detached
+mapping-window cleanup.
+*/
 public class RemoteLearningLifecycleTest extends Instrumentation {
     private MainActivity activity;
     private RemoteActionService service;
@@ -31,6 +32,16 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         int code = Activity.RESULT_OK;
         try {
             require(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.MODEL.contains("sdk"), "Use a disposable emulator for this test");
+            if (args != null && args.containsKey("readerBackup")) {
+                checkReaderBackup();
+                result.putString("readerBackup", "PASS: Reader restore retains reading appearance and Read favourites; no remote data imported");
+                finish(Activity.RESULT_OK, result); return;
+            }
+            if (args != null && args.containsKey("qol")) {
+                checkQualityOfLife();
+                result.putString("qol", "PASS: shared/mode favourites retained; backup restores settings, mappings, macros and image; corrupt backups rejected; file labels accurate");
+                finish(Activity.RESULT_OK, result); return;
+            }
             if (args != null && args.containsKey("profiles")) {
                 checkModePreferences();
                 result.putString("profiles", "PASS: legacy TV switches to portrait Read; independent overrides persist; TV uses built-in icons; Reader stays reading-only");
@@ -95,7 +106,34 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
             ui(() -> service.replay("QA_TOUCH_ONCE"));
             awaitHits(2); SystemClock.sleep(5000);
             require(hits.get() == 2, "Macro repeated unexpectedly: " + hits.get());
+            require(prefs.getString("lastRunStatus", "").contains("Action finished"), "Macro completion feedback missing");
+            require(!prefs.getBoolean("runInProgress", true), "Completed macro still marked running");
             result.putString("touch", "PASS: recorded tap forwarded once, saved once, replayed once at 4x speed; no repeat after 5 seconds");
+            // Change the recorded owner and page: coordinate mode must deliver once without the old
+            // guard.
+            for (int i=0; i<steps.length(); i++) {
+                JSONObject step = steps.getJSONObject(i);
+                if ("gesture".equals(step.optString("kind"))) {
+                    step.put("package", "app.unrelated.recorded"); step.put("screenGuard", "different-page");
+                }
+            }
+            macro.put("coordinateReplay", true).put("currentScreen", false);
+            prefs.edit().putString("macros", macros.toString()).commit();
+            require(RemoteActionService.Companion.startsOnCurrentScreen(macro), "Coordinate mode must not open original app");
+            ui(() -> { target.setId(87655); target.setText("Different page target"); });
+            ui(() -> service.openForReplay("QA_TOUCH_ONCE"));
+            awaitHits(3); SystemClock.sleep(5000);
+            require(hits.get() == 3, "Coordinate action repeated unexpectedly: " + hits.get());
+            result.putString("coordinates", "PASS: changed page and recorded app ignored, one real tap delivered, no repeat after five seconds");
+            ui(() -> require(service.beginRecording("QA_CURRENT_SCREEN_SAVE", "", true, true), "Coordinate recorder did not start"));
+            SystemClock.sleep(800); tap(xy[0], xy[1]); awaitHits(4);
+            ui(() -> service.stopRecording()); SystemClock.sleep(400);
+            JSONObject current = new JSONObject(prefs.getString("macros", "{}")).getJSONObject("QA_CURRENT_SCREEN_SAVE");
+            require(current.optBoolean("coordinateReplay") && current.optBoolean("currentScreen"), "Selected run mode was not saved");
+            ui(() -> service.openForReplay("QA_CURRENT_SCREEN_SAVE")); awaitHits(5); SystemClock.sleep(3000);
+            require(hits.get() == 5, "New coordinate recording repeated");
+            result.putString("recordMode", "PASS: current-screen choice saved during recording and replayed once");
+
             }
         } catch (Throwable error) {
             result.putString("failure", android.util.Log.getStackTraceString(error));
@@ -108,8 +146,87 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         finish(code, result);
     }
 
+    // Confirms a Universal-style backup cannot turn the Reader edition into a TV/remote interface.
+    private void checkReaderBackup() throws Exception {
+        Context context = getTargetContext();
+        LauncherState state = new LauncherState(context);
+        require(state.getReaderOnly(), "Run readerBackup on the E-reader test package");
+        context.getSharedPreferences("launcher", 0).edit().clear().commit();
+        context.getSharedPreferences("remoteMacros", 0).edit().clear().commit();
+        JSONObject saved = LauncherBackup.INSTANCE.snapshot(context);
+        saved.getJSONObject("launcher").put("theme", "Light").put("readInLauncher", true)
+            .put("deviceProfile", "TV").put("mode", "Watch").put("separateFavourites", true)
+            .put("favourites:Read", "[\"book.pkg/.Main\"]").put("favourites:Watch", "[\"video.pkg/.Main\"]");
+        JSONObject action = new JSONObject().put("steps", new JSONArray().put(new JSONObject().put("kind", "home")));
+        saved.getJSONObject("remoteMacros").put("macros", new JSONObject().put("QA remote", action).toString());
+        LauncherBackup.INSTANCE.restore(context, saved);
+        require(state.getMode().equals("Read") && state.getDeviceProfile().equals("Reader"), "Reader profile escaped");
+        require(state.getTheme().equals("Light") && state.getReadInLauncher(), "Reading choices reset");
+        require(state.favourites().size() == 1 && state.favourites().get(0).equals("book.pkg/.Main"), "Wrong favourite pool restored");
+        require(context.getSharedPreferences("remoteMacros", 0).getAll().isEmpty(), "Reader imported remote actions");
+    }
+
+    // Uses the disposable emulator to exercise real JSON, preferences and image files, including
+    // failed imports.
+    private void checkQualityOfLife() throws Exception {
+        Context context = getTargetContext();
+        SharedPreferences launcher = context.getSharedPreferences("launcher", 0);
+        SharedPreferences macros = context.getSharedPreferences("remoteMacros", 0);
+        SharedPreferences remote = context.getSharedPreferences("remoteControls", 0);
+        launcher.edit().clear().putBoolean("profileSetupComplete", true).putBoolean("tutorialSeen", true).commit();
+        macros.edit().clear().commit(); remote.edit().clear().commit();
+        LauncherState state = new LauncherState(context);
+        state.applyDeviceProfile("Phone"); state.setTheme("OLED Black");
+        state.setMode("Read"); state.toggleFavourite("read.pkg/.Main");
+        state.setSeparateFavourites(true); state.toggleFavourite("second.pkg/.Main");
+        require(state.favourites().size() == 2, "Read favourites missing");
+        state.setMode("Watch"); require(state.favourites().size() == 1, "Read edits leaked into Watch");
+        state.toggleFavourite("watch.pkg/.Main"); state.moveFavourite("watch.pkg/.Main", 1);
+        state.setSeparateFavourites(false); require(state.favourites().size() == 1, "Shared pool overwritten");
+        state.setSeparateFavourites(true); require(state.favourites().get(1).equals("watch.pkg/.Main"), "Watch order lost");
+        java.io.File image = new java.io.File(context.getFilesDir(), "qa-backup-reference.png");
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(16, 16, android.graphics.Bitmap.Config.ARGB_8888);
+        bitmap.eraseColor(android.graphics.Color.GREEN);
+        try (java.io.FileOutputStream stream = new java.io.FileOutputStream(image)) { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream); }
+        bitmap.recycle();
+        JSONObject action = new JSONObject().put("version", 2).put("package", context.getPackageName())
+            .put("coordinateReplay", true).put("overlayUri", android.net.Uri.fromFile(image).toString())
+            .put("steps", new JSONArray().put(new JSONObject().put("kind", "gesture").put("delay", 400)));
+        macros.edit().putString("macros", new JSONObject().put("QA backup", action).toString()).commit();
+        String mapping = new JSONObject().put("qa-device", new JSONObject().put("19", new JSONObject().put("action", "Macro: QA backup").put("name", "QA remote"))).toString();
+        remote.edit().putString("mappings", mapping).commit();
+        java.io.File backup = new java.io.File(context.getCacheDir(), "qa-backup.json");
+        LauncherBackup.INSTANCE.export(context, android.net.Uri.fromFile(backup));
+        JSONObject saved = LauncherBackup.INSTANCE.load(context, android.net.Uri.fromFile(backup));
+        state.setTheme("Light"); state.toggleFavourite("changed.pkg/.Main");
+        macros.edit().putString("macros", "{}").commit(); remote.edit().putString("mappings", "{}").commit();
+        LauncherBackup.INSTANCE.restore(context, saved);
+        require(state.getTheme().equals("OLED Black"), "Theme not restored");
+        require(state.favourites().size() == 2 && state.favourites().get(1).equals("watch.pkg/.Main"), "Order not restored");
+        state.setMode("Read"); require(state.favourites().contains("second.pkg/.Main"), "Read pool not restored");
+        require(remote.getString("mappings", "").equals(mapping), "Bindings not restored");
+        JSONObject restored = new JSONObject(macros.getString("macros", "{}")).getJSONObject("QA backup");
+        java.io.File restoredImage = new java.io.File(android.net.Uri.parse(restored.getString("overlayUri")).getPath());
+        require(restoredImage.exists() && !restoredImage.equals(image), "Reference image not relocated");
+        String before = launcher.getAll().toString();
+        JSONObject invalid = new JSONObject(saved.toString()); invalid.getJSONObject("launcher").put("fullscreen", "wrong type");
+        boolean rejected = false;
+        try { LauncherBackup.INSTANCE.restore(context, invalid); } catch (Exception expected) { rejected = true; }
+        require(rejected && before.equals(launcher.getAll().toString()), "Invalid backup modified preferences");
+        invalid = new JSONObject(saved.toString()).put("version", 999); rejected = false;
+        try { LauncherBackup.INSTANCE.restore(context, invalid); } catch (Exception expected) { rejected = true; }
+        require(rejected, "Newer backup version accepted");
+        require(ReadingFormats.INSTANCE.viewingLabel("book.epub", "application/epub+zip", true).contains("Requires"), "EPUB incorrectly marked built-in");
+        require(ReadingFormats.INSTANCE.viewingLabel("book.pdf", "application/pdf", true).contains("inside"), "PDF incorrectly marked external");
+        // Remove only the disposable test fixtures after verifying restoration.
+        image.delete(); restoredImage.delete(); backup.delete();
+        macros.edit().clear().commit(); remote.edit().clear().commit();
+        launcher.edit().clear().putBoolean("profileSetupComplete", true).putBoolean("tutorialSeen", true).commit();
+        state.applyDeviceProfile("Phone");
+    }
+
     // Exercises the real preference migration and settings setters on a disposable emulator.
-    private void checkModePreferences() {
+    private void checkModePreferences() throws Exception {
         SharedPreferences prefs = getTargetContext().getSharedPreferences("launcher", 0);
         prefs.edit().clear().putString("deviceProfile", "TV").putString("mode", "Watch")
             .putString("orientation", "Landscape").putBoolean("landscapeApps", true).commit();
@@ -136,10 +253,33 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         state.setMode("Read");
         require("Portrait".equals(state.getOrientation()), "TV Read default must be portrait");
         require(!state.getReadPagePreviews(), "Screenshot opt-in was granted without user choice");
+        if (!"tv".equals(BuildConfig.FLAVOR)) {
+            state.applyDeviceProfile("Phone");
+            require(state.getAutomaticPhoneMode(), "Phone starts with rotation-based content");
+            require("Auto".equals(state.getOrientation()), "Phone must not inherit TV landscape lock");
+            state.setAutomaticPhoneMode(false);
+            state.setMode("Read"); state.setOrientation("Landscape"); state.setMode("Watch");
+            require("Landscape".equals(state.getOrientation()), "Phone rotation is independent of content");
+            state.setOrientation("Auto"); state.setMode("Read");
+            require("Auto".equals(state.getOrientation()), "Fixed content still rotates");
+        }
+        java.io.File invalid = new java.io.File(getTargetContext().getCacheDir(), "invalid-font.ttf");
+        try {
+            LauncherFont.INSTANCE.importFont(getTargetContext(), android.net.Uri.fromFile(new java.io.File("/system/fonts/Roboto-Regular.ttf")));
+            require(LauncherFont.INSTANCE.get(getTargetContext()) != null, "Valid font import failed");
+            try (java.io.FileOutputStream stream = new java.io.FileOutputStream(invalid)) { stream.write("not a font".getBytes()); }
+            boolean rejected = false;
+            try { LauncherFont.INSTANCE.importFont(getTargetContext(), android.net.Uri.fromFile(invalid)); }
+            catch (Exception expected) { rejected = true; }
+            require(rejected, "Invalid font accepted");
+            require(LauncherFont.INSTANCE.get(getTargetContext()) != null, "Invalid import erased previous font");
+        } finally { invalid.delete(); LauncherFont.INSTANCE.reset(getTargetContext()); }
+        require(LauncherFont.INSTANCE.get(getTargetContext()) == null, "Font reset failed");
         prefs.edit().putBoolean("tutorialSeen", true).putBoolean("profileSetupComplete", true).commit();
     }
 
-    // Records real Clock navigation, text and selection; no hand-written macro steps substitute for recording.
+    // Records real Clock navigation, text and selection; no hand-written macro steps substitute for
+    // recording.
     private void checkClock(SharedPreferences prefs) throws Exception {
         shell("pm clear com.google.android.deskclock");
         shell("am start -n app.snapplication.launcher/.MainActivity"); SystemClock.sleep(1500);
@@ -169,7 +309,8 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         }
         require(text, "No recorded Tokyo text step");
         require(!RemoteActionService.Companion.startsOnCurrentScreen(macro), "App workflow unexpectedly starts on current screen");
-        // Clear only this disposable emulator's Clock data to ensure replay must genuinely add the city.
+        // Clear only this disposable emulator's Clock data to ensure replay must genuinely add the
+        // city.
         for (String start : new String[]{"android.settings.SETTINGS", "launcher"}) {
         shell("pm clear com.google.android.deskclock");
         if ("launcher".equals(start)) ui(() -> service.performMappedAction("Home"));
@@ -236,7 +377,8 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         }
     }
 
-    // Only the disposable emulator test changes accessibility settings; no physical-device permission is automated.
+    // Only the disposable emulator test changes accessibility settings; no physical-device
+    // permission is automated.
     private void shell(String command) throws Exception {
         try (java.io.InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(
                 getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).executeShellCommand(command))) {
@@ -244,7 +386,8 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         }
     }
 
-    // Seed before an emulator reboot, then verify with a fresh process and the same saved hardware profile.
+    // Seed before an emulator reboot, then verify with a fresh process and the same saved hardware
+    // profile.
     private void checkReconnect(boolean seed) throws Exception {
         InputDevice chosen = null;
         for (int id : InputDevice.getDeviceIds()) {
@@ -310,7 +453,8 @@ public class RemoteLearningLifecycleTest extends Instrumentation {
         finally { down.recycle(); up.recycle(); }
     }
 
-    // Stops on missing or duplicate delivery, rather than treating a completed gesture callback as success.
+    // Stops on missing or duplicate delivery, rather than treating a completed gesture callback as
+    // success.
     private void awaitHits(int count) {
         for (int i=0; i<80 && hits.get()<count; i++) SystemClock.sleep(100);
         require(hits.get() == count, "Expected " + count + " delivered taps, got " + hits.get());
