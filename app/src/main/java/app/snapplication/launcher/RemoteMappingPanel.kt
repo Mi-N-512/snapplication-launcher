@@ -11,15 +11,23 @@ import android.widget.TextView
 import android.widget.LinearLayout
 
 /*
- * Builds MainActivity's remote setup using RemoteControls assignments and MacroEditor recordings. The generic
- * diagram represents actions, not an inferred photograph or layout of the connected remote.
- *
- * Related classes: MainActivity hosts the page; RemoteControls learns keys; MacroEditor and RemoteActionService
- * manage recordings.
- * UI: Generic remote diagram, live inverted key feedback, macro buttons, saved assignments and Return to Home.
- * Edit or extend: Edit remote shape, action placement and mapping instructions here. A future gamepad layout should
- * reuse the same mapping storage and page-scoped feedback.
- */
+Builds MainActivity's remote setup using RemoteControls assignments and MacroEditor recordings. The
+generic diagram represents actions, not an inferred photograph or layout of the connected remote.
+
+This class is a helper and does not inherit from another launcher class.
+
+controls maps each action to its visible button. activeAction records the last highlighted action,
+status shows the delivered key, and resetHighlight restores the normal colours. MainActivity creates
+the panel; build connects it to RemoteControls. Tapping an action starts learning, and observer
+updates the diagram when a physical key arrives. The panel releases that observer when it leaves the
+screen.
+
+Used by or used with: MainActivity hosts the page; RemoteControls learns keys; MacroEditor and
+RemoteActionService manage recordings. Screen controls: Generic remote diagram, live inverted key
+feedback, macro buttons, saved assignments and Return to Home. Changes belong here: Edit remote
+shape, action placement and mapping instructions here. A future gamepad layout should reuse the same
+mapping storage and page-scoped feedback.
+*/
 class RemoteMappingPanel(
     private val activity: Activity,
     private val ui: LauncherUi,
@@ -34,7 +42,8 @@ class RemoteMappingPanel(
     }
     private val observer: (KeyEvent) -> Unit = { event -> showKey(event) }
 
-    // Creates a remote-friendly setup page with a diagram, saved keys and a record-then-assign flow.
+    // Creates a remote-friendly setup page with a diagram, saved keys and a record-then-assign
+    // flow.
     fun build(
         onAccessibility: () -> Unit,
         onRecordAction: () -> Unit,
@@ -93,7 +102,8 @@ class RemoteMappingPanel(
         return body
     }
 
-    // Uses actual focusable buttons so every diagram action supports touch, keyboard and remote navigation.
+    // Uses actual focusable buttons so every diagram action supports touch, keyboard and remote
+    // navigation.
     private fun diagram(onChanged: () -> Unit): View {
         val surround = ui.column().apply { gravity = Gravity.CENTER_HORIZONTAL }
         val device = ui.column().apply {
@@ -132,7 +142,8 @@ class RemoteMappingPanel(
             }
         }
         surround.addView(device, LinearLayout.LayoutParams(ui.dp(270), -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        // Respect narrow reader screens and split-window layouts without making the remote wider than its page.
+        // Respect narrow reader screens and split-window layouts without making the remote wider
+        // than its page.
         surround.addOnLayoutChangeListener { _, left, _, right, _, _, _, _, _ ->
             val width = minOf(ui.dp(270), right - left - surround.paddingLeft - surround.paddingRight)
             if (width > 0 && device.layoutParams.width != width) {

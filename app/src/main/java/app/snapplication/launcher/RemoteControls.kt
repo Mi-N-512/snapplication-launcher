@@ -11,19 +11,28 @@ import android.widget.TextView
 import org.json.JSONObject
 
 /*
- * Learns per-device remote buttons for MainActivity; keeps mappings separate from media and library state.
- *
- * Related classes: MainActivity and RemoteActionService handle events; RemoteMappingPanel displays assignments.
- * UI: Key-learning dialog and feedback; stores per-device mappings and temporary held-key state.
- * Edit or extend: Add stable action identifiers here with matching handlers in MainActivity/RemoteActionService.
- * Android-reserved keys cannot be made deliverable here.
- */
+Learns per-device remote buttons for MainActivity; keeps mappings separate from media and library
+state.
+
+This class is a helper and does not inherit from another launcher class.
+
+prefs holds saved remote assignments. held remembers the action chosen when a button was pressed so
+its release matches the same action. learningDialog and learningOwner track the current mapping
+session. learn waits for a physical button press and saves its action; assignment looks it up during
+normal use. MainActivity and RemoteActionService each use this helper. RemoteMappingPanel displays
+its saved mappings.
+
+Used by or used with: MainActivity and RemoteActionService handle events; RemoteMappingPanel
+displays assignments. Screen controls: Key-learning dialog and feedback; stores per-device mappings
+and temporary held-key state. Changes belong here: Add stable action identifiers here with matching
+handlers in MainActivity/RemoteActionService. Android-reserved keys cannot be made deliverable here.
+*/
 class RemoteControls(private val context: Context) {
     /*
-     * One saved physical-key assignment shared by RemoteControls and RemoteMappingPanel. Descriptor and keyCode
-     * identify the button; deviceName and action label its row. No UI of its own. Preserve these identifiers
-     * when changing labels or adding actions.
-     */
+    One saved physical-key assignment shared by RemoteControls and RemoteMappingPanel. Descriptor
+    and keyCode identify the button; deviceName and action label its row. No UI of its own. Preserve
+    these identifiers when changing labels or adding actions.
+    */
     data class Mapping(val descriptor: String, val keyCode: Int, val deviceName: String, val action: String) {
         // Formats the Android-delivered key independently of the user's assigned action.
         val keyLabel: String get() = KeyEvent.keyCodeToString(keyCode).removePrefix("KEYCODE_").replace('_', ' ')
@@ -43,12 +52,15 @@ class RemoteControls(private val context: Context) {
         private var learningOwner: RemoteControls? = null
         private var launcherWindow = java.lang.ref.WeakReference<android.view.View>(null)
 
-        // Actual window focus, unlike a cached accessibility package, changes when a vendor dialog covers Home.
+        // Actual window focus, unlike a cached accessibility package, changes when a vendor dialog
+        // covers Home.
         fun trackLauncherWindow(view: android.view.View) { launcherWindow = java.lang.ref.WeakReference(view) }
         fun launcherHasFocus(): Boolean = launcherWindow.get()?.hasWindowFocus() == true
 
-        // Prevents the global accessibility filter from stealing the button being learned by the dialog.
-        // Exists only while RemoteMappingPanel is attached; callers may report keys without changing them.
+        // Prevents the global accessibility filter from stealing the button being learned by the
+        // dialog.
+        // Exists only while RemoteMappingPanel is attached; callers may report keys without
+        // changing them.
         var keyObserver: ((KeyEvent) -> Unit)? = null
 
         // Keeps the stored Screen off identifier compatible with existing remote assignments.
@@ -65,7 +77,8 @@ class RemoteControls(private val context: Context) {
     fun action(event: KeyEvent): String? {
         val current = event.device ?: return null
         val root = mappings()
-        // Normal key presses keep the exact descriptor's fast path and respect intentionally unassigned keys.
+        // Normal key presses keep the exact descriptor's fast path and respect intentionally
+        // unassigned keys.
         if (root.has(current.descriptor)) return root.optJSONObject(current.descriptor)
             ?.optJSONObject(event.keyCode.toString())?.optString("action")?.takeIf { it in actions }
         fun profile(device: android.view.InputDevice) = RemoteDeviceMatch.Profile(device.descriptor, device.name, device.vendorId, device.productId)
@@ -85,7 +98,8 @@ class RemoteControls(private val context: Context) {
         val key = event.deviceId to event.keyCode
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             val mapped = action(event)
-            // Navigation and launcher escape keys must remain usable while a search field owns focus.
+            // Navigation and launcher escape keys must remain usable while a search field owns
+            // focus.
             held[key] = RemoteInputPolicy.permitted(mapped, isEditing)
         }
         val releaseOnly = if (event.action == KeyEvent.ACTION_UP && event.keyCode == KeyEvent.KEYCODE_BACK && !event.isCanceled && !held.containsKey(key)) action(event) else null
@@ -100,7 +114,8 @@ class RemoteControls(private val context: Context) {
     // Keeps an intercepted key release consumed even when its down event switched foreground apps.
     fun hasHeldAssignment(event: KeyEvent): Boolean = held[event.deviceId to event.keyCode] != null
 
-    // Converts navigation assignments to native events so focus, key holds and selection still work.
+    // Converts navigation assignments to native events so focus, key holds and selection still
+    // work.
     fun navigationEvent(event: KeyEvent, action: String): KeyEvent? {
         val code = when (action) {
             "Up" -> KeyEvent.KEYCODE_DPAD_UP
@@ -141,7 +156,8 @@ class RemoteControls(private val context: Context) {
                 captured = KeyEvent(event)
                 status.text = "${device.name}: ${KeyEvent.keyCodeToString(code)}. Release to save."
             }
-            // Some remotes deliver only a Back release. Accept it when Android identifies the device.
+            // Some remotes deliver only a Back release. Accept it when Android identifies the
+            // device.
             val press = captured ?: event.takeIf { it.action == KeyEvent.ACTION_UP && code == KeyEvent.KEYCODE_BACK && !it.isCanceled }
             if (event.action == KeyEvent.ACTION_UP && press?.keyCode == code && press.deviceId == event.deviceId) {
                 if (!event.isCanceled) {
@@ -174,7 +190,8 @@ class RemoteControls(private val context: Context) {
         val decor = dialog.window!!.decorView
         val observer = object : android.view.View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(view: android.view.View) {}
-            // Android can remove a dialog during display recreation without calling its dismiss listener.
+            // Android can remove a dialog during display recreation without calling its dismiss
+            // listener.
             override fun onViewDetachedFromWindow(view: android.view.View) {
                 if (learningDialog === dialog) releaseLearning()
             }
@@ -185,7 +202,8 @@ class RemoteControls(private val context: Context) {
         timeoutHandler.postDelayed(timeout, 30_000)
     }
 
-    // Cancels the callback first, including dialogs created by temporary editor-owned RemoteControls instances.
+    // Cancels the callback first, including dialogs created by temporary editor-owned
+    // RemoteControls instances.
     private fun releaseLearning() {
         cancelLearningTimeout?.invoke(); cancelLearningTimeout = null
         removeLearningObserver?.invoke(); removeLearningObserver = null
@@ -259,7 +277,8 @@ class RemoteControls(private val context: Context) {
         JSONObject(prefs.getString("mappings", "{}")!!)
     }.getOrElse { JSONObject() }
 
-    // Replaces the chosen action's old button on this device and any prior action on the new button.
+    // Replaces the chosen action's old button on this device and any prior action on the new
+    // button.
     private fun save(descriptor: String, name: String, key: Int, action: String) {
         val root = mappings()
         val device = root.optJSONObject(descriptor) ?: JSONObject()

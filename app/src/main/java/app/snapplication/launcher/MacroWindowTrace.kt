@@ -9,12 +9,20 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /*
- * Temporary debug-build diagnostic for Huawei projection windows during an explicit macro recording.
- * RemoteActionService supplies its own window list, so USB disconnection cannot interrupt collection.
- * UI: No extra overlay or permission. It stores structural identifiers locally, never labels, images,
- * descriptions, typed values or gestures. It does not change which screens can be recorded or replayed.
- * Edit or remove here after the hub issue is resolved; do not enable this collector in release builds.
- */
+Temporary debug-build diagnostic for Huawei projection windows during an explicit macro recording.
+RemoteActionService supplies its own window list, so USB disconnection cannot interrupt collection.
+Screen controls: No extra overlay or permission. It stores structural identifiers locally, never
+labels, images, descriptions, typed values or gestures. It does not change which screens can be
+recorded or replayed. Edit or remove here after the hub issue is resolved; do not enable this
+collector in release builds.
+
+This class is a helper and does not inherit from another launcher class.
+
+output is the local diagnostic file. writer saves data away from the main thread; previous avoids
+duplicate records; samples and deadline limit the recording. RemoteActionService calls capture with
+the visible windows. describe writes structural details, and close stops accepting new file work.
+The class implements AutoCloseable so its owner can release that writer.
+*/
 internal class MacroWindowTrace(context: Context) : AutoCloseable {
     private val output = File(context.getExternalFilesDir(null) ?: context.filesDir, "macro-window-trace.txt")
     private val writer = Executors.newSingleThreadExecutor()

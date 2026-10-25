@@ -25,45 +25,77 @@ import android.widget.SeekBar
 import java.util.concurrent.Executors
 
 /*
- * MainActivity puts the launcher's screens together and connects their buttons to actions.
- * Think of it as a toy shelf: this class chooses which tray you see, and the other classes
- * look after the toys in each tray. You can change one tray without rebuilding the whole shelf.
- * Android opens this class when the launcher starts or receives a Home request.
- *
- * Where to find things (the names below are the exact class and method names):
- * - Home layout and favourite blocks: MainActivity.home() and favouriteColumn().
- * - The centre's saved picture and return-to-app action: ExternalPreview.
- *   ReadingSnapshots saves still reading pages. PreviewCaptureService saves Watch frames.
- *   ExternalPreview displays the saved picture; ReaderSurface recognises reading pages.
- * - Video playing inside Home: WatchPlayer. Pages shown inside Home: ReaderPanel.
- * - Folder items and saved places: LocalLibrary, LibraryItem and LauncherState.
- * - All Apps, A-Z navigation and changing favourite order: DrawerPanel.
- *   MainActivity.drawer() opens it; manageFavourites() opens its favourite editor.
- * - Settings pages and search: MainActivity.settings() and organizeSettings().
- * - First setup and the introduction: DeviceProfileSetup and LauncherWalkthrough,
- *   opened by MainActivity.introduction().
- * - Colours and reusable buttons: LauncherUi and ColourPicker.
- * - Wallpaper: LauncherWallpaper. App icons: IconPacks and AppIconTheme.
- * - Remote screen: RemoteMappingPanel, opened by MainActivity.remoteSettings().
- *   RemoteControls stores button choices; RemoteActionService handles actions across apps.
- * - Recorded actions: MainActivity.macroSettings(), MacroEditor and TouchMacroRecorder.
- *   MacroPreviewView rehearses timing over an optional reference image without pressing real app buttons.
- * - Other apps' media controls: ExternalPlaybackPanel. Heat notice: ThermalMonitor.
- *
- * Buttons and controls connected here include ALL APPS, empty favourite slots, Home/Back,
- * content opening, folder/link selection, Read/Watch selection, settings switches, permission
- * setup and macro commands. DrawerPanel and RemoteMappingPanel build their own controls.
- * To change screen layout, start with home() or begin(). To add a setting, edit settings()
- * and its organizeSettings() grouping, then save its value in LauncherState when needed.
- * To add behaviour inside one panel, follow the class map above to that panel first.
- *
- * Planned, not implemented: a future Gaming mode needs more than another mode button.
- * Start at chooseMode(), home(), library() and applyOrientation(); add matching saved state
- * in LauncherState and a dedicated game panel/launch flow. Read and Watch are the current
- * modes. No game session capture or game suspension is provided by this class.
- * This map helps you find the right file before changing how the launcher looks or works.
- */
+MainActivity puts the launcher's screens together and connects their buttons to actions. Think of it
+as a toy shelf: this class chooses which tray you see, and the other classes look after the toys in
+each tray. You can change one tray without rebuilding the whole shelf. Android opens this class when
+the launcher starts or receives a Home request.
+
+MainActivity is a child of Android's Activity class. Activity gives it screen creation, pause,
+resume and input callbacks.
+
+state stores the launcher choices, ui builds styled controls, and root holds the current page.
+screen names that page; settingsCategory and settingsQuery keep the current settings selection.
+watch and reader hold the built-in viewers. worker handles file work away from the screen thread,
+and scanGeneration rejects results for a page already left. guideStep and guideActive track the
+introduction. Android calls onCreate to restore the screen, onResume to refresh it, and onStop to
+pause playback and monitoring. The panels and helpers listed below are used by MainActivity; they do
+not inherit from it.
+
+Where to find things (the names below are the exact class and method names):
+
+- Home layout and favourite blocks: MainActivity.home() and favouriteColumn().
+
+- The centre's saved picture and return-to-app action: ExternalPreview.
+
+ReadingSnapshots saves still reading pages. PreviewCaptureService saves Watch frames.
+ExternalPreview displays the saved picture; ReaderSurface recognises reading pages.
+
+- Video playing inside Home: WatchPlayer. Pages shown inside Home: ReaderPanel.
+
+- Folder items and saved places: LocalLibrary, LibraryItem and LauncherState.
+
+- All Apps, A-Z navigation and changing favourite order: DrawerPanel.
+
+MainActivity.drawer() opens it; manageFavourites() opens its favourite editor.
+
+- Settings pages and search: MainActivity.settings() and organizeSettings().
+
+Status & repair gathers setup checks; LauncherBackup saves/restores portable choices.
+
+- First setup and the introduction: DeviceProfileSetup and LauncherWalkthrough,
+
+opened by MainActivity.introduction().
+
+- Colours and reusable buttons: LauncherUi and ColourPicker.
+
+- Wallpaper: LauncherWallpaper. App icons: IconPacks and AppIconTheme.
+
+- Remote screen: RemoteMappingPanel, opened by MainActivity.remoteSettings().
+
+RemoteControls stores button choices; RemoteActionService handles actions across apps.
+
+- Recorded actions: MainActivity.macroSettings(), MacroEditor and TouchMacroRecorder.
+
+MacroPreviewView rehearses timing over an optional reference image without pressing real app
+buttons.
+
+- Other apps' media controls: ExternalPlaybackPanel. Heat notice: ThermalMonitor.
+
+Buttons and controls connected here include ALL APPS, empty favourite slots, Home/Back, content
+opening, folder/link selection, Read/Watch selection, settings switches, permission setup and macro
+commands. DrawerPanel and RemoteMappingPanel build their own controls. To change screen layout,
+start with home() or begin(). To add a setting, edit settings() and its organizeSettings() grouping,
+then save its value in LauncherState when needed. To add behaviour inside one panel, follow the
+class map above to that panel first.
+
+Planned, not implemented: a future Gaming mode needs more than another mode button. Start at
+chooseMode(), home(), library() and applyOrientation(); add matching saved state in LauncherState
+and a dedicated game panel/launch flow. Read and Watch are the current modes. No game session
+capture or game suspension is provided by this class. This map helps you find the right file before
+changing how the launcher looks or works.
+*/
 class MainActivity : Activity() {
+    private lateinit var phoneRotation: PhoneRotation
     private lateinit var thermal: ThermalMonitor
     private var thermalText: String? = null
     private var thermalBanner: android.widget.TextView? = null
@@ -90,12 +122,14 @@ class MainActivity : Activity() {
         }
     }
 
-    // Restores launcher preferences and builds the appropriate mode without requesting root privileges.
+    // Restores launcher preferences and builds the appropriate mode without requesting root
+    // privileges.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         RemoteControls.trackLauncherWindow(window.decorView)
         state = LauncherState(this)
         state.initializeReaderProfile()
+        phoneRotation = PhoneRotation(this) { state.deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv" && state.orientation == "Auto" }
         remote = RemoteControls(this)
         thermal = ThermalMonitor(this) { text -> thermalText = text; updateThermalBanner() }
         pickerMode = savedInstanceState?.getString("pickerMode") ?: state.mode
@@ -107,7 +141,10 @@ class MainActivity : Activity() {
         guideActive = state.profileSetupComplete && guidePrefs.getBoolean("active", false)
         guideStep = guidePrefs.getInt("step", 0).coerceIn(0, 4)
         settingsCategory = savedInstanceState?.getString("settingsCategory")
+        settingsQuery = savedInstanceState?.getString("settingsQuery").orEmpty()
         when (savedInstanceState?.getString("screen")) {
+            "Status & repair" -> statusSettings()
+            "Backup & restore" -> backupSettings()
             "Settings" -> settings()
             "Theme Mode" -> themeSettings()
             "Favourites Style" -> favouriteSettings()
@@ -129,9 +166,11 @@ class MainActivity : Activity() {
         }
     }
 
-    // Preserves picker intent across rotation so a Watch folder cannot become a Read folder accidentally.
+    // Preserves picker intent across rotation so a Watch folder cannot become a Read folder
+    // accidentally.
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("settingsCategory", settingsCategory)
+        outState.putString("settingsQuery", settingsQuery)
         outState.putString("learningAction", remote.learningAction)
         outState.putInt("guideStep", guideStep); outState.putString("pickerMode", pickerMode); outState.putString("screen", screen); super.onSaveInstanceState(outState)
     }
@@ -139,8 +178,14 @@ class MainActivity : Activity() {
     // Returns HOME intents to the familiar home screen.
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); if (intent.getBooleanExtra("openApps", false)) drawer() else home() }
 
-    // Keeps Watch landscape while allowing reading in the device's preferred orientation.
+    // Phone mode follows rotation; explicit mode/orientation choices and dedicated profiles stay
+    // fixed.
     private fun applyOrientation() {
+        if (state.orientation == "Auto") RemoteActionService.instance?.cancelLandscape()
+        if (state.automaticPhoneMode) {
+            RemoteActionService.instance?.cancelLandscape()
+            state.mode = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "Watch" else "Read"
+        }
         if (state.mode == "Read") {
             stopService(Intent(this, PreviewCaptureService::class.java))
             RemoteActionService.instance?.cancelLandscape()
@@ -149,7 +194,8 @@ class MainActivity : Activity() {
         requestedOrientation = when (state.orientation) {
             "Landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             "Portrait" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            "Auto" -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            "Auto" -> if (state.deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv" && phoneRotation.supported)
+                ActivityInfo.SCREEN_ORIENTATION_LOCKED else ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
             else -> if (state.mode == "Watch") ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         }
     }
@@ -161,7 +207,7 @@ class MainActivity : Activity() {
         reader?.close(); reader = null
         screen = title
         drawerGestureAreas.clear(); drawerSwipeEligible = false
-        ui = LauncherUi(this, state, state.useWallpaper && title != "Welcome")
+        ui = LauncherUi(this, state, state.useWallpaper && state.theme != "E-paper")
         val immersiveHome = state.fullscreen
         // Edge swipes still reveal Android navigation when fullscreen is enabled.
         val lightBars = if (ui.text == Color.BLACK)
@@ -175,12 +221,13 @@ class MainActivity : Activity() {
             layoutInDisplayCutoutMode = if (immersiveHome) android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 else android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
         }
-        val showWallpaper = state.useWallpaper && title != "Welcome"
+        val showWallpaper = state.useWallpaper && state.theme != "E-paper"
         if (showWallpaper) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         window.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(if (showWallpaper) Color.TRANSPARENT else ui.background))
         root = ui.column()
+        root.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> LauncherFont.apply(view) }
         root.setBackgroundColor(if (showWallpaper) (ui.background and 0xffffff) or 0x30000000 else ui.background)
         root.setOnApplyWindowInsetsListener { view, insets ->
             if (immersiveHome) view.setPadding(0, 0, 0, 0)
@@ -215,14 +262,15 @@ class MainActivity : Activity() {
         return root
     }
 
-    // Gives portrait reading pages more room while retaining the Make layout for Watch and landscape.
+    // Gives portrait reading pages more room while retaining the Make layout for Watch and
+    // landscape.
     @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     private fun home(measuredLandscape: Boolean? = null) {
         begin("Home")
         val landscape = measuredLandscape ?: (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
         val homeRoot = root
         homeRoot.addOnLayoutChangeListener { view, left, top, right, bottom, _, _, _, _ ->
-            if (right > left && bottom > top && ((right - left > bottom - top) != landscape)) {
+            if (!guideActive && right > left && bottom > top && ((right - left > bottom - top) != landscape)) {
                 view.post { if (root === homeRoot && screen == "Home") home(right - left > bottom - top) }
             }
         }
@@ -329,12 +377,12 @@ class MainActivity : Activity() {
 
     // Lets the viewer switch between an app resume entry and user-selected folder media.
     private fun chooseViewerSource() {
-        AlertDialog.Builder(this).setTitle("Main viewer").setItems(arrayOf("Continue app", "Folder content")) { _, index ->
+        AlertDialog.Builder(this).setTitle("Preview source").setItems(arrayOf("Resume the last app", "Files from a folder on this device")) { _, index ->
             state.viewerSource = if (index == 0) "App" else "Folder"; settings()
         }.setNegativeButton("Cancel", null).show()
     }
 
-    // Persists preview and local-media sizing without changing another app's display.
+    // Saves preview and local-media sizing without changing another app's display.
     private fun chooseContentScale() {
         val values = arrayOf("Fit", "Fill", "Stretch")
         val labels = arrayOf("Fit to preview · show the whole page or image", "Crop to fill · no distortion", "Stretch · fill all dimensions")
@@ -398,7 +446,8 @@ class MainActivity : Activity() {
                 button.setOnLongClickListener { favouriteActions(flat, label) { home() }; true }
                 val tile = if (state.grid || !state.showLabels) FrameLayout(this).apply {
                     addView(button, FrameLayout.LayoutParams(-1, -1))
-                    // A separate non-interactive image keeps adaptive icons centred through orientation changes.
+                    // A separate non-interactive image keeps adaptive icons centred through
+                    // orientation changes.
                     addView(android.widget.ImageView(this@MainActivity).apply {
                         setImageDrawable(IconPacks.load(this@MainActivity, component) { info.loadIcon(packageManager) })
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -461,7 +510,7 @@ class MainActivity : Activity() {
     // Scans the selected folder off the UI thread, ignoring results from screens already left.
     private fun library() {
         begin("Library")
-        root.addView(ui.button("Choose ${state.mode.lowercase()} folder") { pickFolder() })
+        root.addView(ui.setting("Choose a folder", "${if (state.mode == "Read") "Books and documents" else "Videos"} stored on this device") { pickFolder() })
         if (state.mode == "Watch") root.addView(ui.button("Open video link") { directLink() })
         val folder = state.folder(state.mode) ?: return
         val generation = scanGeneration
@@ -478,7 +527,9 @@ class MainActivity : Activity() {
                 result.onSuccess { items ->
                     if (mode == "Watch") state.setWatchQueue(items)
                     if (items.isEmpty()) list.addView(ui.label("No supported files in this folder."))
-                    items.forEach { item -> list.addView(ui.button(item.title) { openItem(item) }) }
+                    items.forEach { item -> list.addView(ui.setting(item.title,
+                        if (mode == "Read") ReadingFormats.viewingLabel(item.title, item.mime, state.readInLauncher)
+                        else if (state.playVideosInLauncher) "Plays inside launcher" else "Opens in a video app") { openItem(item) }) }
                 }.onFailure { list.addView(ui.label("Folder access unavailable. Choose the folder again.")) }
             }
         }
@@ -497,10 +548,44 @@ class MainActivity : Activity() {
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 100)
     }
 
-    // Persists only the grant actually returned by the system and handles cancellation safely.
+    // Saves only the grant actually returned by the system and handles cancellation safely.
     @Deprecated("Legacy Activity result API retained for the minimal native Activity host")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 205 || requestCode == 206) {
+            val uri = data?.data
+            if (resultCode == RESULT_OK && uri != null) {
+                if (requestCode == 205) backupWork("Backup saved") { LauncherBackup.export(this, uri) }
+                else worker.execute {
+                    val result = runCatching { LauncherBackup.load(this, uri) }
+                    runOnUiThread { if (!isFinishing && !isDestroyed) result.onSuccess { document ->
+                        AlertDialog.Builder(this).setTitle("Restore this backup?")
+                            .setMessage("This replaces backed-up settings, all favourite lists, macros and remote assignments. Book/video files and Android permissions are not restored. Your wallpaper and font stay as they are. Export your current setup first if you want to keep it.")
+                            .setNegativeButton("Cancel", null).setPositiveButton("Restore") { _, _ ->
+                                if (RemoteActionService.instance?.macroBusy == true) message("Stop macro playback or recording before restoring.")
+                                else backupWork("Restored. Review Status & repair for permissions and folders.") { LauncherBackup.restore(this, document) }
+                            }.show()
+                    }.onFailure { message(it.message ?: "This backup could not be read.") } }
+                }
+            }
+            return
+        }
+        if (requestCode == 204) {
+            if (resultCode == RESULT_OK && data?.data != null) {
+                val uri = data.data!!
+                worker.execute {
+                    val failure = runCatching { LauncherFont.importFont(this, uri) }.exceptionOrNull()
+                    runOnUiThread { if (!isDestroyed && !isFinishing) {
+                        if (failure == null) settings("Appearance") else message("Could not load this font. Choose a valid TTF or OTF file under 8 MB.")
+                    } }
+                }
+            }
+            return
+        }
+        if (requestCode == ImageTapAction.REQUEST) {
+            ImageTapAction.accept(this, resultCode, data) { name -> macroSettings(); MacroEditor(this) { macroSettings() }.show(name) }
+            return
+        }
         if (requestCode == ProjectionImageAction.REQUEST) {
             ProjectionImageAction.accept(this, resultCode, data) { macroSettings() }
             return
@@ -550,32 +635,50 @@ class MainActivity : Activity() {
 
     // Switches between the two user-selected modes while keeping independent resume positions.
     private fun chooseMode() {
-        if (state.readerOnly) return
-        AlertDialog.Builder(this).setTitle("Mode").setItems(arrayOf("Watch", "Read")) { _, index ->
-            state.mode = if (index == 0) "Watch" else "Read"; applyOrientation(); home()
+        if (state.readerOnly || state.deviceProfile != "Phone" || BuildConfig.FLAVOR == "tv") return
+        val automatic = state.deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv"
+        val choices = if (automatic) arrayOf("Follow rotation · portrait Read, landscape Watch", "Watch in either orientation", "Read in either orientation")
+            else arrayOf("Watch", "Read")
+        AlertDialog.Builder(this).setTitle("Home content").setItems(choices) { _, index ->
+            state.automaticPhoneMode = automatic && index == 0
+            if (!state.automaticPhoneMode) state.mode = if (index == (if (automatic) 1 else 0)) "Watch" else "Read"
+            applyOrientation(); settings("Home & content")
         }.show()
     }
 
     // Exposes genuine settings; unsupported hardware actions are not presented as working switches.
     private var settingsCategory: String? = null
+    private var settingsQuery = ""
 
     private fun settings(category: String? = settingsCategory) {
+        if (category != settingsCategory) settingsQuery = ""
         settingsCategory = category
         begin("Settings")
         val content = ui.column()
-        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val body = ui.column(wide).apply { tag = "settingsBody" }
+        root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
+        body.addView(ScrollView(this).apply { addView(content) },
+            if (wide) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, -1))
         content.addView(ui.section("Appearance"))
         content.addView(ui.setting("Device setup", state.deviceProfile) {
             state.profileSetupComplete = false; introduction()
         })
-        content.addView(ui.setting("Theme Mode", state.theme) { themeSettings() })
+        content.addView(ui.setting("Colours", state.theme) { themeSettings() })
+        content.addView(ui.setting("Font", if (LauncherFont.get(this) == null) "Android default" else "Your imported font") {
+            AlertDialog.Builder(this).setTitle("Launcher font").setItems(arrayOf("Import TTF or OTF file", "Use Android default")) { _, index ->
+                if (index == 1) { LauncherFont.reset(this); settings() }
+                else startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*")
+                    .addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), 204)
+            }.setNegativeButton("Cancel", null).show()
+        })
         content.addView(ui.setting("App icon", AppIconTheme.currentLabel(this)) {
             AppIconTheme.showChooser(this) { settings() }
         })
         content.addView(ui.setting("Show App Labels", "Display names beside favourites", if (state.showLabels) "On" else "Off") {
             state.showLabels = !state.showLabels; settings()
         })
-        content.addView(ui.setting("Transparency", "Wallpaper through Home, app drawer and Settings", if (state.useWallpaper) "On" else "Off") {
+        content.addView(ui.setting("View wallpaper", "Show your background behind Home, apps and settings", if (state.useWallpaper) "On" else "Off") {
             state.useWallpaper = !state.useWallpaper; settings()
         })
         content.addView(ui.row("Choose launcher wallpaper    ›") {
@@ -600,52 +703,47 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancel", null).show()
         })
         content.addView(ui.section("Favourites"))
+        if (!state.readerOnly && BuildConfig.FLAVOR != "tv" && state.deviceProfile == "Phone") {
+            content.addView(ui.setting("Separate Read / Watch favourites",
+                if (state.separateFavourites) "Editing ${state.mode} favourites. Your shared list is kept." else "Use the same favourites in both modes",
+                if (state.separateFavourites) "On" else "Off") {
+                state.separateFavourites = !state.separateFavourites; settings()
+            })
+        }
         content.addView(ui.setting("Favourites heading", "Show the heading above home shortcuts", if (state.showFavouriteHeading) "On" else "Off") {
             state.showFavouriteHeading = !state.showFavouriteHeading; settings()
         })
         content.addView(ui.setting("Favourites Style", "${if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
         content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
-        content.addView(ui.section(if (state.deviceProfile == "Reader") "Reading" else "Read & Watch"))
-        content.addView(ui.setting("Home preview", if (state.readerOnly) "Save your last reading page on this device" else "Follow your last video or book; save a still picture locally") { previewSettings() })
-        if (state.deviceProfile != "Reader") content.addView(ui.setting("Play videos in launcher", "Off: tap the preview to open a video app", if (state.playVideosInLauncher) "On" else "Off") {
-            state.playVideosInLauncher = !state.playVideosInLauncher; settings()
-        })
-        content.addView(ui.setting("Read in launcher", "Off: tap the preview to open a reading app", if (state.readInLauncher) "On" else "Off") {
-            state.readInLauncher = !state.readInLauncher; settings()
-        })
-        content.addView(ui.setting("Main viewer", if (state.viewerSource == "App") "Continue app" else "Folder content") { chooseViewerSource() })
-        content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
-        content.addView(ui.setting("Previous / Next buttons", "Show page controls in the reading panel", if (state.showReaderControls) "On" else "Off") {
-            state.showReaderControls = !state.showReaderControls; settings()
-        })
-        if (!state.readerOnly) content.addView(ui.row("Mode    ${state.mode}  ›") { chooseMode() })
-        content.addView(ui.row("Library    ›") { library() })
-        content.addView(ui.row("Choose folder    ›") { pickFolder() })
-        if (state.deviceProfile != "Reader") content.addView(ui.row("Other app playback    ›") { externalPlayback() })
-        content.addView(ui.section(if (state.readerOnly) "Display" else "Display & Input"))
-        content.addView(ui.setting("Fullscreen", "Hide system bars; swipe an edge to reveal them", if (state.fullscreen) "On" else "Off") {
-            state.fullscreen = !state.fullscreen; settings()
-        })
-        content.addView(ui.setting("Orientation", state.orientation) {
-            val choices = arrayOf("Mode default", "Auto", "Landscape", "Portrait")
-            AlertDialog.Builder(this).setTitle("Orientation").setItems(choices) { _, index ->
+        content.addView(ui.section("Home & content"))
+        if (!state.readerOnly && state.deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv") content.addView(ui.setting("Home content", if (state.automaticPhoneMode) "Follow rotation: upright Read, sideways Watch" else "${state.mode} in either orientation") { chooseMode() })
+        content.addView(ui.setting("Screen rotation", state.orientation, "Change") {
+            val choices = arrayOf("Auto", "Landscape", "Portrait")
+            AlertDialog.Builder(this).setTitle("Screen rotation").setItems(choices) { _, index ->
                 state.orientation = choices[index]; applyOrientation(); settings()
             }.setNegativeButton("Cancel", null).show()
         })
-        if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("Open apps in landscape", "Match landscape Home; request player fullscreen when available. Requires accessibility support.", if (state.landscapeApps) "On" else "Off") {
-            state.landscapeApps = !state.landscapeApps
-            if (!state.landscapeApps) RemoteActionService.instance?.cancelLandscape()
-            settings()
+        content.addView(ui.setting("Home preview", if (state.readerOnly) "Save your last reading page on this device" else "Follow your last video or book; save a still picture locally") { previewSettings() })
+        if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("Play local videos here", "For your selected files or direct links; app previews resume their own player", if (state.playVideosInLauncher) "On" else "Off") {
+            state.playVideosInLauncher = !state.playVideosInLauncher; settings()
         })
-        if (!state.readerOnly) content.addView(ui.setting("Wireless Remote", "Remap a connected remote control", "Calibrate ›") { remoteSettings() })
-        if (state.deviceProfile != "Reader") content.addView(ui.setting("Second Screen", "Connected displays and device information") { diagnostics() })
-        content.addView(ui.row("Set as default launcher    ›") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) })
-        if (state.deviceProfile != "Reader") {
-        content.addView(ui.section("Playback"))
+        if (state.mode == "Read") content.addView(ui.setting("Open documents inside launcher", "PDF, CBZ and images only. EPUB and other formats open a reading app.", if (state.readInLauncher) "On" else "Off") {
+            state.readInLauncher = !state.readInLauncher; settings()
+        })
+        content.addView(ui.setting("Preview source", if (state.viewerSource == "App") "Resume your last app" else "Files from your chosen folder") { chooseViewerSource() })
+        content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
+        if (state.mode == "Read") content.addView(ui.setting("Previous / Next buttons", "Show page controls in the reading panel", if (state.showReaderControls) "On" else "Off") {
+            state.showReaderControls = !state.showReaderControls; settings()
+        })
+        content.addView(ui.setting("Browse local files", "Open ${if (state.mode == "Read") "books and documents" else "videos"} from your selected folder") { library() })
+        if (state.deviceProfile != "Reader") content.addView(ui.row("Playback permissions & controls    ›") { externalPlayback() })
+        if (state.mode == "Watch" && state.deviceProfile != "Reader") {
         val threshold = ui.label("Next episode after ${state.completion}%", 18f)
         content.addView(threshold)
         content.addView(SeekBar(this).apply {
             layoutParams = LinearLayout.LayoutParams(-1, ui.dp(48))
+            progressTintList = android.content.res.ColorStateList.valueOf(ui.focusAccent)
+            thumbTintList = android.content.res.ColorStateList.valueOf(ui.focusAccent)
             max = 100; progress = state.completion
             contentDescription = "Episode completion threshold"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -659,9 +757,27 @@ class MainActivity : Activity() {
                 override fun onStopTrackingTouch(bar: SeekBar) {}
             })
         })
-        content.addView(ui.label("Videos played here prepare the next file when you leave or turn the screen off. For other apps, the next Play request advances after this percentage when the player supplies duration and a Next control. CloudStream can use its visible Next button with accessibility enabled. If no next episode is available, the current episode resumes. The other app still owns loading and buffering.", 16f))
+        content.addView(ui.label("Videos played here prepare the next file when you leave or turn the screen off. For other apps, the next Play request advances after this percentage when the player supplies duration and a Next control. Supported players can use their visible Next button with accessibility enabled. If no next episode is available, the current episode resumes. The other app still owns loading and buffering.", 16f))
         }
-        if (state.deviceProfile == "Reader") content.addView(ui.section("About"))
+        content.addView(ui.section("Display"))
+        content.addView(ui.setting("Fullscreen", "Hide system bars; swipe an edge to reveal them", if (state.fullscreen) "On" else "Off") {
+            state.fullscreen = !state.fullscreen; settings()
+        })
+        if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("Open apps in landscape", "Match landscape Home; request player fullscreen when available. Requires accessibility support.", if (state.landscapeApps) "On" else "Off") {
+            state.landscapeApps = !state.landscapeApps
+            if (!state.landscapeApps) RemoteActionService.instance?.cancelLandscape()
+            settings()
+        })
+        if (state.deviceProfile != "Reader") content.addView(ui.setting("Second Screen", "Connected displays and device information") { diagnostics() })
+        content.addView(ui.row("Set as default launcher    ›") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) })
+        if (!state.readerOnly && state.deviceProfile != "Reader") {
+            content.addView(ui.section("Remote & macros"))
+            content.addView(ui.setting("Remote buttons", "Choose an action on the remote diagram, then press your physical button") { remoteSettings() })
+            content.addView(ui.setting("Macros", "Record a sequence, choose how it runs, then assign a button") { macroSettings() })
+        }
+        content.addView(ui.section("Setup & help"))
+        content.addView(ui.setting("Status & repair", "Check previews, permissions and your selected source") { statusSettings() })
+        content.addView(ui.setting("Backup & restore", if (state.readerOnly) "Save reading settings and favourites" else "Save settings, favourites, remote buttons and macros") { backupSettings() })
         content.addView(ui.button("Introduction and setup") { introduction() })
         content.addView(ui.button("Android display settings") { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) })
         if (state.deviceProfile != "Reader") content.addView(ui.label("Mirror / desktop mode is controlled by your phone's projection menu when a compatible display is connected. Screen off locks the phone; an independent desktop display may remain on.", 14f))
@@ -671,25 +787,115 @@ class MainActivity : Activity() {
 
     }
 
-    // Presents one category at a time; search spans every category without hiding its matching controls.
+    // Provides an explicit portable backup workflow without copying media or pretending to restore
+    // Android grants.
+    private fun backupSettings() {
+        begin("Backup & restore")
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        content.addView(ui.label("Keep a copy of your setup", 22f))
+        content.addView(ui.label(if (state.readerOnly) "Includes reading settings and favourites. Book files, saved page pictures, wallpaper and custom fonts are not included. Approve Android permissions and folder access on each device." else "Includes settings, shared and separate favourites, remote assignments, macros and their reference pictures. The file can contain recorded text and screenshots: keep it somewhere private. Media files, saved previews, wallpaper and custom fonts are not included. Android permissions and folder access must be approved on each device.", 16f))
+        content.addView(ui.button("Export backup") {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/json")
+                .addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "snapplication-backup.json"), 205)
+        })
+        content.addView(ui.button("Restore backup") {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*")
+                .addCategory(Intent.CATEGORY_OPENABLE), 206)
+        })
+        content.addView(ui.button("Status & repair") { statusSettings() })
+    }
+
+    // Keeps file work off the UI thread and reapplies restored mode/theme only after a successful
+    // operation.
+    private fun backupWork(success: String, operation: () -> Unit) {
+        worker.execute {
+            val result = runCatching(operation)
+            runOnUiThread { if (!isFinishing && !isDestroyed) {
+                result.onSuccess {
+                    remote.clearHeldButtons()
+                    RemoteActionService.instance?.refreshReadingSnapshots()
+                    applyOrientation()
+                    if (state.mode == "Read") stopService(Intent(this, PreviewCaptureService::class.java))
+                    backupSettings(); message(success)
+                }.onFailure { message(it.message ?: "Backup operation failed. Your setup was not replaced.") }
+            } }
+        }
+    }
+
+    // Shows the last run without claiming an interrupted process is still executing.
+    private fun macroRunSummary(): String {
+        val prefs = getSharedPreferences("remoteMacros", MODE_PRIVATE)
+        val status = prefs.getString("lastRunStatus", "No macro has run yet.")!!
+        return if (prefs.getBoolean("runInProgress", false) && RemoteActionService.instance?.replayActive != true)
+            "$status · Interrupted; run it again when ready" else status
+    }
+
+    // Consolidates existing setup actions; Reader uses still screenshots and never offers Watch
+    // capture.
+    private fun statusSettings() {
+        begin("Status & repair")
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val service = RemoteActionService.instance
+        content.addView(ui.label("${state.mode} · ${state.deviceProfile} setup", 22f))
+        val defaultHome = packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)?.activityInfo?.packageName == packageName
+        content.addView(ui.setting("Default launcher", if (defaultHome) "Snapplication is your Home app" else "Another Home app is selected", "Choose") {
+            runCatching { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }.onFailure { message("Home app settings are unavailable on this device.") }
+        })
+        content.addView(ui.setting("Accessibility support", if (service == null) "Not connected · enable in Android settings" else "Connected", "Review") { explainAccessibility() })
+        val preview = if (state.mode == "Read") when {
+            android.os.Build.VERSION.SDK_INT < 30 -> "Still page capture needs Android 11 or newer"
+            !state.readPagePreviews -> "Off · enable automatic still pages"
+            service == null -> "Needs accessibility support"
+            service.serviceInfo.capabilities and android.accessibilityservice.AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT == 0 -> "Refresh accessibility permission"
+            else -> "Ready for supported reading pages"
+        } else if (PreviewCaptureService.active) "Screen capture active" else "Screen capture off · Android approval needed to restart"
+        content.addView(ui.setting("Preview capture", preview, "Review") { previewSettings() })
+        if (state.mode == "Watch" && !PreviewCaptureService.active) content.addView(ui.button("Repair previews") { repairPreviews() })
+        val owner = state.lastApp()?.let(ComponentName::unflattenFromString)?.packageName
+        val ownerLabel = owner?.let { runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(it, 0)).toString() }.getOrDefault("Selected app unavailable") }
+        val time = owner?.let { getSharedPreferences("externalPreview", MODE_PRIVATE).getLong("capturedAt:${state.mode}:$it", 0) } ?: 0L
+        content.addView(ui.label(if (time > 0) "Last saved preview: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(time))}" else "No saved app preview in this mode yet.", 16f))
+        content.addView(ui.setting("Preview source", if (state.viewerSource == "App") "${if (state.followMediaApps) "Follow last supported app" else "Fixed app"} · ${ownerLabel ?: "No app selected yet"}" else "Files from your chosen folder", "Change") { chooseViewerSource() })
+        val folder = state.folder(state.mode)
+        val grant = folder != null && contentResolver.persistedUriPermissions.any { it.isReadPermission && it.uri.toString() == folder }
+        content.addView(ui.setting("Local folder", if (grant) "Access granted · browse to check files" else if (folder == null) "Not selected · optional for app previews" else "Access missing · choose the folder again", "Choose") { pickFolder() })
+        if (!state.readerOnly && state.deviceProfile != "Reader") {
+            val sessions = runCatching { getSystemService(android.media.session.MediaSessionManager::class.java)
+                .getActiveSessions(ComponentName(this, MediaAccessService::class.java)) }
+            content.addView(ui.setting("Media controls", if (sessions.isSuccess) "Access granted · ${sessions.getOrNull()?.size ?: 0} active sessions" else "Optional media access not enabled", "Review") { externalPlayback() })
+            content.addView(ui.label(macroRunSummary(), 16f).apply { tag = "macroRunSummary" })
+            content.addView(ui.button("Remote & macros") { settings("Remote & macros") })
+        }
+        content.addView(ui.button("Refresh status") { statusSettings() })
+    }
+
+    // Presents one category at a time; search spans every category without hiding its matching
+    // controls.
     private fun organizeSettings(content: LinearLayout) {
         val groups = linkedMapOf<String, MutableList<View>>()
         var group = "Appearance"
-        val names = setOf("APPEARANCE", "FAVOURITES", "READ & WATCH", "READING", "DISPLAY", "DISPLAY & INPUT", "PLAYBACK", "ABOUT")
+        val names = setOf("APPEARANCE", "FAVOURITES", "HOME & CONTENT", "DISPLAY", "REMOTE & MACROS", "SETUP & HELP")
         for (index in 0 until content.childCount) {
             val child = content.getChildAt(index)
             if (child is android.widget.TextView && child.text.toString() in names) group = child.text.toString().lowercase().replaceFirstChar { it.uppercase() }
             groups.getOrPut(group) { mutableListOf() }.add(child)
         }
         val categories = ui.column()
-        content.addView(categories, 0, LinearLayout.LayoutParams(-1, -2))
+        val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        if (wide) {
+            val body = root.findViewWithTag<LinearLayout>("settingsBody")
+            body.addView(ScrollView(this).apply { addView(categories) }, 0, LinearLayout.LayoutParams(ui.dp(192), -1))
+        } else content.addView(categories, 0, LinearLayout.LayoutParams(-1, -2))
         val search = EditText(this).apply {
-            hint = "Search all settings"; setTextColor(ui.text); setHintTextColor(ui.muted)
+            hint = "Search all settings"; setText(settingsQuery); setTextColor(ui.text); setHintTextColor(ui.muted)
             setSingleLine(true); setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8)); setBackgroundColor(ui.surface)
         }
         root.addView(search, 1, LinearLayout.LayoutParams(-1, ui.dp(52)))
         // Single-line EditText consumes DPAD_DOWN as cursor movement on some Huawei keyboards.
-        // Give remote users an explicit route into the visible settings, keeping normal text editing.
+        // Give remote users an explicit route into the visible settings, keeping normal text
+        // editing.
         search.setOnKeyListener { _, code, event ->
             if (code != android.view.KeyEvent.KEYCODE_DPAD_DOWN) false
             else {
@@ -700,31 +906,44 @@ class MainActivity : Activity() {
                 true
             }
         }
-        val summaries = mapOf("Appearance" to "Theme, transparency, corners and icon packs", "Favourites" to "Add apps, arrange blocks and choose your layout",
-            "Read & watch" to "Last-frame preview, content and playback", "Reading" to "Page previews, folders and reading apps", "About" to "Setup guide and device information", "Display & input" to "Fullscreen, orientation and remote buttons",
-            "Display" to "Fullscreen and reading orientation", "Playback" to "Episode progress, setup guide and device information")
+        val summaries = mapOf("Appearance" to "Colours, wallpaper, font and icons", "Favourites" to "Choose and arrange your home shortcuts",
+            "Home & content" to "Read or Watch, previews, files and playback", "Display" to "Fullscreen, external apps and connected displays",
+            "Remote & macros" to "Button assignments and recorded actions", "Setup & help" to "Setup guide, permissions and diagnostics")
         fun words(view: View): String = if (view is android.widget.TextView) view.text.toString() else if (view is ViewGroup)
             (0 until view.childCount).joinToString(" ") { words(view.getChildAt(it)) } else ""
         fun update(query: String) {
             categories.removeAllViews()
-            if (query.isBlank() && settingsCategory == null) {
+            if (wide) {
+                groups.keys.forEach { name ->
+                    val selected = query.isBlank() && name == (settingsCategory ?: "Home & content")
+                    categories.addView(ui.button(name) { settings(name) }.apply {
+                        gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                        textSize = 15f
+                        setPadding(ui.dp(12), 0, ui.dp(12), 0)
+                        setTextColor(if (selected) ui.text else ui.muted)
+                        isSelected = selected
+                        contentDescription = if (selected) "$name, selected" else name
+                        ui.flatFocus(this, if (selected) ui.surface else android.graphics.Color.TRANSPARENT)
+                    }, LinearLayout.LayoutParams(-1, ui.dp(48)))
+                }
+            } else if (query.isBlank() && settingsCategory == null) {
                 groups.keys.forEach { name -> categories.addView(ui.setting(name, summaries[name].orEmpty()) { settings(name) }) }
             } else if (query.isBlank()) {
                 categories.addView(ui.row("← All settings") { settings(null) })
             }
             groups.forEach { (name, rows) -> rows.forEach { row ->
-                row.visibility = if (if (query.isBlank()) name == settingsCategory else words(row).contains(query, true)) View.VISIBLE else View.GONE
+                row.visibility = if (if (query.isBlank()) name == (settingsCategory ?: if (wide) "Home & content" else null) else words(row).contains(query, true)) View.VISIBLE else View.GONE
             } }
         }
         search.addTextChangedListener(object : TextWatcher {
             // Filters settings across categories as the user types.
-            override fun afterTextChanged(value: Editable?) { update(value.toString().trim()) }
+            override fun afterTextChanged(value: Editable?) { settingsQuery = value.toString(); update(settingsQuery.trim()) }
             // No work is needed before an edit.
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             // Filtering runs after the completed edit.
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
-        update("")
+        update(settingsQuery.trim())
     }
 
     // Shows the reference's separate theme selection page with immediate persistent selection.
@@ -771,7 +990,8 @@ class MainActivity : Activity() {
         content.addView(ui.label("Portrait: ${state.favouriteCount / 2} columns × 2 rows. Landscape: ${state.favouriteCount / 2} favourites per side.", 14f))
     }
 
-    // Opens optional external media controls without loading providers or taking ownership of their playback.
+    // Opens optional external media controls without loading providers or taking ownership of their
+    // playback.
     private fun externalPlayback() {
         begin("Other app playback")
         val panel = ExternalPlaybackPanel(this, ui)
@@ -779,7 +999,8 @@ class MainActivity : Activity() {
         panel.refresh()
     }
 
-    // Shows a refreshable hardware snapshot without registering background monitors or requiring root.
+    // Shows a refreshable hardware snapshot without registering background monitors or requiring
+    // root.
     private fun diagnostics() {
         begin("Device diagnostics")
         val content = ui.column()
@@ -829,7 +1050,8 @@ class MainActivity : Activity() {
             .putBoolean("active", guideActive).putInt("step", guideStep).apply()
     }
 
-    // Opens real interactive destinations; the guide never substitutes a demonstration for a saved choice.
+    // Opens real interactive destinations; the guide never substitutes a demonstration for a saved
+    // choice.
     private fun showGuideStep() {
         saveGuide()
         when (guideStep) {
@@ -840,7 +1062,8 @@ class MainActivity : Activity() {
         }
     }
 
-    // Mounts a compact, non-modal coach below the working launcher and refreshes permission status on return.
+    // Docks the coach beside the working screen in landscape, preserving real app selection and
+    // preview actions.
     private fun attachGuide() {
         guidePanel?.let { (it.parent as? ViewGroup)?.removeView(it) }
         guidePanel = null
@@ -860,7 +1083,7 @@ class MainActivity : Activity() {
             }
             1 -> {
                 title = "Choose your favourite apps"
-                detail = "Tap apps above to add or remove them. Your selection appears in the live preview. Drag icons to reorder; with a remote, select an icon to move it."
+                detail = "Select apps to add or remove them. Your selection appears in the live preview. Drag icons to reorder; with a remote, select an icon to move it."
                 action = "Choose apps"; perform = { drawer(editFavourites = true) }
             }
             2 -> {
@@ -872,7 +1095,7 @@ class MainActivity : Activity() {
             }
             3 -> {
                 title = if (read) "Keep your last page" else "Keep your last video frame"
-                detail = if (read) "Use Page previews above for occasional still pictures, not recording. Android 11 or newer is needed. Read a page, then return Home to see it."
+                detail = if (read) "Use Page previews for occasional still pictures, not recording. Android 11 or newer is needed. Read a page, then return Home to see it."
                     else if (PreviewCaptureService.active) "Screen capture is running. Watch a video, then return Home to see its last eligible frame. Protected video may appear black."
                     else "Choose Enable previews and approve Android's screen-sharing prompt. Only the latest eligible frame is kept locally. You can stop sharing anytime."
                 action = if (read) "Page settings" else if (PreviewCaptureService.active) "Show Home" else "Enable previews"
@@ -891,7 +1114,21 @@ class MainActivity : Activity() {
             onBack = { guideStep = (guideStep - 1).coerceAtLeast(0); showGuideStep() },
             onNext = { if (guideStep == 4) finishGuide() else { guideStep++; showGuideStep() } },
             onSkip = { finishGuide() })
-        root.addView(guidePanel, LinearLayout.LayoutParams(-1, -2))
+        val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val currentParent = root.parent as? ViewGroup ?: return
+        val shell = if (currentParent.tag == "launcherGuideShell") currentParent as LinearLayout else {
+            val index = currentParent.indexOfChild(root)
+            val oldParams = root.layoutParams
+            currentParent.removeView(root)
+            ui.column(wide).apply {
+                tag = "launcherGuideShell"
+                addView(root, if (wide) LinearLayout.LayoutParams(0, -1, 1f)
+                    else LinearLayout.LayoutParams(-1, 0, 1f))
+                currentParent.addView(this, index, oldParams)
+            }
+        }
+        shell.addView(guidePanel, if (wide) LinearLayout.LayoutParams(ui.dp(280), -1)
+            else LinearLayout.LayoutParams(-1, -2))
     }
 
     // Ends the optional tour without undoing the user's apps, theme or permission choices.
@@ -918,7 +1155,7 @@ class MainActivity : Activity() {
         val permitted = supported && service != null && service.serviceInfo.capabilities and
             android.accessibilityservice.AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT != 0
         content.addView(ui.label("Still page previews", 22f))
-        content.addView(ui.label("Save still pictures of your reading page without screen recording. Most readers update after page-change events. Meebook Read is checked every five seconds because it does not announce page turns. Pictures stay on this device.", 16f))
+        content.addView(ui.label("Save still pictures of your reading page without screen recording. Supported readers update after page-change events. Some readers need a periodic still-page check because they do not announce page turns. Pictures stay on this device.", 16f))
         if (!supported) content.addView(ui.label("Automatic still previews require Android 11 or newer. You can still open reading apps and use local PDF, CBZ and image pages.", 16f))
         else {
             content.addView(ui.setting("Page previews", "Occasional still screenshots", if (state.readPagePreviews && permitted) "On" else "Off") {
@@ -938,7 +1175,7 @@ class MainActivity : Activity() {
         })
         if (!state.followMediaApps) content.addView(ui.button("Choose fixed preview app") { choosingPreview = true; drawer() })
         content.addView(ui.button("Picture sizing: ${if (state.contentScale == "Fill") "Crop" else state.contentScale}") { chooseContentScale() })
-        content.addView(ui.label("Meebook Read previews can lag a few seconds. Other readers that do not report changes, or block screenshots, may keep an older preview. Continuous recording is never started automatically.", 14f))
+        content.addView(ui.label("Page previews can lag a few seconds. Readers that do not report changes, or block screenshots, may keep an older preview. Continuous recording is never started automatically.", 14f))
         content.addView(ui.button("Clear saved pictures") {
             PreviewCaptureService.clearSaved(this); readingPreviewSettings()
         })
@@ -998,17 +1235,28 @@ class MainActivity : Activity() {
     }
 
     // Starts a named recording from either remote setup or the recorded-actions manager.
-    private fun recordMacro() {
+    private fun recordMacro(coordinates: Boolean? = null) {
+            if (coordinates == null) {
+                AlertDialog.Builder(this).setTitle("How should this macro run?")
+                    .setItems(arrayOf("Match recorded screens · check the app before each touch", "Run on current screen · repeat touch positions without checking the app")) { _, index -> recordMacro(index == 1) }
+                    .setNegativeButton("Cancel", null).show()
+                return
+            }
             val service = RemoteActionService.instance
             if (service == null) explainAccessibility()
             else {
                 val name = EditText(this).apply { hint = "Action name"; setSingleLine(true) }
                 val touch = android.widget.CheckBox(this).apply { text = "Record taps and swipes"; isChecked = getSharedPreferences("remoteMacros", MODE_PRIVATE).getBoolean("touchRecording", true) }
-                val form = ui.column().apply { addView(name); addView(touch) }
+                if (coordinates) { touch.isChecked = true; touch.isEnabled = false }
+                val form = ui.column().apply {
+                    addView(ui.label(if (coordinates) "Run on current screen" else "Match recorded screens", 18f))
+                    addView(name); addView(touch)
+                }
                 val dialog = AlertDialog.Builder(this).setTitle("Record an action").setView(form)
-                    .setMessage("Start at Home and perform your steps. Each touch is repeated after you lift your finger. Ordinary typed text is saved locally in this macro; passwords are excluded. Stop saves the action; return here to assign a remote button. Turn off taps and swipes to record accessible buttons instead.")
+                    .setMessage("Name the macro, record your steps, then tap Stop to save. You can assign a remote button afterward. Touches replay after you lift your finger. Text is stored locally; passwords and protected screens are excluded. Current-screen mode repeats touch positions once without checking the app; text and image actions still need their targets.")
                     .setNegativeButton("Cancel", null).setPositiveButton("Record", null).create()
-                // Preserve the form on invalid names so the user can correct them without starting over.
+                // Preserve the form on invalid names so the user can correct them without starting
+                // over.
                 dialog.setOnShowListener {
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                         val title = name.text.toString().trim()
@@ -1028,7 +1276,7 @@ class MainActivity : Activity() {
                             dialog.dismiss()
                             home()
                             root.postDelayed({
-                                if (!isFinishing && RemoteActionService.instance?.beginRecording(title, touch = touch.isChecked) != true)
+                                if (!isFinishing && RemoteActionService.instance?.beginRecording(title, touch = touch.isChecked, coordinateReplay = coordinates) != true)
                                     message("Recording could not start. Check accessibility support.")
                             }, 450)
                         }
@@ -1043,32 +1291,48 @@ class MainActivity : Activity() {
         begin("Recorded actions")
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        content.addView(ui.label("Record up to 20 actions across apps, then assign the routine to a remote button. App changes count as steps. Use Record/stop from your remote at any time. Ordinary text entered while recording is saved locally; passwords and protected screens are excluded. App-starting recordings open their app automatically. Replay stops when a target is missing or ambiguous.", 17f))
-        val macroPrefs = getSharedPreferences("remoteMacros", MODE_PRIVATE)
-        macroPrefs.getString("lastTouchPause", null)?.let {
-            content.addView(ui.label("Last recording/playback pause: $it", 14f))
+        content.addView(ui.label("1. Create a macro   2. Test it   3. Assign a remote button", 18f))
+        content.addView(ui.primaryButton("Record a macro") { recordMacro() })
+        content.addView(ui.setting("Create from an image", "Choose a screenshot or video frame to identify a tap target") { ImageTapAction.choose(this) })
+        content.addView(ui.button("Stop & save recording") { RemoteActionService.instance?.stopRecording(); macroSettings() })
+        content.addView(ui.label(macroRunSummary(), 16f).apply { tag = "macroRunSummary" })
+        content.addView(ui.section("Saved macros"))
+        val saved = runCatching { org.json.JSONObject(getSharedPreferences("remoteMacros", MODE_PRIVATE).getString("macros", "{}") ?: "{}") }.getOrDefault(org.json.JSONObject())
+        RemoteActionService.savedMacroNames(this).forEach { name ->
+            val macro = saved.optJSONObject(name)
+            val behaviour = if (macro?.optBoolean("coordinateReplay") == true) "Run on current screen" else "Match recorded screens"
+            content.addView(ui.setting(name, "$behaviour · ${macro?.optJSONArray("steps")?.length() ?: 0} steps", "Manage") {
+                AlertDialog.Builder(this).setTitle(name).setItems(arrayOf("Edit steps & timing", "Run macro", "Assign remote button", "Delete macro")) { _, index ->
+                    when (index) {
+                        0 -> MacroEditor(this) { macroSettings() }.show(name)
+                        1 -> RemoteActionService.instance?.openForReplay(name) ?: explainAccessibility()
+                        2 -> remote.learn("Macro: $name") { macroSettings() }
+                        3 -> MacroEditor(this) { macroSettings() }.confirmDelete(name)
+                    }
+                }.setNegativeButton("Cancel", null).show()
+            })
         }
-        content.addView(ui.setting("Confirm before playback", "Off: a mapped button runs the saved action immediately", if (macroPrefs.getBoolean("confirmReplay", false)) "On" else "Off") {
+        content.addView(ui.section("Playback options"))
+        val macroPrefs = getSharedPreferences("remoteMacros", MODE_PRIVATE)
+        content.addView(ui.setting("Show taps", "Display touch markers while a macro runs", if (macroPrefs.getBoolean("showPlaybackTaps", false)) "On" else "Off") {
+            macroPrefs.edit().putBoolean("showPlaybackTaps", !macroPrefs.getBoolean("showPlaybackTaps", false)).apply(); macroSettings()
+        })
+        content.addView(ui.setting("Ask before running", "A mapped button asks for confirmation before replay", if (macroPrefs.getBoolean("confirmReplay", false)) "On" else "Off") {
             macroPrefs.edit().putBoolean("confirmReplay", !macroPrefs.getBoolean("confirmReplay", false)).apply(); macroSettings()
         })
-        content.addView(ui.button("Record new action") { recordMacro() })
-        if (!state.readerOnly) content.addView(ui.button("Add image-matched Wired Projection action") { ProjectionImageAction.choose(this) })
-        content.addView(ui.button("Map a Record/stop button") { remote.learn("Record/stop macro") { macroSettings() } })
-        content.addView(ui.button("Stop recording") { RemoteActionService.instance?.stopRecording(); macroSettings() })
-        RemoteActionService.savedMacroNames(this).forEach { name ->
-            content.addView(ui.section(name))
-            content.addView(ui.button("Edit action: $name") { MacroEditor(this) { macroSettings() }.show(name) })
-            content.addView(ui.button("Map button: $name") { remote.learn("Macro: $name") { macroSettings() } })
-            content.addView(ui.button("Run: $name") { RemoteActionService.instance?.openForReplay(name) ?: explainAccessibility() })
-            content.addView(ui.button("Delete: $name") { MacroEditor(this) { macroSettings() }.confirmDelete(name) })
+        content.addView(ui.setting("Record from a remote button", "Press once to start, again to stop and save") { remote.learn("Record/stop macro") { macroSettings() } })
+        macroPrefs.getString("lastTouchPause", null)?.let { reason ->
+            content.addView(ui.setting("Last playback or recording issue", "Show details") { message(reason) })
         }
+        content.addView(ui.button("Return Home") { home() })
     }
 
     private var drawerSwipeY = 0f
     private var drawerSwipeX = 0f
     private var drawerSwipeEligible = false
 
-    // Opens from Home shortcuts or closes from the drawer handle using actual inset-aware view bounds.
+    // Opens from Home shortcuts or closes from the drawer handle using actual inset-aware view
+    // bounds.
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         if (screen == "Home" || screen == "Apps") {
             when (event.actionMasked) {
@@ -1101,7 +1365,8 @@ class MainActivity : Activity() {
         if (::state.isInitialized && state.readerOnly) return super.dispatchKeyEvent(event)
         if (!::remote.isInitialized || RemoteControls.learning) return super.dispatchKeyEvent(event)
         RemoteControls.observeKey(event)
-        // On the mapping page non-navigation keys are diagnostic: do not lock, leave or run a macro.
+        // On the mapping page non-navigation keys are diagnostic: do not lock, leave or run a
+        // macro.
         if (screen == "Remote buttons" && event.device?.isVirtual == false) {
             val assigned = remote.action(event)
             val navigation = if (assigned != null) assigned in setOf("Up", "Down", "Left", "Right", "Select")
@@ -1168,8 +1433,9 @@ class MainActivity : Activity() {
     private fun navigateBack() {
         RemoteActionService.instance?.recordLauncherNavigation("back")
         when (screen) {
-            "Settings" -> if (settingsCategory != null) settings(null) else drawer()
+            "Settings" -> if (settingsQuery.isNotEmpty()) { settingsQuery = ""; settings() } else if (settingsCategory != null) settings(null) else drawer()
             "Apps", "Library" -> home()
+            "Remote buttons", "Recorded actions" -> settings("Remote & macros")
             "Home" -> Unit
             else -> settings()
         }
@@ -1183,8 +1449,14 @@ class MainActivity : Activity() {
         }
     }
 
+    // Physical orientation changes apply only while this launcher is the active screen.
+    override fun onPause() { phoneRotation.stop(); super.onPause() }
+
     // Notices recordings saved while this activity is already visible.
     private val macroSavedListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "lastRunStatus") root.post {
+            if (!isFinishing) root.findViewWithTag<android.widget.TextView>("macroRunSummary")?.text = macroRunSummary()
+        }
         if (key == "pendingAssignment") root.post { if (!isFinishing && hasWindowFocus()) offerSavedMacro() }
     }
 
@@ -1197,12 +1469,14 @@ class MainActivity : Activity() {
     // Reloads the newest captured external frame after the source app returns to Home.
     override fun onResume() {
         super.onResume()
+        phoneRotation.start()
         ExternalWatchPlayback.cancelResume()
         if (!::state.isInitialized) return
         if (state.mode == "Read") stopService(Intent(this, PreviewCaptureService::class.java))
-        RemoteActionService.instance?.onLauncherResume(state.orientation == "Landscape" ||
-            (state.orientation == "Mode default" && state.mode == "Watch" && state.theme != "E-paper"))
-        if (screen == "Welcome") introduction(guideStep)
+        RemoteActionService.instance?.onLauncherResume(!state.automaticPhoneMode && (state.orientation == "Landscape" ||
+            (state.orientation == "Mode default" && state.mode == "Watch" && state.theme != "E-paper")))
+        if (screen == "Status & repair") statusSettings()
+        else if (screen == "Welcome") introduction(guideStep)
         else if (screen == "Home" && state.viewerSource == "App") home()
         attachGuide()
         offerSavedMacro()
@@ -1231,6 +1505,7 @@ class MainActivity : Activity() {
 
     // Releases media resources and pending folder work when the activity is destroyed.
     override fun onDestroy() {
+        phoneRotation.stop()
         remote.closeLearning()
         thermal.stop()
         unregisterReceiver(screenReceiver)

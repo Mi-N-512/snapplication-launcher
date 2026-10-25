@@ -4,13 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /*
- * Checks file routing at the boundary between user-granted folders and reading apps.
- * Related classes: ReadingFormats, LocalLibrary, MainActivity and ReaderPanel.
- * UI: No test UI; protects Library recognition and Open book routing.
- * Edit here when adding formats, especially when external formats resemble ZIPs or images.
- */
+Checks file routing at the boundary between user-granted folders and reading apps. Used by or used
+with: ReadingFormats, LocalLibrary, MainActivity and ReaderPanel. Screen controls: No test UI;
+protects Library recognition and Open book routing. Edit here when adding formats, especially when
+external formats resemble ZIPs or images.
+*/
 class ReadingFormatsTest {
-    // Exercises the decoder selector consumed by ReaderPanel, including providers without useful filenames/MIME.
+    // Exercises the decoder selector consumed by ReaderPanel, including providers without useful
+    // filenames/MIME.
     @Test fun decoderMatchesGenericAndMimeOnlyFiles() {
         assertEquals(ReadingFormats.InlineKind.IMAGE, ReadingFormats.inlineKind("page.PNG", "application/octet-stream"))
         assertEquals(ReadingFormats.InlineKind.COMIC, ReadingFormats.inlineKind("opaque-id", "application/x-cbz"))

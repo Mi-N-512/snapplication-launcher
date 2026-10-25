@@ -12,14 +12,23 @@ import android.view.InputDevice
 import java.util.Locale
 
 /*
- * Reads public Android hardware information for MainActivity; does not alter power, display or remote settings.
- *
- * Related classes: MainActivity displays the snapshot returned by this helper.
- * UI: No controls of its own; supplies text for the device/display information screen.
- * Edit or extend: Add public hardware diagnostics here; this does not implement mirroring or control display power.
- */
+Reads public Android hardware information for MainActivity; does not alter power, display or remote
+settings.
+
+This class is a helper and does not inherit from another launcher class.
+
+context provides access to Android services. snapshot calls battery, thermal, displays and inputs,
+then joins their results into readable text. MainActivity asks for a fresh snapshot when it opens
+the diagnostics page. This helper does not store a history or control the connected hardware.
+
+Used by or used with: MainActivity displays the snapshot returned by this helper. Screen controls:
+No controls of its own; supplies text for the device/display information screen. Changes belong
+here: Add public hardware diagnostics here; this does not implement mirroring or control display
+power.
+*/
 class DeviceDiagnostics(private val context: Context) {
-    // Captures current values on demand so unplugged displays and remote devices disappear after refresh.
+    // Captures current values on demand so unplugged displays and remote devices disappear after
+    // refresh.
     fun snapshot(): String = buildString {
         appendLine("${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}")
@@ -35,7 +44,8 @@ class DeviceDiagnostics(private val context: Context) {
         appendLine(inputs())
     }
 
-    // Distinguishes unavailable battery data from a real zero reading; temperature is the battery sensor only.
+    // Distinguishes unavailable battery data from a real zero reading; temperature is the battery
+    // sensor only.
     private fun battery(): String = runCatching {
         val data = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             ?: return "Battery data unavailable"
@@ -56,7 +66,8 @@ class DeviceDiagnostics(private val context: Context) {
         "$percent · $charge\n$temperature"
     }.getOrDefault("Battery data unavailable")
 
-    // Reports Android's thermal assessment where supported without interpreting missing support as a cool device.
+    // Reports Android's thermal assessment where supported without interpreting missing support as
+    // a cool device.
     private fun thermal(): String {
         if (Build.VERSION.SDK_INT < 29) return "System thermal status requires Android 10 or newer."
         return runCatching {
@@ -80,7 +91,8 @@ class DeviceDiagnostics(private val context: Context) {
         }.getOrDefault("System thermal status unavailable")
     }
 
-    // Lists each app-accessible display's current mode and advertised modes, without claiming HDMI or CEC support.
+    // Lists each app-accessible display's current mode and advertised modes, without claiming HDMI
+    // or CEC support.
     private fun displays(): String = runCatching {
         val manager = context.getSystemService(DisplayManager::class.java)
         manager?.displays?.joinToString("\n\n") { display ->
@@ -93,7 +105,8 @@ class DeviceDiagnostics(private val context: Context) {
         }?.ifEmpty { "No displays reported" } ?: "Display data unavailable"
     }.getOrDefault("Display data unavailable")
 
-    // Lists Android input sources and virtual-device markers instead of guessing a remote's hardware model.
+    // Lists Android input sources and virtual-device markers instead of guessing a remote's
+    // hardware model.
     private fun inputs(): String = runCatching {
         InputDevice.getDeviceIds().toList().mapNotNull { InputDevice.getDevice(it) }.joinToString("\n") { device ->
             val sources = buildList {

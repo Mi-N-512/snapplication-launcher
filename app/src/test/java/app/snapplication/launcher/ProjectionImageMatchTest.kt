@@ -5,11 +5,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /*
- * Exercises the exact pixel matcher used before the visual projection action can tap.
- * Synthetic dialog-like grids contain text and button detail without storing a user's screen.
- * ProjectionImageRunner's physical capture and one-shot dispatch need additional device checks.
- * Add mismatching layouts and local button changes here when adjusting comparison tolerances.
- */
+Exercises the exact pixel matcher used before the visual projection action can tap. Synthetic
+dialog-like grids contain text and button detail without storing a user's screen.
+ProjectionImageRunner's physical capture and one-shot dispatch need additional device checks. Add
+mismatching layouts and local button changes here when adjusting comparison tolerances.
+*/
 class ProjectionImageMatchTest {
     private fun reference() = IntArray(ProjectionImageMatch.WIDTH * ProjectionImageMatch.HEIGHT) { i ->
         val x = i % ProjectionImageMatch.WIDTH; val y = i / ProjectionImageMatch.WIDTH

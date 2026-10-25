@@ -14,14 +14,22 @@ import java.util.concurrent.Executors
 import java.util.zip.ZipFile
 
 /*
- * Renders local PDFs, CBZ comics and images inside MainActivity; LauncherState stores the current page.
- *
- * Related classes: MainActivity supplies LibraryItem content; LauncherState stores progress; LauncherUi styles
- * controls.
- * UI: Embedded PDF, CBZ and image pages with navigation and fit behaviour.
- * Edit or extend: Add supported local rendering formats here. EPUB currently opens an external reader; it is not
- * rendered by this panel.
- */
+Renders local PDFs, CBZ comics and images inside MainActivity; LauncherState stores the current
+page.
+
+This class is a helper and does not inherit from another launcher class.
+
+item is the selected document; page and count track its current page and page count. bitmap holds
+the displayed image. worker loads pages away from the screen thread, and generation prevents an
+older load from replacing a newer page. cachedUri and cachedFile reuse the local copy needed by the
+decoder. MainActivity creates this panel and calls load; move changes pages; close releases its
+worker and image.
+
+Used by or used with: MainActivity supplies LibraryItem content; LauncherState stores progress;
+LauncherUi styles controls. Screen controls: Embedded PDF, CBZ and image pages with navigation and
+fit behaviour. Changes belong here: Add supported local rendering formats here. EPUB currently opens
+an external reader; it is not rendered by this panel.
+*/
 class ReaderPanel(private val context: Context, private val state: LauncherState, private val ui: LauncherUi) {
     val view = ui.column()
     private val image = ImageView(context)
@@ -63,7 +71,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         state.remember(selection); render()
     }
 
-    // Moves within document bounds; every confirmed page change persists immediately.
+    // Moves within document bounds; every confirmed page change saves immediately.
     fun move(delta: Int) {
         if (!ready) return
         page = (page + delta).coerceIn(0, (count - 1).coerceAtLeast(0))
@@ -95,7 +103,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         }
     }
 
-    // Uses bounded temporary copies for seekable PDF/ZIP access and releases every descriptor.
+    // Uses limited temporary copies for seekable PDF/ZIP access and releases every descriptor.
     private fun decode(selection: LibraryItem, requestedPage: Int): Pair<Bitmap, Int> {
         val uri = Uri.parse(selection.uri)
         val kind = requireNotNull(ReadingFormats.inlineKind(selection.title, selection.mime))
@@ -146,7 +154,8 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         }
     }
 
-    // Caps decompressed input size before allocating an image to avoid archive expansion exhaustion.
+    // Caps decompressed input size before allocating an image to avoid archive expansion
+    // exhaustion.
     private fun java.io.InputStream.readBytesBounded(limit: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
         while (true) {
@@ -156,7 +165,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         return out.toByteArray()
     }
 
-    // Samples large images before decoding so comic pages cannot allocate unbounded bitmaps.
+    // Samples large images before decoding so comic pages cannot allocate unlimited bitmaps.
     private fun decodeImage(data: ByteArray): Bitmap {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, options)

@@ -3,7 +3,9 @@ package app.snapplication.launcher
 import org.junit.Assert.*
 import org.junit.Test
 
-/* Checks the external book-path boundary shared by Meebook resume and its metadata provider. */
+/*
+Checks the external book-path boundary shared by Meebook resume and its metadata provider.
+*/
 class ReaderBookPathTest {
     // Both observed storage types must resume without treating removable storage as internal.
     @Test fun acceptsInternalAndRemovableBooks() {

@@ -11,13 +11,20 @@ import android.provider.Settings
 import android.widget.LinearLayout
 
 /*
- * Builds optional controls for other apps' active media sessions; hosted by MainActivity using MediaAccessService
- * access.
- *
- * Related classes: MainActivity, MediaAccessService and LauncherUi.
- * UI: Media access explanation, refresh button, session titles and supported transport controls.
- * Edit or extend: Add controls only when the other app advertises the corresponding media-session action.
- */
+Builds optional controls for other apps' active media sessions; hosted by MainActivity using
+MediaAccessService access.
+
+This class is a helper and does not inherit from another launcher class.
+
+sessions asks Android for media players that the user has allowed the launcher to see. listener
+identifies the MediaAccessService permission, and view holds the visible controls. refresh reads the
+current players and adds only the commands each player supports. MainActivity creates this panel;
+MediaAccessService supplies the permission identity, not a parent class.
+
+Used by or used with: MainActivity, MediaAccessService and LauncherUi. Screen controls: Media access
+explanation, refresh button, session titles and supported transport controls. Changes belong here:
+Add controls only when the other app advertises the corresponding media-session action.
+*/
 class ExternalPlaybackPanel(private val activity: Activity, private val ui: LauncherUi) {
     val view: LinearLayout = ui.column()
     private val sessions = activity.getSystemService(MediaSessionManager::class.java)
@@ -40,7 +47,8 @@ class ExternalPlaybackPanel(private val activity: Activity, private val ui: Laun
         }
     }
 
-    // Explains Android's broad permission before opening its opt-in settings; never grants access automatically.
+    // Explains Android's broad permission before opening its opt-in settings; never grants access
+    // automatically.
     fun explainAccess() {
         AlertDialog.Builder(activity).setTitle("Optional media access")
             .setMessage("Android requires notification access to list other apps' media sessions. This is a broad system permission. Snapplication uses media-session information for these controls; it does not read, save or send notification messages. You can turn access off in the same Android settings screen.")
@@ -79,7 +87,8 @@ class ExternalPlaybackPanel(private val activity: Activity, private val ui: Laun
         }
     }
 
-    // Revalidates both access and the requested command before sending a user-initiated transport request.
+    // Revalidates both access and the requested command before sending a user-initiated transport
+    // request.
     private fun addControl(controller: MediaController, actions: Long, flag: Long, title: String,
                            request: (MediaController) -> Unit) {
         if (actions and flag == 0L) return

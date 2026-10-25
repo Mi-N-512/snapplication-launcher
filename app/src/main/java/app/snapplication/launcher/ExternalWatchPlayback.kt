@@ -10,13 +10,21 @@ import android.os.Handler
 import android.os.Looper
 
 /*
- * Resumes a retained external player's session after ExternalPreview brings its task forward.
- * Related classes: ExternalPreview supplies the explicit Play request; MediaAccessService supplies
- * user-approved session access; RemoteActionService verifies the foreground app and CloudStream controls.
- * UI: No screen of its own. Completion is applied on the next explicit Play, never while browsing Home.
- * Edit here to add supported transport integrations. Never restart tasks, retain stream URLs, or claim
- * ownership of another application's buffer. Retries expire and cannot follow the user to another app.
- */
+Resumes a retained external player's session after ExternalPreview brings its task forward. Used by
+or used with: ExternalPreview supplies the explicit Play request; MediaAccessService supplies
+user-approved session access; RemoteActionService verifies the foreground app and CloudStream
+controls. Screen controls: No screen of its own. Completion is applied on the next explicit Play,
+never while browsing Home. Edit here to add supported transport integrations. Never restart tasks,
+retain stream URLs, or claim ownership of another application's buffer. Retries expire and cannot
+follow the user to another app.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+handler schedules short resume attempts. generation cancels old attempts when the user leaves, and
+advanceGuard prevents repeated Next commands. observed and observer track changes from the selected
+media player. resume finds that player, checks whether the episode is complete, then requests Play
+or Next. ExternalPreview calls this shared helper; the other app still owns its video and buffer.
+*/
 object ExternalWatchPlayback {
     private val handler = Handler(Looper.getMainLooper())
     private var generation = 0
@@ -38,7 +46,8 @@ object ExternalWatchPlayback {
         observed?.let { old -> observer?.let { old.unregisterCallback(it) } }
         advanceGuard.sent(previousIdentity, position)
         val callback = object : MediaController.Callback() {
-            // A new starting position rearms advancement even when the series title is unchanged.
+            // A new starting position allows another advancement even when the series title is
+            // unchanged.
             override fun onPlaybackStateChanged(state: PlaybackState?) {
                 if (observer === this && state != null && !advanceGuard.blocked(identity(controller), state.position)) {
                     controller.unregisterCallback(this); observer = null; observed = null

@@ -9,11 +9,12 @@ android {
         applicationId = "app.snapplication.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1-dev"
+        versionCode = 99
+        versionName = "0.99"
         testInstrumentationRunner = "app.snapplication.launcher.RemoteLearningLifecycleTest"
     }
-    // A local, ignored key keeps development updates compatible across Android Studio and test tooling.
+    // A local, ignored key keeps development updates compatible across Android Studio and test
+    // tooling.
     signingConfigs.getByName("debug") {
         val localDebugKey = rootProject.file(".local/debug.keystore")
         if (localDebugKey.exists()) storeFile = localDebugKey
@@ -22,7 +23,8 @@ android {
     flavorDimensions += "edition"
     productFlavors {
         create("universal") {
-            // The shared manifest opens as Universal by default; Reader and TV remain separate editions.
+            // The shared manifest opens as Universal by default; Reader and TV remain separate
+            // editions.
             isDefault = true
             dimension = "edition"
             resValue("string", "app_name", "Snapplication")

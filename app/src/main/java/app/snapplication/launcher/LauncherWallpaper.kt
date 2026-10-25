@@ -14,16 +14,23 @@ import android.widget.ImageView
 import java.util.concurrent.Executors
 
 /*
- * Places a user-selected wallpaper behind MainActivity; portrait and landscape use centre cropping without
- * stretching.
- *
- * Related classes: MainActivity wraps its page content with this wallpaper layer.
- * UI: A non-interactive image behind foreground controls, cropped to the measured screen.
- * Edit or extend: Edit image decoding, EXIF handling and crop behaviour here; wallpaper selection remains in
- * MainActivity and URI preferences.
- */
+Places a user-selected wallpaper behind MainActivity; portrait and landscape use centre cropping
+without stretching.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+wrap puts the page content above an ImageView. decodeImage reads the selected picture and its
+orientation; systemImage tries the Android wallpaper when no custom image is selected. MainActivity
+calls this shared helper each time it builds a page. The returned view contains the page as a child
+view; that is a layout relationship, not class inheritance.
+
+Used by or used with: MainActivity wraps its page content with this wallpaper layer. Screen
+controls: A non-interactive image behind foreground controls, cropped to the measured screen.
+Changes belong here: Edit image decoding, EXIF handling and crop behaviour here; wallpaper selection
+remains in MainActivity and URI preferences.
+*/
 object LauncherWallpaper {
-    // Loads a bounded image off the UI thread and releases it when this screen is detached.
+    // Loads a limited image off the UI thread and releases it when this screen is detached.
     fun wrap(activity: Activity, content: View): View {
         val saved = activity.getSharedPreferences("launcher", 0).getString("wallpaperUri", null)
         val image = ImageView(activity).apply {
@@ -60,7 +67,8 @@ object LauncherWallpaper {
         return shell
     }
 
-    // Reads a chosen image with its camera rotation, then lets the measured screen crop it without stretching.
+    // Reads a chosen image with its camera rotation, then lets the measured screen crop it without
+    // stretching.
     private fun decodeImage(activity: Activity, uri: Uri): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         activity.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -92,7 +100,8 @@ object LauncherWallpaper {
         } catch (error: Exception) { decoded.recycle(); throw error }
     }
 
-    // Crops a readable static system wallpaper locally; protected or live wallpapers remain Android-owned.
+    // Crops a readable static system wallpaper locally; protected or live wallpapers remain
+    // Android-owned.
     @android.annotation.SuppressLint("MissingPermission") // Optional read; denial is caught by the caller without requesting broad storage access.
     @Suppress("DEPRECATION")
     private fun systemImage(activity: Activity): Bitmap? {

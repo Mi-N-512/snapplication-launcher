@@ -14,16 +14,25 @@ import java.io.File
 import java.io.ByteArrayOutputStream
 
 /*
- * Keeps one local frame per Read/Watch app after explicit screen-sharing consent; MainActivity owns setup and
- * ExternalPreview displays it.
- *
- * Related classes: MainActivity requests consent; RemoteActionService supplies eligible bounds; ExternalPreview
- * reads saved frames. ProjectionImageRunner can request one fresh memory-only frame during an explicit visual
- * action. That comparison does not save a screenshot or change which media previews are cached.
- * UI: Foreground capture notification; no full page of its own.
- * Edit or extend: Edit bounded capture, per-app caching and lifecycle cleanup here. New modes require explicit
- * eligibility rules, not unrestricted capture.
- */
+Saves the latest eligible Watch frame locally after the user approves Android screen sharing. It
+stops in Read mode, where ReadingSnapshots supplies still page pictures.
+
+PreviewCaptureService is a child of Android's Service. Android uses that parent to start and stop
+capture separately from the visible activity.
+
+projection is the screen-sharing session approved by the user. display sends its frames to reader,
+and handler processes them on thread. stopped and sessionEpoch stop old work from saving pictures
+after capture ends or the cache is cleared. MainActivity starts this Android service after consent.
+RemoteActionService identifies eligible video bounds, and ExternalPreview shows the saved picture.
+Reading pages use ReadingSnapshots instead.
+
+Used by or used with: MainActivity requests consent; RemoteActionService supplies eligible bounds;
+ExternalPreview reads saved frames. ProjectionImageRunner can request one fresh memory-only frame
+during an explicit visual action. That comparison does not save a screenshot or change which media
+previews are cached. Screen controls: Foreground capture notification; no full page of its own.
+Changes belong here: Edit limited capture, per-app caching and lifecycle cleanup here. New modes
+require explicit eligibility rules, not unrestricted capture.
+*/
 class PreviewCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
@@ -38,7 +47,8 @@ class PreviewCaptureService : Service() {
     private var captureHeight = 0
     private var eligibleSince = Long.MIN_VALUE
     private var visualFrame: ((Bitmap) -> Unit)? = null
-    // Requests one fresh frame after eligibility settles, including paused video and static book pages.
+    // Requests one fresh frame after eligibility settles, including paused video and static book
+    // pages.
     private val eligibilityRefresh = object : Runnable {
         override fun run() {
             if (stopped) return
@@ -57,7 +67,8 @@ class PreviewCaptureService : Service() {
         override fun onDisplayAdded(displayId: Int) {}
         // Removed secondary displays do not change this projection session.
         override fun onDisplayRemoved(displayId: Int) {}
-        // Older Android versions report rotation through the default display rather than projection callbacks.
+        // Older Android versions report rotation through the default display rather than projection
+        // callbacks.
         override fun onDisplayChanged(displayId: Int) {
             if (displayId == android.view.Display.DEFAULT_DISPLAY && Build.VERSION.SDK_INT < 34) {
                 val metrics = displayMetrics()
@@ -72,7 +83,8 @@ class PreviewCaptureService : Service() {
         sessionEpoch = synchronized(cacheLock) { cacheEpoch }
     }
 
-    // Starts a visible, user-stoppable capture session; Android never restarts it without new consent.
+    // Starts a visible, user-stoppable capture session; Android never restarts it without new
+    // consent.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (LauncherState(this).mode == "Read") { stopSelf(); return START_NOT_STICKY }
         if (intent?.action == "STOP") {
@@ -100,7 +112,8 @@ class PreviewCaptureService : Service() {
             projection!!.registerCallback(object : MediaProjection.Callback() {
                 // Releases capture immediately when Android or the user revokes screen sharing.
                 override fun onStop() { stopped = true; stopSelf() }
-                // Resizes the same virtual display for rotation and Android 14 app-only capture bounds.
+                // Resizes the same virtual display for rotation and Android 14 app-only capture
+                // bounds.
                 override fun onCapturedContentResize(width: Int, height: Int) {
                     resizeCapture(width, height, displayMetrics().densityDpi)
                 }
@@ -126,7 +139,8 @@ class PreviewCaptureService : Service() {
         (getSystemService(WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay.getRealMetrics(it)
     }
 
-    // Replaces only the image surface and dimensions; the consent token creates one virtual display only.
+    // Replaces only the image surface and dimensions; the consent token creates one virtual display
+    // only.
     private fun resizeCapture(sourceWidth: Int, sourceHeight: Int, density: Int) {
         val current = display ?: return
         if (stopped || sourceWidth <= 0 || sourceHeight <= 0) return
@@ -148,8 +162,11 @@ class PreviewCaptureService : Service() {
         }.onFailure { stopped = true; stopSelf() }
     }
 
-    /* Replaces the buffer queue after a foreground eligibility change. A new surface cannot deliver
-     * images queued while another app or player menu was visible; image timestamps need no clock assumption. */
+    /*
+    Replaces the buffer queue after a foreground eligibility change. A new surface cannot deliver
+    images queued while another app or player menu was visible; image timestamps need no clock
+    assumption.
+    */
     private fun refreshEligibleSurface(since: Long) {
         val current = display ?: return
         val previous = reader ?: return
@@ -160,12 +177,14 @@ class PreviewCaptureService : Service() {
             reader = replacement
             eligibleSince = since
             previous.setOnImageAvailableListener(null, null)
-            // The caller still owns one acquired image; let its use block close before closing its reader.
+            // The caller still owns one acquired image; let its use block close before closing its
+            // reader.
             handler.post { previous.close() }
         }.onFailure { replacement.close(); stopped = true; stopSelf() }
     }
 
-    // Services explicit memory-only visual requests first, otherwise saves only eligible media; locked screens are discarded.
+    // Services explicit memory-only visual requests first, otherwise saves only eligible media;
+    // locked screens are discarded.
     private fun saveEligibleFrame(source: ImageReader) {
         if (source !== reader || stopped) return
         val frame = runCatching { source.acquireLatestImage() }.getOrNull() ?: return
@@ -174,7 +193,8 @@ class PreviewCaptureService : Service() {
             if (stopped) return
             val power = getSystemService(PowerManager::class.java)
             if (!power.isInteractive || getSystemService(KeyguardManager::class.java).isKeyguardLocked) return
-            // An explicit image-action request compares one fresh frame in memory; it never enters the preview cache.
+            // An explicit image-action request compares one fresh frame in memory; it never enters
+            // the preview cache.
             val visual = visualFrame
             if (visual != null) {
                 visualFrame = null
@@ -233,7 +253,8 @@ class PreviewCaptureService : Service() {
                         .putLong("capturedAt:$mode:$target", System.currentTimeMillis())
                         .putInt("cleanPolicy:$mode:$target", 2).commit()
                     // Home reads the identity under this same lock. A target changes only after its
-                    // image exists; retaining each app's frame also makes manual switching reliable.
+                    // image exists; retaining each app's frame also makes manual switching
+                    // reliable.
                     if (latest.followMediaApps) latest.rememberApp(entry.flattenToString())
                 }
             }
@@ -242,7 +263,8 @@ class PreviewCaptureService : Service() {
         }
     }
 
-    // Stops projection and discards queued images without deleting the intentionally saved last frame.
+    // Stops projection and discards queued images without deleting the intentionally saved last
+    // frame.
     override fun onDestroy() {
         active = false; stopped = true
         visualInstance = null
@@ -257,12 +279,13 @@ class PreviewCaptureService : Service() {
     // Capture is started by an explicit intent and exposes no binder interface.
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // Reports only the current process's live session; never persists consent tokens.
+    // Reports only the current process's live session; never saves consent tokens.
     companion object {
         @Volatile var active = false; private set
         @Volatile private var visualInstance: PreviewCaptureService? = null
 
-        // Replaces the queue before sampling, so an old video frame can never satisfy an image action.
+        // Replaces the queue before sampling, so an old video frame can never satisfy an image
+        // action.
         internal fun requestVisualFrame(compare: (Bitmap) -> Unit): Boolean {
             val service = visualInstance ?: return false
             if (!active || service.stopped) return false
@@ -275,7 +298,8 @@ class PreviewCaptureService : Service() {
             return true
         }
 
-        // Cancels a pending visual sample without affecting ordinary media previews or their consent session.
+        // Cancels a pending visual sample without affecting ordinary media previews or their
+        // consent session.
         internal fun cancelVisualFrame() {
             visualInstance?.let { service -> service.handler.post { service.visualFrame = null } }
         }
@@ -286,7 +310,8 @@ class PreviewCaptureService : Service() {
         internal fun frameFile(context: Context, mode: String, owner: String): File =
             File(context.filesDir, "preview-${if (mode == "Read") "Read" else "Watch"}-${owner.replace(Regex("[^A-Za-z0-9_.]"), "_")}.jpg")
 
-        // Cancels every pending cache write before removing images, AtomicFile sidecars and associated identities.
+        // Cancels every pending cache write before removing images, AtomicFile sidecars and
+        // associated identities.
         fun clearSaved(context: Context) {
             synchronized(cacheLock) {
                 cacheEpoch++

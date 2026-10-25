@@ -8,13 +8,21 @@ import android.net.Uri
 import android.os.Binder
 
 /*
- * Hands Meebook Read its own last captured book location through a temporary content URI.
- * Read's verified public opener queries the legacy _data column, then reads the book using
- * its own storage access. This provider never opens files or grants access to book contents.
- * Related: MeebookReaderBridge creates the URI; ReadingSnapshots commits it with the page;
- * ExternalPreview grants Read temporary metadata access when the user chooses Continue.
- * UI: None. Keep access limited to the verified vendor and the current saved page identity.
- */
+Hands Meebook Read its own last captured book location through a temporary content URI. Read's
+verified public opener queries the legacy _data column, then reads the book using its own storage
+access. This provider never opens files or grants access to book contents. Related:
+MeebookReaderBridge creates the URI; ReadingSnapshots commits it with the page; ExternalPreview
+grants Read temporary metadata access when the user chooses Continue. Screen controls: None. Keep
+access limited to the verified vendor and the current saved page identity.
+
+ReaderBookProvider is a child of Android's ContentProvider. Android routes content URI queries to
+its overridden functions.
+
+Android calls query when the verified reader follows the saved content URI. query checks the caller
+and saved book identity, then returns metadata about the book location. MeebookReaderBridge creates
+that URI and ExternalPreview grants temporary access to it. This provider has no changing instance
+fields, cannot open book contents, and rejects insert, update and delete requests.
+*/
 class ReaderBookProvider : ContentProvider() {
     // Initialises no resources; the provider only exposes the current resume metadata.
     override fun onCreate() = true
@@ -42,7 +50,8 @@ class ReaderBookProvider : ContentProvider() {
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = throw UnsupportedOperationException()
 
     companion object {
-        // Builds a non-document URI for the vendor's verified _data lookup, including SD-card books.
+        // Builds a non-document URI for the vendor's verified _data lookup, including SD-card
+        // books.
         fun bookUri(applicationId: String, path: String): Uri? = if (!ReaderBookPath.valid(path)) null else
             Uri.Builder().scheme("content").authority("$applicationId.readerbook").appendPath("book").appendPath(path).build()
 

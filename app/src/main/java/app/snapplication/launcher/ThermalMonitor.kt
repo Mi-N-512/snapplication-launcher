@@ -7,13 +7,20 @@ import android.os.Looper
 import android.os.PowerManager
 
 /*
- * Samples Android thermal status while MainActivity is visible and sends notice text to its banner.
- *
- * Related classes: MainActivity starts/stops polling; ThermalNotice converts the reported state to text.
- * UI: No controls; updates the launcher thermal notice through a callback.
- * Edit or extend: Edit polling cadence and lifecycle here. Future game-related thermal notices must report actual
- * Android state, not claim cooling controls.
- */
+Samples Android thermal status while MainActivity is visible and sends notice text to its banner.
+
+This class is a helper and does not inherit from another launcher class.
+
+power reads Android thermal status. running controls polling, handler schedules sample, and
+lastNotice prevents repeated identical messages. MainActivity starts this helper while visible and
+stops it when leaving the screen. sample asks ThermalNotice for wording and passes changed text to
+onNotice, which updates the banner.
+
+Used by or used with: MainActivity starts/stops polling; ThermalNotice converts the reported state
+to text. Screen controls: No controls; updates the launcher thermal notice through a callback.
+Changes belong here: Edit polling cadence and lifecycle here. Future game-related thermal notices
+must report actual Android state, not claim cooling controls.
+*/
 class ThermalMonitor(context: Context, private val onNotice: (String?) -> Unit) {
     private val power = context.getSystemService(PowerManager::class.java)
     private val handler = Handler(Looper.getMainLooper())
@@ -31,7 +38,8 @@ class ThermalMonitor(context: Context, private val onNotice: (String?) -> Unit) 
         }
     }
 
-    // Begins with an immediate sample; repeated lifecycle starts cannot create duplicate polling loops.
+    // Begins with an immediate sample; repeated lifecycle starts cannot create duplicate polling
+    // loops.
     fun start() {
         if (running) return
         running = true

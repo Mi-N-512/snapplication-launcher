@@ -1,13 +1,20 @@
 package app.snapplication.launcher
 
 /*
- * Compares numeric filename chunks for ReaderPanel and LocalLibrary without integer overflow.
- *
- * Related classes: LocalLibrary and ReaderPanel use the comparator; NaturalOrderTest covers numeric filenames.
- * UI: No UI; controls the order of file and page names.
- * Edit or extend: Edit numeric/text comparison rules here and add boundary tests so large chapter numbers remain
- * correctly ordered.
- */
+Compares numeric filename chunks for ReaderPanel and LocalLibrary without integer overflow.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+compare receives two file names. It compares text normally and compares runs of digits by their
+numeric size without converting huge numbers to integers. LocalLibrary uses it for file order and
+ReaderPanel uses it for comic page order. Comparator<String> is an interface contract: this object
+supplies its compare function rather than inheriting a user interface.
+
+Used by or used with: LocalLibrary and ReaderPanel use the comparator; NaturalOrderTest covers
+numeric filenames. Screen controls: none; controls the order of file and page names. Changes belong
+here: Edit numeric/text comparison rules here and add boundary tests so large chapter numbers remain
+correctly ordered.
+*/
 object NaturalOrder : Comparator<String> {
     // Sorts chapter2 before chapter10 while using text comparison for nonnumeric chunks.
     override fun compare(a: String, b: String): Int {

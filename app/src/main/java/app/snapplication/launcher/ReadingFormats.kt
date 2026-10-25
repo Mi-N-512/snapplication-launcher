@@ -1,14 +1,21 @@
 package app.snapplication.launcher
 
 /*
- * Identifies book files offered by a user-selected folder and distinguishes the formats
- * our small reader can draw from formats that need another installed reading application.
- * Related classes: LocalLibrary lists recognised files; MainActivity chooses an external
- * viewer or ReaderPanel. LibraryItem retains the source URI and document name.
- * UI: No controls; this determines which books appear in Library and how Open book routes.
- * Edit or extend: Add a format with its real MIME type here; adding recognition does not
- * add a parser or guarantee that the device has an application which can read that format.
- */
+Identifies book files offered by a user-selected folder and distinguishes the formats our small
+reader can draw from formats that need another installed reading application. Used by or used with:
+LocalLibrary lists recognised files; MainActivity chooses an external viewer or ReaderPanel.
+LibraryItem retains the source URI and document name. Screen controls: No controls; this determines
+which books appear in Library and how Open book routes. Changes belong here: Add a format with its
+real MIME type here; adding recognition does not add a parser or guarantee that the device has an
+application which can read that format.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+types maps file extensions to document types and images lists recognised picture extensions. accepts
+decides whether a file belongs in the reading library; inlineKind selects a built-in decoder;
+viewingLabel explains the actual opening route. LocalLibrary uses these checks when listing files,
+and MainActivity and ReaderPanel use them when opening a selection.
+*/
 object ReadingFormats {
     private val types = mapOf(
         "pdf" to "application/pdf", "epub" to "application/epub+zip",
@@ -33,6 +40,12 @@ object ReadingFormats {
     fun accepts(name: String, supplied: String): Boolean = extension(name) in types ||
         extension(name) in images || supplied in types.values || supplied == "application/x-cbz" || supplied.startsWith("image/")
 
+    // Explains the actual route without claiming a parser exists for every recognised format.
+    fun viewingLabel(name: String, supplied: String, inlineEnabled: Boolean): String =
+        if (canRenderInline(name, supplied)) {
+            if (inlineEnabled) "Opens inside launcher" else "Opens in a reading app · built-in viewing available"
+        } else "Requires a compatible reading app"
+
     // EPUB and other document formats must never fall through to the built-in CBZ decoder.
     fun canRenderInline(name: String, supplied: String): Boolean {
         return inlineKind(name, supplied) != null
@@ -49,7 +62,10 @@ object ReadingFormats {
         }
     }
 
-    /* Decoder choices shared by file routing and ReaderPanel; additional parsers belong here only once implemented. */
+    /*
+    Decoder choices shared by file routing and ReaderPanel; additional parsers belong here only once
+    implemented.
+    */
     enum class InlineKind { PDF, COMIC, IMAGE }
 
     // Uses locale-independent matching for names received from Android document providers.

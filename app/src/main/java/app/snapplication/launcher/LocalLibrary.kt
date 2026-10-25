@@ -6,13 +6,20 @@ import android.provider.DocumentsContract
 import java.util.ArrayDeque
 
 /*
- * Reads only user-granted document trees; MainActivity runs scans off the UI thread.
- *
- * Related classes: MainActivity runs scans; LibraryItem carries results; NaturalOrder sorts titles.
- * UI: No UI; feeds the local folder/content list.
- * Edit or extend: Add file recognition here only with a reader/player or external-open path. Access stays inside
- * user-granted document folders.
- */
+Reads only user-granted document trees; MainActivity runs scans off the UI thread.
+
+This class is a helper and does not inherit from another launcher class.
+
+context provides the document access that the user granted. scan walks the chosen folder, checks
+each file for the requested mode, and returns LibraryItem records in NaturalOrder. MainActivity runs
+this work away from the screen thread so the launcher remains responsive. This helper supplies data
+to the activity; it is not a child of MainActivity.
+
+Used by or used with: MainActivity runs scans; LibraryItem carries results; NaturalOrder sorts
+titles. Screen controls: none; feeds the local folder/content list. Changes belong here: Add file
+recognition here only with a reader/player or external-open path. Access stays inside user-granted
+document folders.
+*/
 class LocalLibrary(private val context: Context) {
     // Enumerates supported content recursively, bounding traversal to avoid pathological trees.
     fun scan(tree: Uri, mode: String): List<LibraryItem> {
@@ -43,7 +50,8 @@ class LocalLibrary(private val context: Context) {
         return result.sortedWith { a, b -> NaturalOrder.compare(a.title, b.title) }
     }
 
-    // Classifies files without requesting broad storage access or reading other apps' private files.
+    // Classifies files without requesting broad storage access or reading other apps' private
+    // files.
     private fun accepts(name: String, mime: String, mode: String): Boolean {
         val extension = name.substringAfterLast('.', "").lowercase()
         return if (mode == "Watch") mime.startsWith("video/") || extension in setOf("mp4", "mkv", "webm", "m4v", "mov")

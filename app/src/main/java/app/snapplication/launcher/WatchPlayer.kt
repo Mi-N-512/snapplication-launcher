@@ -11,14 +11,23 @@ import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 
 /*
- * Owns embedded video and a media session; MainActivity supplies content and LauncherState stores progress.
- *
- * Related classes: MainActivity supplies LibraryItem content; LauncherState stores progress; EpisodeResume supplies
- * completion rules.
- * UI: Embedded video surface and its player controls, with an Android media session.
- * Edit or extend: Edit local/direct-link playback and progress here. External app buffering is outside this player;
- * future Gaming rendering should be a separate component.
- */
+Owns embedded video and a media session; MainActivity supplies content and LauncherState stores
+progress.
+
+This class is a helper and does not inherit from another launcher class.
+
+player is the local video engine; view shows its picture and controls; session exposes its media
+controls to Android. item and queue identify the selected video and nearby files. stagedNext tracks
+preparation of the next file, while checkpoint saves progress regularly. MainActivity creates this
+player and calls load. pause saves progress and checks whether to prepare the next file; close
+releases playback resources.
+
+Used by or used with: MainActivity supplies LibraryItem content; LauncherState stores progress;
+EpisodeResume supplies completion rules. Screen controls: Embedded video surface and its player
+controls, with an Android media session. Changes belong here: Edit local/direct-link playback and
+progress here. External app buffering is outside this player; future Gaming rendering should be a
+separate component.
+*/
 class WatchPlayer(context: Context, private val state: LauncherState, private val onError: (String) -> Unit) {
     val view = PlayerView(context)
     private val player = ExoPlayer.Builder(context).build()
@@ -33,7 +42,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     }
     // Periodic checkpoint owned by this player and cancelled by close.
     private val checkpoint = object : Runnable {
-        // Periodically persists progress while this player is alive.
+        // Periodically saves progress while this player is alive.
         override fun run() { save(); handler.postDelayed(this, 5000) }
     }
 
@@ -53,7 +62,8 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
                 if (nextTitle.visibility == android.view.View.VISIBLE)
                     nextTitle.text = "Next ready: ${item?.title.orEmpty()}"
             }
-            // Saves both sides of a manual/automatic item transition for independent episode resume.
+            // Saves both sides of a manual/automatic item transition for independent episode
+            // resume.
             @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 oldPosition.mediaItem?.mediaId?.takeIf { it.isNotBlank() }?.let { state.saveProgress(it, oldPosition.positionMs) }
@@ -104,14 +114,16 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     // Stops playback when leaving the launcher so it does not consume power invisibly.
     fun pause() { player.pause(); save(); prepareNextIfComplete() }
 
-    // Stages the next local episode at its beginning when the screen turns off past the user's threshold.
+    // Stages the next local episode at its beginning when the screen turns off past the user's
+    // threshold.
     fun screenOff() {
         player.pause()
         save()
         prepareNextIfComplete()
     }
 
-    // Prepares the next local file, paused at its first frame, when returning Home after the threshold.
+    // Prepares the next local file, paused at its first frame, when returning Home after the
+    // threshold.
     private fun prepareNextIfComplete() {
         if (!state.playVideosInLauncher || stagedNext) return
         if (player.hasNextMediaItem() && EpisodeResume.shouldAdvance(player.currentPosition, player.duration, state.completion)) {

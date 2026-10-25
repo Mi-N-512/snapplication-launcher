@@ -8,17 +8,25 @@ import android.media.session.PlaybackState
 import android.view.accessibility.AccessibilityNodeInfo
 
 /*
- * Finds video surfaces in otherwise unknown apps for RemoteActionService, guarded by their own media session.
- *
- * Related classes: RemoteActionService uses these bounds when deciding whether PreviewCaptureService may capture a
- * video frame.
- * UI: No UI; inspects visible video surfaces rather than rendering them.
- * Edit or extend: Extend surface recognition for more players here while retaining media-session and visibility
- * checks.
- */
+Finds video surfaces in otherwise unknown apps for RemoteActionService, guarded by their own media
+session.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+lastDiagnostic remembers the previous debug message so it is not written repeatedly. find checks
+that the app has a current media session, then scan looks for a sufficiently large visible video
+area. RemoteActionService uses the result when deciding what PreviewCaptureService may save. This
+object inspects the player window and does not play video.
+
+Used by or used with: RemoteActionService uses these bounds when deciding whether
+PreviewCaptureService may capture a video frame. Screen controls: none; inspects visible video
+surfaces rather than rendering them. Changes belong here: Extend surface recognition for more
+players here while retaining media-session and visibility checks.
+*/
 object VideoSurface {
     private var lastDiagnostic = ""
-    // Requires a current media session plus a substantial visible video region; audio sessions alone never follow.
+    // Requires a current media session plus a substantial visible video region; audio sessions
+    // alone never follow.
     fun find(context: Context, root: AccessibilityNodeInfo, owner: String): AccessibilityNodeInfo? {
         val sessions = runCatching { context.getSystemService(MediaSessionManager::class.java)
             .getActiveSessions(ComponentName(context, MediaAccessService::class.java)) }.getOrDefault(emptyList())
@@ -38,7 +46,8 @@ object VideoSurface {
         lastDiagnostic = value
     }
 
-    // Copies a matching node for the caller to recycle; bounds and depth limit catalogue/thumbnail false positives.
+    // Copies a matching node for the caller to recycle; bounds and depth limit catalogue/thumbnail
+    // false positives.
     private fun scan(node: AccessibilityNodeInfo, minimumArea: Long, depth: Int): AccessibilityNodeInfo? {
         if (depth > 35 || !node.isVisibleToUser) return null
         val id = node.viewIdResourceName.orEmpty().substringAfterLast('/').lowercase()

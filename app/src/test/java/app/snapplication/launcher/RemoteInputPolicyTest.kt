@@ -5,11 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /*
- * Checks the focus policy used by RemoteControls before MainActivity or RemoteActionService runs an
- * assignment. No Android UI is created. Throwing focus probes model an unavailable or slow remote app;
- * navigation must not consult them, while media and macro shortcuts must preserve text-entry protection.
- * Extend these checks when adding actions or changing the keyboard policy.
- */
+Checks the focus policy used by RemoteControls before MainActivity or RemoteActionService runs an
+assignment. No Android UI is created. Throwing focus probes model an unavailable or slow remote app;
+navigation must not consult them, while media and macro shortcuts must preserve text-entry
+protection. Extend these checks when adding actions or changing the keyboard policy.
+*/
 class RemoteInputPolicyTest {
     // Navigation and escape actions must remain usable even when another app cannot supply focus.
     @Test fun navigationDoesNotInspectOtherApp() {
@@ -38,18 +38,21 @@ class RemoteInputPolicyTest {
         assertEquals("Macro: accept display", RemoteInputPolicy.permitted("Macro: accept display") { false })
         assertEquals("Play/pause", RemoteInputPolicy.permitted("Play/pause") { false })
     }
-    // A system dialog must receive mapped shortcuts through the service even if the cached package is Home.
+    // A system dialog must receive mapped shortcuts through the service even if the cached package
+    // is Home.
     @Test fun coveredLauncherUsesService() {
         assertEquals(true, RemoteInputPolicy.handleInService(false, false))
         assertEquals(false, RemoteInputPolicy.handleInService(false, true))
     }
 
-    // Learning owns all keys until the dialog detaches or closes, regardless of the launcher's focus.
+    // Learning owns all keys until the dialog detaches or closes, regardless of the launcher's
+    // focus.
     @Test fun learningNeverRunsAssignedActions() {
         assertEquals(false, RemoteInputPolicy.handleInService(true, false))
         assertEquals(false, RemoteInputPolicy.handleInService(true, true))
     }
-    // Native directions/OK remain usable in vendor dialogs; differently mapped keys still run their assignment.
+    // Native directions/OK remain usable in vendor dialogs; differently mapped keys still run their
+    // assignment.
     @Test fun nativeDirectionsPassThroughWithoutLosingRemaps() {
         for ((action, code) in listOf("Up" to 19, "Down" to 20, "Left" to 21, "Right" to 22, "Select" to 23, "Select" to 66))
             assertEquals(true, RemoteInputPolicy.nativeNavigation(action, code))

@@ -16,15 +16,23 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 /*
- * Saves one small reading-page screenshot after a reader announces a change. There is no
- * projection or virtual display. Most readers use page-change events; Meebook Read needs
- * an occasional still check because its native canvas does not announce page turns.
- * Related classes: RemoteActionService validates the foreground page; ReaderSurface finds
- * its bounds; LauncherState owns the opt-in; ExternalPreview reads the shared local cache.
- * UI: No overlay or video notification. MainActivity exposes the page-preview switch.
- * Edit or extend: Adjust event settling and image size here. Add app page recognition in
- * ReaderSurface instead. Keep compatibility checks limited to the visible reading page.
- */
+Saves one small reading-page screenshot after a reader announces a change. There is no projection or
+virtual display. Most readers use page-change events; Meebook Read needs an occasional still check
+because its native canvas does not announce page turns. Used by or used with: RemoteActionService
+validates the foreground page; ReaderSurface finds its bounds; LauncherState owns the opt-in;
+ExternalPreview reads the shared local cache. Screen controls: No overlay or video notification.
+MainActivity exposes the page-preview switch. Changes belong here: Adjust event settling and image
+size here. Add app page recognition in ReaderSurface instead. Keep compatibility checks limited to
+the visible reading page.
+
+This class is a helper and does not inherit from another launcher class.
+
+main schedules a settled page check and worker compares and saves pixels away from the screen
+thread. generation and closed cancel outdated work. lastPixels and lastPixelOwner help avoid saving
+an unchanged page. RemoteActionService owns this helper and calls changed after reader events.
+capture takes one permitted screenshot; eligible checks the page again before saving it for
+ExternalPreview.
+*/
 @RequiresApi(30)
 class ReadingSnapshots(private val service: RemoteActionService) {
     private val main = Handler(Looper.getMainLooper())
@@ -66,7 +74,8 @@ class ReadingSnapshots(private val service: RemoteActionService) {
         lastRequest = SystemClock.uptimeMillis()
         try { service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
             object : AccessibilityService.TakeScreenshotCallback {
-                // Revalidates after Android responds, then compresses the bounded image away from input.
+                // Revalidates after Android responds, then compresses the limited image away from
+                // input.
                 override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
                     service.refreshReadingEligibility()
                     if (!eligible(owner, since, request, epoch)) { result.hardwareBuffer.close(); return }
@@ -119,7 +128,8 @@ class ReadingSnapshots(private val service: RemoteActionService) {
                                 lastError = null
                             }
                         } catch (_: Exception) {
-                            // Keep the last good page after a failed write; surface the failure in settings.
+                            // Keep the last good page after a failed write; surface the failure in
+                            // settings.
                             lastError = "The page could not be saved. Check available device storage."
                         } finally {
                             listOfNotNull(scaled, cropped, software, wrapped).distinct().forEach { it.recycle() }
@@ -128,12 +138,14 @@ class ReadingSnapshots(private val service: RemoteActionService) {
                     }
                 }
 
-                // Does not retry indefinitely or silently fall back to energy-intensive screen sharing.
+                // Does not retry indefinitely or silently fall back to energy-intensive screen
+                // sharing.
                 override fun onFailure(errorCode: Int) {
                     lastError = if (errorCode == AccessibilityService.ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS)
                         "Reconnect Snapplication support in Android accessibility settings."
                     else "Android could not capture this page (code $errorCode). The last saved page is kept."
-                    // A failed or blocked screenshot stops compatibility checking until another event.
+                    // A failed or blocked screenshot stops compatibility checking until another
+                    // event.
                 }
             }) } catch (_: IllegalStateException) {
             lastError = "Reconnect Snapplication support in Android accessibility settings."
@@ -148,14 +160,16 @@ class ReadingSnapshots(private val service: RemoteActionService) {
         if (owner == "com.haoqing.app.hqreader" && !closed) main.postDelayed(compatibilityCheck, 5000)
     }
 
-    // Associates a public book URI with this exact page; absent identity removes any older book link.
+    // Associates a public book URI with this exact page; absent identity removes any older book
+    // link.
     private fun saveBookIdentity(owner: String, uri: String?) {
         val prefs = service.getSharedPreferences("externalPreview", android.content.Context.MODE_PRIVATE)
         val key = "resumeUri:Read:$owner"
         if (prefs.getString(key, null) != uri) prefs.edit().putString(key, uri).apply()
     }
 
-    // Rejects stale callbacks, locked screens, app changes and a preview switch turned off mid-request.
+    // Rejects stale callbacks, locked screens, app changes and a preview switch turned off
+    // mid-request.
     private fun eligible(owner: String, since: Long, request: Int, epoch: Long): Boolean {
         val state = LauncherState(service)
         return !closed && request == generation && state.mode == "Read" && state.readPagePreviews &&
@@ -166,7 +180,7 @@ class ReadingSnapshots(private val service: RemoteActionService) {
             synchronized(PreviewCaptureService.cacheLock) { PreviewCaptureService.cacheEpoch == epoch }
     }
 
-    // Invalidates queued callbacks and releases the worker when accessibility disconnects.
+    // Cancels queued callbacks and releases the worker when accessibility disconnects.
     fun close() {
         closed = true; generation++; main.removeCallbacks(pending); main.removeCallbacks(compatibilityCheck)
         worker.shutdown()

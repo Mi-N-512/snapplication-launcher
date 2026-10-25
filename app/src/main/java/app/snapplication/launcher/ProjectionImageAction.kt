@@ -13,13 +13,21 @@ import org.json.JSONObject
 import java.util.concurrent.Executors
 
 /*
- * Configures one local, image-matched Wired Projection action from the user's own screenshot.
- * MainActivity opens the image picker; MacroEditor shows this compact preset editor instead of
- * unrelated recorded-step controls. RemoteActionService and ProjectionImageRunner execute it.
- * UI: Reference picture, match-only test, run, remote assignment and deletion. The fixed interior
- * and Agree position match Huawei's landscape dialog; other layouts require a separate adapter.
- * Reader never exposes this setup and never starts video capture for it. Images stay on the device.
- */
+Configures one local, image-matched Wired Projection action from the user's own screenshot.
+MainActivity opens the image picker; MacroEditor shows this compact preset editor instead of
+unrelated recorded-step controls. RemoteActionService and ProjectionImageRunner execute it. Screen
+controls: Reference picture, match-only test, run, remote assignment and deletion. The fixed
+interior and Agree position match Huawei's landscape dialog; other layouts require a separate
+adapter. Reader never exposes this setup and never starts video capture for it. Images stay on the
+device.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+KIND identifies the older projection-specific image action. The saved macro contains the reference
+picture and tap information. MainActivity handles the picker result, MacroEditor edits the action,
+and ProjectionImageRunner checks the live screen before tapping. This shared helper prepares data
+and dialogs; it is not the parent of the runner.
+*/
 internal object ProjectionImageAction {
     const val REQUEST = 204
     const val KIND = "projectionImage"
@@ -39,7 +47,8 @@ internal object ProjectionImageAction {
             }.show()
     }
 
-    // Decodes a bounded reference off the UI thread and saves only this named preset, preserving other macros.
+    // Decodes a limited reference off the UI thread and saves only this named preset, preserving
+    // other macros.
     fun accept(activity: Activity, result: Int, data: Intent?, saved: () -> Unit) {
         if (result != Activity.RESULT_OK) return
         val uri = data?.data ?: return
@@ -67,7 +76,8 @@ internal object ProjectionImageAction {
         }
     }
 
-    // Converts an explicitly selected recording while retaining its name, remote mapping and original steps.
+    // Converts an explicitly selected recording while retaining its name, remote mapping and
+    // original steps.
     fun convertRecording(activity: Activity, name: String, original: JSONObject, saved: () -> Unit) {
         AlertDialog.Builder(activity).setTitle("Match the Wired Projection screenshot?")
             .setMessage("Use only a full landscape screenshot of Huawei's Wired Projection dialog. This replaces the recorded Home/tap steps with image recognition and one Agree tap. The remote assignment stays unchanged. Original steps are retained locally. Watch capture and the external display must be active; no match means no tap.")
@@ -101,7 +111,8 @@ internal object ProjectionImageAction {
             }.show()
     }
 
-    // Reads a local URI with bounded decode size; the full-frame aspect is part of the match contract.
+    // Reads a local URI with limited decode size; the full-frame aspect is part of the match
+    // contract.
     fun load(context: Context, uri: Uri): Bitmap {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, options) }
@@ -116,7 +127,8 @@ internal object ProjectionImageAction {
     // Excludes wallpaper, status/navigation bars and the rounded corners from matching.
     fun sample(bitmap: Bitmap): IntArray {
         require(kotlin.math.abs(bitmap.width.toDouble() / bitmap.height - 2.0) < .02)
-        // Match the projection's full-frame scaling before cropping; direct downsampling aliases small text differently.
+        // Match the projection's full-frame scaling before cropping; direct downsampling aliases
+        // small text differently.
         val normalized = Bitmap.createScaledBitmap(bitmap, 960, 480, true)
         val crop = Bitmap.createBitmap(normalized, 144, 96, 624, 316)
         val scaled = Bitmap.createScaledBitmap(crop, ProjectionImageMatch.WIDTH, ProjectionImageMatch.HEIGHT, true)
@@ -128,7 +140,8 @@ internal object ProjectionImageAction {
         }
     }
 
-    // Keeps image actions editable and assignable without presenting unsupported timing/coordinate controls.
+    // Keeps image actions editable and assignable without presenting unsupported timing/coordinate
+    // controls.
     fun show(activity: Activity, name: String, macro: JSONObject, delete: () -> Unit) {
         val ui = LauncherUi(activity, LauncherState(activity), false)
         val panel = ui.column()
@@ -139,6 +152,23 @@ internal object ProjectionImageAction {
         })
         panel.addView(ui.button("Test reference image · no tap") { rehearse(activity, name, macro) })
         panel.addView(ui.button("Run on current screen") { RemoteActionService.instance?.openForReplay(name) })
+        // Creates a separate editable test action directly, keeping existing actions intact.
+        panel.addView(ui.button("Create Accept screen action") {
+            val prefs = activity.getSharedPreferences("remoteMacros", Context.MODE_PRIVATE)
+            val saved = JSONObject(prefs.getString("macros", "{}")!!)
+            var newName = "Accept screen"
+            var suffix = 2
+            while (saved.has(newName)) { newName = "Accept screen ${suffix++}" }
+            val step = JSONObject().put("kind", "gesture").put("delay", 350).put("duration", 80)
+                .put("width", 2160).put("height", 1080)
+                .put("points", JSONArray().put(JSONArray().put(TAP_X.toDouble()).put(TAP_Y.toDouble())))
+            val action = JSONObject().put("version", 2).put("package", activity.packageName)
+                .put("currentScreen", true).put("coordinateReplay", true)
+                .put("overlayUri", macro.optString("overlayUri")).put("steps", JSONArray().put(step))
+            saved.put(newName, action)
+            prefs.edit().putString("macros", saved.toString()).apply()
+            MacroEditor(activity) {}.show(newName)
+        })
         panel.addView(ui.button("Assign remote button") { RemoteControls(activity).learn("Macro: $name") {} })
         panel.addView(ui.button("Delete action", delete))
         val prefs = activity.getSharedPreferences("remoteMacros", Context.MODE_PRIVATE)
@@ -147,7 +177,8 @@ internal object ProjectionImageAction {
             .setPositiveButton("Close", null).show()
     }
 
-    // Shows the reference full-screen for a capture/matcher rehearsal; this path can never dispatch a tap.
+    // Shows the reference full-screen for a capture/matcher rehearsal; this path can never dispatch
+    // a tap.
     private fun rehearse(activity: Activity, name: String, macro: JSONObject) {
         val worker = Executors.newSingleThreadExecutor()
         worker.execute {

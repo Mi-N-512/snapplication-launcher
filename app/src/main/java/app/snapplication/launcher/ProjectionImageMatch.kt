@@ -3,16 +3,24 @@ package app.snapplication.launcher
 import kotlin.math.abs
 
 /*
- * Compares the interior of the user's Wired Projection screenshot with a fresh screen sample.
- * ProjectionImageAction supplies equally sized RGB grids; ProjectionImageRunner owns consent,
- * display checks and the one-shot tap. This pure matcher has no screen access or Android UI.
- * Edit tolerances here with rejection tests; do not compensate for a different dialog or layout.
- */
+Compares the interior of the user's Wired Projection screenshot with a fresh screen sample.
+ProjectionImageAction supplies equally sized RGB grids; ProjectionImageRunner owns consent, display
+checks and the one-shot tap. This pure matcher has no screen access or Android UI. Edit tolerances
+here with rejection tests; do not compensate for a different dialog or layout.
+
+This object is a shared helper and does not inherit from another launcher class.
+
+reference and current hold equally sized pixel samples from the dialog area. matches compares their
+differences and returns a yes-or-no result. ProjectionImageAction prepares the reference sample and
+ProjectionImageRunner uses the result before a tap. This shared helper has no changing state or
+direct screen access.
+*/
 internal object ProjectionImageMatch {
     const val WIDTH = 320
     const val HEIGHT = 176
 
-    // Requires a detailed reference, close colours throughout, and no mismatching local text/button region.
+    // Requires a detailed reference, close colours throughout, and no mismatching local text/button
+    // region.
     fun matches(reference: IntArray, current: IntArray): Boolean {
         if (reference.size != WIDTH * HEIGHT || current.size != reference.size) return false
         var total = 0L

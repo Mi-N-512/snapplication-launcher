@@ -4,10 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /*
- * Regression checks for NaturalOrder; run by the local Gradle unit-test tasks.
- * Related code: NaturalOrder. No UI or Android device is created here.
- * Add boundary cases here when changing that helper so its existing callers retain correct behaviour.
- */
+Regression checks for NaturalOrder; run by the local Gradle unit-test tasks. Related code:
+NaturalOrder. No UI or Android device is created here. Add boundary cases here when changing that
+helper so its existing callers retain correct behaviour.
+*/
 class NaturalOrderTest {
     // Unpadded file numbers must read in chapter order, not dictionary order.
     @Test fun sortsComicPages() {

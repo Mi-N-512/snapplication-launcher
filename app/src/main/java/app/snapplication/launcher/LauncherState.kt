@@ -5,37 +5,43 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /*
- * Immutable description of a selected local or linked item: its URI, display title, MIME
- * type and Read/Watch mode. The object identifies content; it does not load or play it.
- * Related classes: LocalLibrary discovers items; MainActivity selects/routes them;
- * LauncherState serializes recent items and Watch queues; WatchPlayer and ReaderPanel
- * consume supported items. UI controls: none; title/mode inform the host's visible UI.
- * Add metadata here only when its callers need it, and update LocalLibrary construction
- * plus LauncherState serialization/restoration together so older saved items still load.
- * Planned, not implemented: a future Gaming mode may require a distinct game descriptor
- * with launch identity and its own progress semantics rather than treating games as videos
- * or books. Coordinate that model with MainActivity and LauncherState before extending this.
- */
+Fixed description of a selected local or linked item: its URI, display title, MIME type and
+Read/Watch mode. The object identifies content; it does not load or play it. Used by or used with:
+LocalLibrary discovers items; MainActivity selects/routes them; LauncherState serializes recent
+items and Watch queues; WatchPlayer and ReaderPanel consume supported items. UI controls: none;
+title/mode inform the host's visible UI. Add metadata here only when its callers need it, and update
+LocalLibrary construction plus LauncherState serialization/restoration together so older saved items
+still load. Planned, not implemented: a future Gaming mode may require a distinct game descriptor
+with launch identity and its own progress semantics rather than treating games as videos or books.
+Coordinate that model with MainActivity and LauncherState before extending this.
+*/
 data class LibraryItem(val uri: String, val title: String, val mime: String, val mode: String)
 
 /*
- * Persists launcher configuration, per-mode source selection, recent content, local watch
- * queues, ordered favourite components and per-URI progress in the launcher preferences.
- * Related classes: MainActivity and DrawerPanel edit settings/favourites; DeviceProfileSetup
- * applies device defaults; LauncherUi reads appearance; WatchPlayer and ReaderPanel save
- * progress; ExternalPreview reads the selected external app and preview sizing.
- * UI controls: none are created here. This is the stored state behind mode/theme choices,
- * profile presets, favourite limits, preview options, orientation and playback settings.
- * Add a persistent setting beside the relevant property with an explicit default and setter.
- * Keep existing preference keys compatible; change applyDeviceProfile() for initial device
- * presets and initializeReaderProfile() only for the documented older-reader migration.
- * Modify remember()/last() for item serialization, saveProgress()/progress() for positions,
- * and favourites()/toggleFavourite()/moveFavourite() for ordered favourite persistence.
- * Planned, not implemented: Gaming mode would need its own recent game/source state and
- * documented progress model, coordinated with MainActivity's mode picker and game UI.
- * Existing mode-scoped keys can separate future state, but do not themselves implement
- * gaming, save-state capture, or suspension. Watch queues remain explicitly video-only.
- */
+Saves launcher configuration, per-mode source selection, recent content, local watch queues, ordered
+favourite components and per-URI progress in the launcher preferences. Used by or used with:
+MainActivity and DrawerPanel edit settings/favourites; DeviceProfileSetup applies device defaults;
+LauncherUi reads appearance; WatchPlayer and ReaderPanel save progress; ExternalPreview reads the
+selected external app and preview sizing. UI controls: none are created here. This is the stored
+state behind mode/theme choices, profile presets, favourite limits, preview options, orientation and
+playback settings. Add a persistent setting beside the relevant property with an explicit default
+and setter. Keep existing preference keys compatible; change applyDeviceProfile() for initial device
+presets and initializeReaderProfile() only for the documented older-reader migration. Modify
+remember()/last() for item serialization, saveProgress()/progress() for positions, and
+favourites()/toggleFavourite()/moveFavourite() for ordered favourite persistence. Planned, not
+implemented: Gaming mode would need its own recent game/source state and documented progress model,
+coordinated with MainActivity's mode picker and game UI. Existing mode-scoped keys can separate
+future state, but do not themselves implement gaming, save-state capture, or suspension. Watch
+queues remain explicitly video-only.
+
+This class is a helper and does not inherit from another launcher class.
+
+prefs is the saved settings store. deviceProfile chooses Phone, TV or Reader defaults; mode selects
+Read or Watch; automaticPhoneMode allows rotation to select that mode. separateFavourites selects a
+shared favourite list or one list per mode. Most property getters read one saved value, and setters
+write it back. MainActivity changes these choices; DrawerPanel, WatchPlayer, ReaderPanel and preview
+helpers read them. These are users of the state class, not child classes.
+*/
 class LauncherState(private val context: Context) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
     var previewWarnings: Boolean
@@ -74,17 +80,19 @@ class LauncherState(private val context: Context) {
         val reader = profile == "Reader"
         prefs.edit().putString("mode", if (reader) "Read" else "Watch")
             .putString("theme", if (reader) "E-paper" else "Dark")
-            .putString("orientation:Read", "Portrait")
-            .putString("orientation:Watch", "Landscape")
+            .putString("orientation:Read", if (profile == "Phone") "Auto" else "Portrait")
+            .putString("orientation:Watch", if (profile == "Phone") "Auto" else "Landscape")
+            .putBoolean("automaticPhoneMode", profile == "Phone")
+            .putString("phoneOrientation", "Auto")
             .putBoolean("animations", !reader).putBoolean("useWallpaper", !reader)
             .putBoolean("landscapeApps", !reader).putBoolean("playVideosInLauncher", false)
             .putBoolean("roundedCorners", false).apply()
         if (profile == "TV") applyTvDefaults()
     }
 
-    // Matches the owner's Mate TV setup; never copies personal content, bindings or Android permission grants.
+    // Applies television layout defaults without personal content, bindings or permission grants.
     private fun applyTvDefaults() {
-        prefs.edit().putString("theme", "Material You")
+        prefs.edit().putString("theme", "Dark")
             .putBoolean("fullscreen", true).putBoolean("showLabels", true)
             .putBoolean("grid", true).putBoolean("dynamicBlocks", true).putBoolean("asymmetricBlocks", true)
             .putBoolean("experimentalBlocks", false).putInt("favouriteCount", 8)
@@ -107,13 +115,19 @@ class LauncherState(private val context: Context) {
                 .putBoolean("useWallpaper", false).putBoolean("landscapeApps", false)
             change.apply()
         }
+    // Phone rotation selects the matching content mode; dedicated editions keep their own layout.
+    var automaticPhoneMode: Boolean
+        get() = !readerOnly && BuildConfig.FLAVOR != "tv" && deviceProfile == "Phone" &&
+            prefs.getBoolean("automaticPhoneMode", true)
+        set(value) { prefs.edit().putBoolean("automaticPhoneMode", value).apply() }
+
     var orientation: String
-        get() = prefs.getString("orientation:$mode", null)
+        get() = if (deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv") prefs.getString("phoneOrientation", "Auto")!! else prefs.getString("orientation:$mode", null)
             ?: if (mode == "Read") {
                 // Only the reading-only edition can safely inherit an old global reader choice.
                 if (readerOnly) prefs.getString("orientation", "Portrait")!! else "Portrait"
             } else prefs.getString("orientation", "Landscape")!!
-        set(value) { prefs.edit().putString("orientation:$mode", value).apply() }
+        set(value) { prefs.edit().putString(if (deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv") "phoneOrientation" else "orientation:$mode", value).apply() }
     var showLabels: Boolean
         get() = prefs.getBoolean("showLabels", true)
         set(value) { prefs.edit().putBoolean("showLabels", value).apply() }
@@ -238,9 +252,23 @@ class LauncherState(private val context: Context) {
     // Remembers a user-approved folder for reopening after a process restart.
     fun setFolder(mode: String, uri: String) { prefs.edit().putString("folder:$mode", uri).apply() }
 
-    // Reads ordered favourite component names for the home screen.
+    // Keeps the original shared pool and seeds mode lists once, without discarding either list.
+    var separateFavourites: Boolean
+        get() = !readerOnly && prefs.getBoolean("separateFavourites", false)
+        set(value) {
+            val edit = prefs.edit().putBoolean("separateFavourites", value)
+            if (value) for (contentMode in listOf("Read", "Watch")) {
+                if (!prefs.contains("favourites:$contentMode"))
+                    edit.putString("favourites:$contentMode", prefs.getString("favourites", "[]"))
+            }
+            edit.apply()
+        }
+
+    private fun favouritesKey() = if (separateFavourites) "favourites:$mode" else "favourites"
+
+    // Reads the active ordered pool; disabling separation restores the original shared list.
     fun favourites(): List<String> = runCatching {
-        val array = JSONArray(prefs.getString("favourites", "[]"))
+        val array = JSONArray(prefs.getString(favouritesKey(), "[]"))
         List(array.length()) { array.getString(it) }
     }.getOrDefault(emptyList())
 
@@ -248,7 +276,7 @@ class LauncherState(private val context: Context) {
     fun toggleFavourite(component: String) {
         val items = favourites().toMutableList()
         if (!items.remove(component)) items.add(0, component)
-        prefs.edit().putString("favourites", JSONArray(items).toString()).apply()
+        prefs.edit().putString(favouritesKey(), JSONArray(items).toString()).apply()
     }
 
     // Moves an existing shortcut one place without deleting favourites hidden by the display limit.
@@ -258,6 +286,6 @@ class LauncherState(private val context: Context) {
         val to = from + offset
         if (from < 0 || to !in items.indices) return
         items.add(to, items.removeAt(from))
-        prefs.edit().putString("favourites", JSONArray(items).toString()).apply()
+        prefs.edit().putString(favouritesKey(), JSONArray(items).toString()).apply()
     }
 }

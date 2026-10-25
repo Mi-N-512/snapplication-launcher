@@ -12,12 +12,19 @@ import android.widget.SeekBar
 import android.widget.TextView
 
 /*
- * Previews custom theme colours for MainActivity and commits them to LauncherState only on Save.
- *
- * Related classes: MainActivity, LauncherState and LauncherUi.
- * UI: Background/accent radio buttons, colour sliders, sample panel and Save/Cancel dialog.
- * Edit or extend: Edit colour controls or add theme roles here; persist new roles in LauncherState.
- */
+Previews custom theme colours for MainActivity and commits them to LauncherState only on Save.
+
+This class is a helper and does not inherit from another launcher class.
+
+colours holds the proposed background and accent colours. selected chooses which colour the sliders
+edit; hsv stores its hue, saturation and brightness. updating prevents a slider refresh from being
+mistaken for a user edit. show builds the dialog, loadColour updates the sliders, and refreshPreview
+redraws the sample. MainActivity creates this helper and LauncherState saves the choices after Save.
+
+Used by or used with: MainActivity, LauncherState and LauncherUi. Screen controls: Background/accent
+radio buttons, colour sliders, sample panel and Save/Cancel dialog. Changes belong here: Edit colour
+controls or add theme roles here; persist new roles in LauncherState.
+*/
 class ColourPicker(private val activity: Activity, private val state: LauncherState, private val ui: LauncherUi) {
     private val colours = intArrayOf(state.background, state.accent)
     private var selected = 0
@@ -50,7 +57,8 @@ class ColourPicker(private val activity: Activity, private val state: LauncherSt
                 contentDescription = name
                 minimumHeight = ui.dp(48)
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    // Updates the staged colour and preview without writing preferences while dragging.
+                    // Updates the staged colour and preview without writing preferences while
+                    // dragging.
                     override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
                         if (updating || !fromUser) return
                         hsv[index] = if (index == 0) value.toFloat() else value / 100f

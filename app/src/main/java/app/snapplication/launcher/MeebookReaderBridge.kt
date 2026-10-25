@@ -12,16 +12,24 @@ import android.os.Parcel
 import java.security.MessageDigest
 
 /*
- * Reads the current book identity from Meebook Read's exported library service, then uses
- * its exported document-opening activity to resume that exact book. It never reads the
- * reader's private files, launches private activities or changes Android permissions.
- * Related classes: RemoteActionService owns the connection; ReadingSnapshots stores the
- * returned document URI alongside a matching page; ExternalPreview opens that saved URI.
- * UI: No controls; improves the centre preview's existing Continue reading action.
- * Edit or extend: This vendor protocol was verified on Read version 2025042216. Validate
- * the APK interface and signing certificate before supporting other versions. The verified
- * metadata URI supports internal and removable storage; unsupported versions keep normal app launching.
- */
+Reads the current book identity from Meebook Read's exported library service, then uses its exported
+document-opening activity to resume that exact book. It never reads the reader's private files,
+launches private activities or changes Android permissions. Used by or used with:
+RemoteActionService owns the connection; ReadingSnapshots stores the returned document URI alongside
+a matching page; ExternalPreview opens that saved URI. Screen controls: No controls; improves the
+centre preview's existing Continue reading action. Changes belong here: This vendor protocol was
+verified on Read version 2025042216. Validate the APK interface and signing certificate before
+supporting other versions. The verified metadata URI supports internal and removable storage;
+unsupported versions keep normal app launching.
+
+This class is a helper and does not inherit from another launcher class.
+
+binder holds the connection to the supported reader service. bound tracks the connection request,
+and supported remembers whether the installed reader passed the compatibility check.
+RemoteActionService creates this helper. connect opens the service connection, bookUri asks for the
+current book identity, and close releases the connection. ReadingSnapshots saves that identity with
+the page picture.
+*/
 class MeebookReaderBridge(private val context: Context) {
     @Volatile private var binder: IBinder? = null
     private var bound = false
@@ -48,7 +56,8 @@ class MeebookReaderBridge(private val context: Context) {
         }.getOrDefault(false)
     }
 
-    // Reads one open window's path using the verified, read-only AIDL transaction off the UI thread.
+    // Reads one open window's path using the verified, read-only AIDL transaction off the UI
+    // thread.
     fun bookUri(readerActivity: String?): String? {
         if (readerActivity !in ACTIVITIES) return null
         val remote = binder ?: return null
@@ -58,7 +67,8 @@ class MeebookReaderBridge(private val context: Context) {
             if (remote.interfaceDescriptor != DESCRIPTOR) return null
             request.writeInterfaceToken(DESCRIPTOR)
             request.writeString(readerActivity)
-            // LibraryInterface.getDoubleOpenDocuments(String): exact public transaction in the pinned APK.
+            // LibraryInterface.getDoubleOpenDocuments(String): exact public transaction in the
+            // pinned APK.
             if (!remote.transact(51, request, reply, 0)) return null
             reply.readException()
             val path = reply.readString()
@@ -84,7 +94,8 @@ class MeebookReaderBridge(private val context: Context) {
         private const val VERSION = 2025042216
         private const val SIGNER = "98d7e54a6303ef7b721bada3a98ae292eec02d7b0a6aa9abd65ce9118f6b09d5"
 
-        // Pins both app identity and version because the vendor does not publish a stable SDK contract.
+        // Pins both app identity and version because the vendor does not publish a stable SDK
+        // contract.
         fun isSupported(context: Context): Boolean = runCatching {
             val info = context.packageManager.getPackageInfo(OWNER, PackageManager.GET_SIGNATURES)
             info.versionCode == VERSION && info.signatures?.any { signature ->
@@ -93,7 +104,8 @@ class MeebookReaderBridge(private val context: Context) {
             } == true
         }.getOrDefault(false)
 
-        // Opens the saved, matching book through Read's public entry without granting new storage access.
+        // Opens the saved, matching book through Read's public entry without granting new storage
+        // access.
         fun open(activity: Activity, savedUri: String?): Boolean {
             if (savedUri == null || !isSupported(activity)) return false
             val uri = Uri.parse(savedUri)

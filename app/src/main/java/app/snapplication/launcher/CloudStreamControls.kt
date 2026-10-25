@@ -8,12 +8,20 @@ import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
 
 /*
- * Uses CloudStream's visible next-episode button when its media session exposes only the current item.
- * Related classes: ExternalWatchPlayback requests this bounded action through RemoteActionService.
- * UI: Reveals the existing player's controls once, then clicks its enabled Next button if present.
- * Edit here for verified CloudStream control-ID changes. Never search the catalogue, choose an arbitrary
- * episode, or inject repeated taps. A changed foreground app, absent player or missing Next stops the action.
- */
+Uses CloudStream's visible next-episode button when its media session exposes only the current item.
+Used by or used with: ExternalWatchPlayback requests this limited action through
+RemoteActionService. Screen controls: Reveals the existing player's controls once, then clicks its
+enabled Next button if present. Edit here for verified CloudStream control-ID changes. Never search
+the catalogue, choose an arbitrary episode, or inject repeated taps. A changed foreground app,
+absent player or missing Next stops the action.
+
+This class is a helper and does not inherit from another launcher class.
+
+service gives access to the visible player controls. handler schedules short checks on the main
+thread, and generation makes older requests stop after a newer request starts. next checks the
+player, reveals its controls if needed, and tries its Next button once. RemoteActionService creates
+this helper; ExternalWatchPlayback requests the action through that service.
+*/
 class CloudStreamControls(private val service: RemoteActionService) {
     private val handler = Handler(Looper.getMainLooper())
     private var generation = 0
@@ -60,6 +68,7 @@ class CloudStreamControls(private val service: RemoteActionService) {
         attempt()
     }
 
-    // Cancels pending probes when accessibility stops; no gesture loop survives service destruction.
+    // Cancels pending probes when accessibility stops; no gesture loop survives service
+    // destruction.
     fun close() { generation++; handler.removeCallbacksAndMessages(null) }
 }
