@@ -128,9 +128,14 @@ object ExternalWatchPlayback {
     }
 
     // Play is explicit; a session already playing or buffering must never receive a toggle.
+    // Players that only advertise Play/Pause get the explicit Play media key, which never pauses.
     private fun play(controller: MediaController) {
         val playback = controller.playbackState ?: return
-        if (playback.state in setOf(PlaybackState.STATE_NONE, PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED) &&
-            playback.actions and PlaybackState.ACTION_PLAY != 0L) controller.transportControls.play()
+        if (playback.state !in setOf(PlaybackState.STATE_NONE, PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED)) return
+        if (playback.actions and PlaybackState.ACTION_PLAY != 0L) controller.transportControls.play()
+        else if (playback.actions and PlaybackState.ACTION_PLAY_PAUSE != 0L) {
+            controller.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY))
+            controller.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PLAY))
+        }
     }
 }

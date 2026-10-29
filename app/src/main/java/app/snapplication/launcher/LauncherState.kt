@@ -106,15 +106,38 @@ class LauncherState(private val context: Context) {
     var mode: String
         get() = if (readerOnly) "Read" else prefs.getString("mode", if (readerDevice) "Read" else "Watch")!!
         set(value) { prefs.edit().putString("mode", if (readerOnly) "Read" else value).apply() }
+    // With separateThemes on, Read and Watch each keep their own theme (theme:Read, theme:Watch);
+    // otherwise one shared theme applies to both.
     var theme: String
-        get() = prefs.getString("theme", if (readerDevice) "E-paper" else "Dark")!!
+        get() = (if (separateThemes) prefs.getString("theme:$mode", null) else null)
+            ?: prefs.getString("theme", if (readerDevice) "E-paper" else "Dark")!!
         set(value) {
+            if (separateThemes) { prefs.edit().putString("theme:$mode", value).apply(); return }
             val change = prefs.edit().putString("theme", value)
             // Choosing E-paper is also a safe rendering preset, not just a colour change.
             if (value == "E-paper") change.putBoolean("animations", false)
                 .putBoolean("useWallpaper", false).putBoolean("landscapeApps", false)
             change.apply()
         }
+    // Gives Read and Watch separate themes; both start from the current shared theme.
+    var separateThemes: Boolean
+        get() = !readerOnly && prefs.getBoolean("separateThemes", false)
+        set(value) {
+            val edit = prefs.edit().putBoolean("separateThemes", value)
+            if (value) {
+                val shared = prefs.getString("theme", if (readerDevice) "E-paper" else "Dark")
+                for (contentMode in listOf("Read", "Watch")) if (!prefs.contains("theme:$contentMode")) edit.putString("theme:$contentMode", shared)
+            }
+            edit.apply()
+        }
+    // Own books and videos open full screen from Home (default) or play inside the Home layout.
+    var fullscreenMedia: Boolean
+        get() = prefs.getBoolean("fullscreenMedia", true)
+        set(value) { prefs.edit().putBoolean("fullscreenMedia", value).apply() }
+    // Circles favourites style: small round keys with space between them instead of blocks.
+    var circles: Boolean
+        get() = prefs.getBoolean("circles", false)
+        set(value) { prefs.edit().putBoolean("circles", value).apply() }
     // Phone rotation selects the matching content mode; dedicated editions keep their own layout.
     var automaticPhoneMode: Boolean
         get() = !readerOnly && BuildConfig.FLAVOR != "tv" && deviceProfile == "Phone" &&
@@ -182,7 +205,7 @@ class LauncherState(private val context: Context) {
         get() = prefs.getBoolean("roundedCorners", false)
         set(value) { prefs.edit().putBoolean("roundedCorners", value).apply() }
     var animations: Boolean
-        get() = prefs.getBoolean("animations", !readerDevice && theme != "E-paper")
+        get() = theme != "E-paper" && prefs.getBoolean("animations", !readerDevice)
         set(value) { prefs.edit().putBoolean("animations", value).apply() }
     var tutorialSeen: Boolean
         get() = prefs.getBoolean("tutorialSeen", false)

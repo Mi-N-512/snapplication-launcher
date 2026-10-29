@@ -132,7 +132,8 @@ class DrawerPanel(
             setTextColor(ui.text); setHintTextColor(ui.muted)
             setBackgroundColor(ui.surface)
             setPadding(ui.dp(16), 0, ui.dp(16), 0)
-            imeOptions = EditorInfo.IME_ACTION_DONE
+            // In landscape the keyboard must not cover the results with its full-screen text box.
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN
             setOnKeyListener { _, keyCode, event ->
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                     // Move on release so the corresponding key-up cannot reach the new target.

@@ -21,7 +21,9 @@ controls to Android. item and queue identify the selected video and nearby files
 preparation of the next file, while checkpoint saves progress regularly. MainActivity creates this
 player and calls load. pause saves progress and checks whether to prepare the next file; close
 releases playback resources. setTapOnly hides the player controls so a tap on the picture plays or
-pauses, with tapBadge briefly confirming which.
+pauses, with tapBadge briefly confirming which. progressLine shows how far through the video you
+are. When a local file ends and another follows, upNext counts down from 5 and then plays it; tap
+the card to play now or Cancel to stay.
 
 Used by or used with: MainActivity supplies LibraryItem content; LauncherState stores progress;
 EpisodeResume supplies completion rules. Screen controls: Embedded video surface and its player
@@ -58,6 +60,41 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
             tapBadge.removeCallbacks(hideBadge); tapBadge.postDelayed(hideBadge, 900)
         }
     }
+    private val progressLine = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+        max = 1000; importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        progressTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+    }
+    // Refreshes the progress line once a second while this player exists.
+    private val progressTick = object : Runnable {
+        override fun run() {
+            val duration = player.duration
+            progressLine.progress = if (duration > 0) (player.currentPosition * 1000 / duration).toInt() else 0
+            handler.postDelayed(this, 1000)
+        }
+    }
+    private val upNextText = android.widget.TextView(context).apply {
+        textSize = 18f; setTextColor(android.graphics.Color.WHITE); setPadding(32, 20, 32, 20)
+        setOnClickListener { playNextNow() }
+    }
+    private val upNextCancel = android.widget.Button(context).apply {
+        text = context.getString(android.R.string.cancel); setOnClickListener { cancelUpNext() }
+    }
+    private val upNext = android.widget.LinearLayout(context).apply {
+        orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+        setBackgroundColor(0xDD101010.toInt()); visibility = android.view.View.GONE
+        addView(upNextText); addView(upNextCancel)
+    }
+    private var upNextSeconds = 0
+    // Counts down once a second, then moves to the next local file and plays it.
+    private val upNextTick = object : Runnable {
+        override fun run() {
+            if (upNextSeconds <= 0) { playNextNow(); return }
+            upNextText.text = String.format(java.util.Locale.getDefault(), "Next: %s in %d",
+                queue.getOrNull(player.currentMediaItemIndex + 1)?.title.orEmpty(), upNextSeconds)
+            upNextSeconds--
+            handler.postDelayed(this, 1000)
+        }
+    }
     // Periodic checkpoint owned by this player and cancelled by close.
     private val checkpoint = object : Runnable {
         // Periodically saves progress while this player is alive.
@@ -69,13 +106,18 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         view.addView(nextTitle, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.TOP))
         view.addView(tapLayer, android.widget.FrameLayout.LayoutParams(-1, -1))
         view.addView(tapBadge, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
+        view.addView(progressLine, android.widget.FrameLayout.LayoutParams(-1, 8, android.view.Gravity.BOTTOM))
+        view.addView(upNext, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.BOTTOM or android.view.Gravity.END).apply { setMargins(0, 0, 24, 40) })
+        stopAtEachEnd()
         player.setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
             // Keeps preview-only mode paused even if a hardware/media-session Play command arrives.
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (playWhenReady && !state.playVideosInLauncher) player.pause()
-                if (playWhenReady) { nextTitle.visibility = android.view.View.GONE; stagedNext = false }
+                if (playWhenReady) { nextTitle.visibility = android.view.View.GONE; stagedNext = false; cancelUpNext() }
+                else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && state.playVideosInLauncher &&
+                    player.hasNextMediaItem()) startUpNext()
             }
             // Claims readiness only once the next local file has actually rendered its first frame.
             override fun onRenderedFirstFrame() {
@@ -100,6 +142,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
             }
         })
         handler.postDelayed(checkpoint, 5000)
+        handler.post(progressTick)
     }
 
     // Changes the live video's aspect handling without pausing or reloading playback.
@@ -116,7 +159,10 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     fun load(selection: LibraryItem, autoplay: Boolean) {
         applyContentScale()
-        if (item?.uri == selection.uri) { if (autoplay && state.playVideosInLauncher) player.play(); return }
+        if (item?.uri == selection.uri) {
+            if (autoplay && state.playVideosInLauncher) { restartIfFinished(); player.play() }
+            return
+        }
         save()
         queue = state.watchQueue().takeIf { items -> items.any { it.uri == selection.uri } } ?: listOf(selection)
         val startIndex = queue.indexOfFirst { it.uri == selection.uri }.coerceAtLeast(0)
@@ -125,7 +171,21 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         val position = state.progress(selection.uri)
         player.setMediaItems(queue.map { MediaItem.Builder().setUri(it.uri).setMediaId(it.uri).build() }, startIndex, position)
         player.prepare()
+        if (autoplay) restartIfFinished()
         player.playWhenReady = autoplay && state.playVideosInLauncher
+    }
+
+    // Playing a finished file moves to the next one, or starts it again when it is the last.
+    private fun restartIfFinished() {
+        val duration = player.duration
+        val finished = player.playbackState == Player.STATE_ENDED ||
+            (duration > 0 && player.currentPosition >= duration - 1000)
+        if (!finished) return
+        if (player.hasNextMediaItem()) {
+            queue.getOrNull(player.currentMediaItemIndex + 1)?.let { item = it; state.remember(it) }
+            player.seekToNextMediaItem()
+        }
+        player.seekTo(0)
     }
 
     // Tap-only viewer: no control bar; a tap or Select on the picture toggles playback and shows
@@ -138,15 +198,41 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         if (enabled) view.hideController()
     }
 
+    // Each local file stops at its end so the next one can be announced instead of starting
+    // without warning.
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    private fun stopAtEachEnd() { player.pauseAtEndOfMediaItems = true }
+
+    // Shows the next-episode card and starts its five-second countdown.
+    private fun startUpNext() {
+        upNextSeconds = 5; upNext.visibility = android.view.View.VISIBLE
+        handler.removeCallbacks(upNextTick); handler.post(upNextTick)
+    }
+
+    // Hides the card; the finished episode stays where it ended.
+    private fun cancelUpNext() {
+        handler.removeCallbacks(upNextTick); upNext.visibility = android.view.View.GONE
+    }
+
+    // Moves to the next local file from its start and plays it.
+    private fun playNextNow() {
+        cancelUpNext()
+        if (!player.hasNextMediaItem()) return
+        save()
+        queue.getOrNull(player.currentMediaItemIndex + 1)?.let { item = it; state.remember(it) }
+        player.seekToNextMediaItem(); player.seekTo(0); player.play()
+    }
+
     // Commits current time for restoration after process death or shutdown.
     fun save() { item?.let { state.saveProgress(it.uri, player.currentPosition) } }
 
     // Stops playback when leaving the launcher so it does not consume power invisibly.
-    fun pause() { player.pause(); save(); prepareNextIfComplete() }
+    fun pause() { cancelUpNext(); player.pause(); save(); prepareNextIfComplete() }
 
     // Stages the next local episode at its beginning when the screen turns off past the user's
     // threshold.
     fun screenOff() {
+        cancelUpNext()
         player.pause()
         save()
         prepareNextIfComplete()
@@ -174,6 +260,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     fun close() {
         save()
         handler.removeCallbacks(checkpoint)
+        handler.removeCallbacks(progressTick); handler.removeCallbacks(upNextTick)
         tapBadge.removeCallbacks(hideBadge)
         view.player = null
         session.release()

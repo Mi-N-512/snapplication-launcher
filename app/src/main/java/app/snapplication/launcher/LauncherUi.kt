@@ -87,12 +87,12 @@ class LauncherUi(private val context: Context, private val state: LauncherState,
         GradientDrawable.Orientation.TL_BR,
         if (text == Color.BLACK) intArrayOf(0x70ffffff, 0x40ffffff, 0x60ffffff)
         else intArrayOf(0x30ffffff, 0x18181818, 0x38383838)
-    ).apply { setStroke(dp(1), homeLine) }
-    else GradientDrawable().apply { setColor(surface); setStroke(dp(1), homeLine) }
+    )
+    else android.graphics.drawable.ColorDrawable(surface)
 
-    // One line colour for Home panel edges and the dividers between favourites, so every edge on
-    // Home matches: a soft light line over the wallpaper, the theme border on solid surfaces.
-    val homeLine: Int = if (glass) 0x40ffffff else border
+    // Home panels have no outlines; the only lines are the dividers between favourites, in one
+    // subtle dark colour over the wallpaper or the theme border on solid surfaces.
+    val homeLine: Int = if (glass) 0x40000000 else border
 
     // Keeps foreground text readable while revealing wallpaper through labelled controls.
     fun textSurface(): Int = if (!glass) Color.TRANSPARENT

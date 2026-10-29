@@ -4,6 +4,12 @@
 
 ### Added
 
+- EPUB books open inside the launcher, page by page, with chapter turning and a saved place that survives layout changes.
+- Own books and videos open full screen by default; "Inside Home" keeps the previous layout.
+- Thin progress bar under books and videos.
+- Five-second "Next episode" countdown when a local video ends, with Cancel.
+- Separate Read and Watch themes.
+- Circles favourites style: small round keys with space between them.
 - Tap-only viewer setting: no buttons on Home; tap a page to turn it, a video to play and pause, or an app preview to resume it.
 - Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.
 - "Or read a book / play a video from this device" on an empty Home before any app is chosen.
@@ -20,6 +26,12 @@
 - `scripts/verify.ps1` no longer stops on Gradle warnings when its output is redirected in Windows PowerShell 5.1.
 - Home panel edges and favourite dividers share one line colour in every theme.
 - Turning a page no longer flashes "Loading…" over the page already shown.
+
+- Opening a finished local video moves to the next one, or restarts it when it is the last.
+- Players that only advertise Play/Pause now receive an explicit Play when resuming.
+- Leftover book copies from runs Android ended early are cleared from the cache at start.
+- Searching All Apps or Settings in landscape no longer hides results behind a full-screen keyboard.
+- Page Up/Down turn the open book wherever keyboard focus is.
 
 ### Removed
 

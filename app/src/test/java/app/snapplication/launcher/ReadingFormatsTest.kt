@@ -16,7 +16,8 @@ class ReadingFormatsTest {
         assertEquals(ReadingFormats.InlineKind.IMAGE, ReadingFormats.inlineKind("page.PNG", "application/octet-stream"))
         assertEquals(ReadingFormats.InlineKind.COMIC, ReadingFormats.inlineKind("opaque-id", "application/x-cbz"))
         assertEquals(ReadingFormats.InlineKind.PDF, ReadingFormats.inlineKind("opaque-id", "application/pdf"))
-        assertNull(ReadingFormats.inlineKind("book.epub", "application/zip"))
+        assertEquals(ReadingFormats.InlineKind.EPUB, ReadingFormats.inlineKind("book.epub", "application/zip"))
+        assertNull(ReadingFormats.inlineKind("backup.zip", "application/zip"))
     }
     // Generic document providers must still expose uppercase EPUB and comic filenames correctly.
     @Test fun genericProviderTypesResolveFromBookNames() {
@@ -27,7 +28,7 @@ class ReadingFormatsTest {
 
     // Archive-shaped book formats require an external parser instead of the CBZ image renderer.
     @Test fun externalFormatsNeverReachInlineDecoder() {
-        for (name in listOf("book.epub", "book.cbr", "book.cb7", "book.cbt", "book.mobi", "book.azw3",
+        for (name in listOf("book.cbr", "book.cb7", "book.cbt", "book.mobi", "book.azw3",
             "book.fb2", "book.djvu", "book.docx", "book.odt", "book.txt", "book.rtf")) {
             assertTrue(name, ReadingFormats.accepts(name, "application/octet-stream"))
             assertFalse(name, ReadingFormats.canRenderInline(name, "application/octet-stream"))
@@ -47,5 +48,6 @@ class ReadingFormatsTest {
         assertTrue(ReadingFormats.canRenderInline("chapter.cbz", "application/zip"))
         assertTrue(ReadingFormats.canRenderInline("page.png", "image/png"))
         assertTrue(ReadingFormats.accepts("opaque-id", "application/epub+zip"))
+        assertTrue(ReadingFormats.canRenderInline("Book.EPUB", "application/octet-stream"))
     }
 }

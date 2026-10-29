@@ -43,14 +43,16 @@ not inherit from it.
 
 Where to find things (the names below are the exact class and method names):
 
-- Home layout and favourite blocks: MainActivity.home() and favouriteColumn().
+- Home layout and favourite blocks: MainActivity.home() and favouriteColumn(); circleKey() draws
+the Circles style. Own books and videos shown full screen: MainActivity.viewer().
 
 - The centre's saved picture and return-to-app action: ExternalPreview.
 
 ReadingSnapshots saves still reading pages. PreviewCaptureService saves Watch frames.
 ExternalPreview displays the saved picture; ReaderSurface recognises reading pages.
 
-- Video playing inside Home: WatchPlayer. Pages shown inside Home: ReaderPanel.
+- Video playing inside Home: WatchPlayer. Pages shown inside Home: ReaderPanel (PDF, CBZ,
+images) and EpubPanel (EPUB).
 
 - Folder items and saved places: LocalLibrary, LibraryItem and LauncherState.
 
@@ -105,6 +107,7 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private var watch: WatchPlayer? = null
     private var reader: ReaderPanel? = null
+    private var epub: EpubPanel? = null
     private val drawerGestureAreas = mutableListOf<View>()
     private var screen = "Home"
     private var pickerMode = "Watch"
@@ -151,6 +154,11 @@ class MainActivity : Activity() {
     // privileges.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Book copies from a run Android ended early are never reused; remove them before any
+        // reader opens a new one.
+        val started = System.currentTimeMillis()
+        cacheDir.listFiles { file -> (file.name.startsWith("reader-") || file.name.startsWith("epub-")) && file.lastModified() < started }
+            ?.forEach { it.delete() }
         RemoteControls.trackLauncherWindow(window.decorView)
         state = LauncherState(this)
         state.initializeReaderProfile()
@@ -230,6 +238,7 @@ class MainActivity : Activity() {
         scanGeneration++
         watch?.pause()
         reader?.close(); reader = null
+        epub?.close(); epub = null
         screen = title
         drawerGestureAreas.clear(); drawerSwipeEligible = false
         ui = LauncherUi(this, state, state.useWallpaper && state.theme != "E-paper")
@@ -260,7 +269,7 @@ class MainActivity : Activity() {
                 insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
             insets
         }
-        if (title != "Home" && title != "Apps") {
+        if (title != "Home" && title != "Apps" && title != "Viewer") {
             val header = ui.column(true).apply { setBackgroundColor(ui.textSurface()) }
             header.addView(ui.button("‹") { navigateBack() }.apply {
                 contentDescription = "Back"
@@ -343,13 +352,22 @@ class MainActivity : Activity() {
             if (!state.playVideosInLauncher) {
                 player.view.hideController()
                 addOpenContentOverlay(panel, last, "▶")
+            } else if (state.fullscreenMedia) {
+                // Home shows a still preview; selecting it plays full screen.
+                player.setTapOnly(true); player.view.useController = false
+                addViewerOverlay(panel, last, "▶")
             } else if (!state.tapViewer) player.view.showController()
         } else if (!ReadingFormats.canRenderInline(last.title, last.mime)) {
             panel.addView(ui.label(last.title, 24f))
             addOpenContentOverlay(panel, last, "Open book in reader")
+        } else if (ReadingFormats.inlineKind(last.title, last.mime) == ReadingFormats.InlineKind.EPUB) {
+            epub = EpubPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }
+            if (!state.readInLauncher) addOpenContentOverlay(panel, last, "Open book")
+            else if (state.fullscreenMedia) addViewerOverlay(panel, last, "")
         } else {
             reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }
             if (!state.readInLauncher) addOpenContentOverlay(panel, last, "Open book")
+            else if (state.fullscreenMedia) addViewerOverlay(panel, last, "")
         }
         root.addView(ui.row("ALL APPS") { drawer() }.apply {
             ui.flatFocus(this, ui.textSurface(), outline = false)
@@ -370,6 +388,38 @@ class MainActivity : Activity() {
             textSize = if (item.mode == "Watch") 36f else 18f
             ui.flatFocus(this, Color.TRANSPARENT, outline = false)
         }, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    // Makes the Home preview open the same book or video full screen.
+    private fun addViewerOverlay(panel: FrameLayout, item: LibraryItem, label: String) {
+        panel.addView(ui.button(label) { viewer(item) }.apply {
+            contentDescription = "${item.title}. Open full screen"
+            textSize = 36f
+            ui.flatFocus(this, Color.TRANSPARENT, outline = false)
+        }, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    // Shows one of the user's own books or videos across the whole screen. Back returns to Home;
+    // the reading page or playback position is saved as usual.
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    private fun viewer(item: LibraryItem) {
+        begin("Viewer")
+        // Video sits on black; books keep the theme's own background so their title line is readable.
+        root.setBackgroundColor(if (item.mode == "Watch") Color.BLACK else ui.background)
+        val panel = FrameLayout(this)
+        root.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (item.mode == "Watch") {
+            val player = watch ?: WatchPlayer(this, state) { message(it) }.also { watch = it }
+            (player.view.parent as? ViewGroup)?.removeView(player.view)
+            panel.addView(player.view, FrameLayout.LayoutParams(-1, -1))
+            player.setTapOnly(state.tapViewer)
+            if (!state.tapViewer) player.view.showController()
+            player.load(item, true)
+        } else if (ReadingFormats.inlineKind(item.title, item.mime) == ReadingFormats.InlineKind.EPUB) {
+            epub = EpubPanel(this, state, ui).also { panel.addView(it.view); it.load(item) }
+        } else {
+            reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(item) }
+        }
     }
 
     // Hands the exact selected document/link to Android's viewer with a temporary read grant.
@@ -426,7 +476,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("Preview sizing")
             .setSingleChoiceItems(labels, values.indexOf(state.contentScale)) { dialog, index ->
                 state.contentScale = values[index]
-                reader?.applyContentScale(); watch?.applyContentScale()
+                reader?.applyContentScale(); epub?.applyContentScale(); watch?.applyContentScale()
                 dialog.dismiss()
                 if (returnToPagePreviews) readingPreviewSettings() else settings()
             }.setNegativeButton("Cancel", null).show()
@@ -442,7 +492,8 @@ class MainActivity : Activity() {
         val column = ui.column().apply {
             gravity = android.view.Gravity.CENTER
             dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.homeLine); setSize(ui.dp(1), ui.dp(1)) }
-            showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+            // Circles float in open space, so they have no grid lines between them.
+            showDividers = if (state.circles) LinearLayout.SHOW_DIVIDER_NONE else LinearLayout.SHOW_DIVIDER_MIDDLE
         }
         shell.addView(column, LinearLayout.LayoutParams(-1, 0, 1f))
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -453,9 +504,20 @@ class MainActivity : Activity() {
             val row = ui.column(true).apply {
                 gravity = android.view.Gravity.CENTER
                 dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.homeLine); setSize(ui.dp(1), ui.dp(1)) }
-                showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+                showDividers = if (state.circles) LinearLayout.SHOW_DIVIDER_NONE else LinearLayout.SHOW_DIVIDER_MIDDLE
             }
             group.forEach { flat ->
+                if (state.circles) {
+                    val component = flat?.let(ComponentName::unflattenFromString)
+                    val info = component?.let { runCatching { packageManager.getActivityInfo(it, 0) }.getOrNull() }
+                    row.addView(if (component == null || info == null) circleKey(null, "Add app to Home", slotCount, { drawer(editFavourites = true) }, null)
+                        else {
+                            val label = info.loadLabel(packageManager).toString()
+                            circleKey(IconPacks.load(this@MainActivity, component) { info.loadIcon(packageManager) }, label, slotCount,
+                                { launch(component) }, { favouriteActions(flat, label) { home() } })
+                        }, LinearLayout.LayoutParams(0, -1, 1f))
+                    return@forEach
+                }
                 if (flat == null) {
                     val add = ui.button("+") { drawer(editFavourites = true) }.apply { contentDescription = "Add app to Home" }
                     ui.flatFocus(add, ui.textSurface(), outline = false)
@@ -500,6 +562,39 @@ class MainActivity : Activity() {
         }
         drawerGestureAreas.add(shell)
         return shell
+    }
+
+    // A small round key centred in its cell, like a typewriter key: the app icon, or + for an
+    // empty slot. A ring in the focus colour marks the key a remote or keyboard has selected.
+    private fun circleKey(icon: android.graphics.drawable.Drawable?, label: String, slotCount: Int, onClick: () -> Unit, onLongClick: (() -> Unit)?): View {
+        val size = ui.dp(if (slotCount > 8) 44 else 60)
+        val ePaper = state.theme == "E-paper"
+        val fill = if (ePaper) Color.WHITE else if (state.useWallpaper) 0x66000000 else ui.border
+        // E-paper keys are white with a thin black rim; other themes use a soft filled disc.
+        fun oval(ring: Boolean) = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(fill)
+            if (ring) setStroke(ui.dp(if (ePaper) 3 else 2), ui.focusAccent)
+            else if (ePaper) setStroke(ui.dp(1), Color.BLACK)
+        }
+        val key = FrameLayout(this).apply {
+            background = android.graphics.drawable.StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), oval(true))
+                addState(intArrayOf(android.R.attr.state_pressed), oval(true))
+                addState(intArrayOf(), oval(false))
+            }
+            isFocusable = true; isClickable = true
+            contentDescription = label; tooltipText = label
+            setOnClickListener { onClick() }
+            onLongClick?.let { action -> setOnLongClickListener { action(); true } }
+            if (icon != null) addView(android.widget.ImageView(this@MainActivity).apply {
+                setImageDrawable(icon); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(size * 2 / 3, size * 2 / 3, android.view.Gravity.CENTER))
+            else addView(ui.label("+", 22f).apply {
+                setBackgroundColor(Color.TRANSPARENT); gravity = android.view.Gravity.CENTER
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(-1, -1))
+        }
+        return FrameLayout(this).apply { addView(key, FrameLayout.LayoutParams(size, size, android.view.Gravity.CENTER)) }
     }
 
     // Offers explicit reorder/remove actions without requiring drag gestures or accidental removal.
@@ -580,7 +675,11 @@ class MainActivity : Activity() {
 
     // Opens a selected item inside the home panel and starts explicitly requested video playback.
     private fun openItem(item: LibraryItem) {
-        state.remember(item); state.mode = item.mode; state.viewerSource = "Folder"; home()
+        state.remember(item); state.mode = item.mode; state.viewerSource = "Folder"
+        val inline = if (item.mode == "Watch") state.playVideosInLauncher
+            else state.readInLauncher && ReadingFormats.canRenderInline(item.title, item.mime)
+        if (inline && state.fullscreenMedia) { viewer(item); return }
+        home()
         if (item.mode == "Watch" && state.playVideosInLauncher) watch?.load(item, true)
     }
 
@@ -711,7 +810,14 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Device setup", state.deviceProfile) {
             state.profileSetupComplete = false; introduction()
         })
-        content.addView(ui.setting("Colours", state.theme) { themeSettings() })
+        content.addView(ui.setting("Colours", if (state.separateThemes) "${state.theme} · ${state.mode} theme" else state.theme) { themeSettings() })
+        if (!state.readerOnly && BuildConfig.FLAVOR != "tv" && state.deviceProfile == "Phone") {
+            content.addView(ui.setting("Separate Read / Watch themes",
+                if (state.separateThemes) "Each mode keeps its own colours; rotate to edit the other" else "Use the same colours in both modes",
+                if (state.separateThemes) "On" else "Off") {
+                state.separateThemes = !state.separateThemes; settings()
+            })
+        }
         content.addView(ui.setting("Font", if (LauncherFont.get(this) == null) "Android default" else "Your imported font") {
             AlertDialog.Builder(this).setTitle("Launcher font").setItems(arrayOf("Import TTF or OTF file", "Use Android default")) { _, index ->
                 if (index == 1) { LauncherFont.reset(this); settings() }
@@ -760,7 +866,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Favourites heading", "Show the heading above home shortcuts", if (state.showFavouriteHeading) "On" else "Off") {
             state.showFavouriteHeading = !state.showFavouriteHeading; settings()
         })
-        content.addView(ui.setting("Favourites Style", "${if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
+        content.addView(ui.setting("Favourites Style", "${if (state.circles) "Circles" else if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
         content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
         content.addView(ui.section("Home & content"))
         if (!state.readerOnly && state.deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv") content.addView(ui.setting("Home content", if (state.automaticPhoneMode) "Follow rotation: upright Read, sideways Watch" else "${state.mode} in either orientation") { chooseMode() })
@@ -774,11 +880,16 @@ class MainActivity : Activity() {
         if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("Play local videos here", "For your selected files or direct links; app previews resume their own player", if (state.playVideosInLauncher) "On" else "Off") {
             state.playVideosInLauncher = !state.playVideosInLauncher; settings()
         })
-        if (state.mode == "Read") content.addView(ui.setting("Open documents inside launcher", "PDF, CBZ and images only. EPUB and other formats open a reading app.", if (state.readInLauncher) "On" else "Off") {
+        if (state.mode == "Read") content.addView(ui.setting("Open documents inside launcher", "PDF, EPUB, CBZ and images. Other formats open a reading app.", if (state.readInLauncher) "On" else "Off") {
             state.readInLauncher = !state.readInLauncher; settings()
         })
         content.addView(ui.setting("Preview source", if (state.viewerSource == "App") "Resume your last app" else "Files from your chosen folder") { chooseViewerSource() })
         content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
+        content.addView(ui.setting("Own books and videos",
+            if (state.fullscreenMedia) "Full screen · select the preview on Home to open it" else "Inside Home · read and play between your favourites",
+            if (state.fullscreenMedia) "Full screen" else "Inside Home") {
+            state.fullscreenMedia = !state.fullscreenMedia; settings()
+        })
         content.addView(ui.setting("Tap-only viewer",
             if (state.readerOnly) "No buttons on Home. Tap the right of a page to go forward, the left to go back"
             else "No buttons on Home. Tap a page's right side to go forward, left side to go back; tap a video to play or pause, or an app preview to resume it",
@@ -947,6 +1058,8 @@ class MainActivity : Activity() {
         val search = EditText(this).apply {
             hint = "Search all settings"; setText(settingsQuery); setTextColor(ui.text); setHintTextColor(ui.muted)
             setSingleLine(true); setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8)); setBackgroundColor(ui.surface)
+            // Keeps matching settings visible above the keyboard in landscape.
+            imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI or android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN
         }
         root.addView(search, 1, LinearLayout.LayoutParams(-1, ui.dp(52)))
         // Single-line EditText consumes DPAD_DOWN as cursor movement on some Huawei keyboards.
@@ -1019,6 +1132,7 @@ class MainActivity : Activity() {
         begin("Theme Mode")
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (state.separateThemes) content.addView(ui.label("Choosing the ${state.mode} theme. Rotate the phone to choose the other mode's theme.", 15f))
         val themes = listOf("OLED Black", "Dark", "Light", "Material You", "Custom", "E-paper")
         val backgrounds = listOf(Color.BLACK, 0xff1a1a1a.toInt(), 0xfffafafa.toInt(), 0xff1c1b1f.toInt(), state.background, Color.WHITE)
         val descriptions = listOf("True black OLED surfaces", "Soft dark grey surfaces", "Light grey and white surfaces",
@@ -1039,9 +1153,10 @@ class MainActivity : Activity() {
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         content.addView(ui.section("Display Style"))
-        listOf(false, true).forEach { grid ->
-            content.addView(ui.row("${if (state.grid == grid) "●" else "○"}   ${if (grid) "Grid · compact icon blocks" else "List · icon and app name"}") {
-                state.grid = grid; favouriteSettings()
+        listOf("List" to "List · icon and app name", "Grid" to "Grid · compact icon blocks", "Circles" to "Circles · small round keys with space between").forEach { (style, text) ->
+            val selected = when (style) { "Circles" -> state.circles; "Grid" -> !state.circles && state.grid; else -> !state.circles && !state.grid }
+            content.addView(ui.row("${if (selected) "●" else "○"}   $text") {
+                state.circles = style == "Circles"; state.grid = style != "List"; favouriteSettings()
             })
         }
         content.addView(ui.setting("Dynamic blocks", "Adapt blocks to the number of favourites", if (state.dynamicBlocks) "On" else "Off") { state.dynamicBlocks = !state.dynamicBlocks; favouriteSettings() })
@@ -1430,6 +1545,14 @@ class MainActivity : Activity() {
 
     // Applies saved remote keys only in this activity, preserving text entry and paired key events.
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Page Up/Down always turn the open book on Home, wherever keyboard focus happens to be.
+        if (screen == "Home" && (event.keyCode == android.view.KeyEvent.KEYCODE_PAGE_DOWN || event.keyCode == android.view.KeyEvent.KEYCODE_PAGE_UP)
+            && (reader != null || epub != null)) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                val delta = PageTurn.key(event.keyCode); reader?.move(delta); epub?.move(delta)
+            }
+            return true
+        }
         if (::state.isInitialized && state.readerOnly) return super.dispatchKeyEvent(event)
         if (!::remote.isInitialized || RemoteControls.learning) return super.dispatchKeyEvent(event)
         RemoteControls.observeKey(event)
@@ -1502,7 +1625,7 @@ class MainActivity : Activity() {
         RemoteActionService.instance?.recordLauncherNavigation("back")
         when (screen) {
             "Settings" -> if (settingsQuery.isNotEmpty()) { settingsQuery = ""; settings() } else if (settingsCategory != null) settings(null) else drawer()
-            "Apps", "Library" -> home()
+            "Apps", "Library", "Viewer" -> home()
             "Remote buttons", "Recorded actions" -> settings("Remote & macros")
             "Home" -> Unit
             else -> settings()
@@ -1580,6 +1703,6 @@ class MainActivity : Activity() {
         remote.closeLearning()
         thermal.stop()
         unregisterReceiver(screenReceiver)
-        scanGeneration++; watch?.close(); reader?.close(); worker.shutdownNow(); super.onDestroy()
+        scanGeneration++; watch?.close(); reader?.close(); epub?.close(); worker.shutdownNow(); super.onDestroy()
     }
 }

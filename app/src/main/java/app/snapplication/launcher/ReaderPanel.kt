@@ -28,7 +28,8 @@ worker and image.
 The page itself turns pages: tap the left third to go back and elsewhere to go forward, swipe
 sideways, or press a remote, keyboard or page-turner key. PageTurn decides the direction. With
 LauncherState.tapViewer on, the title line and Previous/Next buttons are hidden and pageBadge
-briefly shows the page number after each turn instead.
+briefly shows the page number after each turn instead. progressLine shows how far through the
+document you are.
 
 Used by or used with: MainActivity supplies LibraryItem content; LauncherState stores progress;
 LauncherUi styles controls; PageTurn maps taps, swipes and keys. Screen controls: Embedded PDF, CBZ
@@ -56,6 +57,10 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
     private val hideBadge = Runnable { pageBadge.visibility = android.view.View.GONE }
+    private val progressLine = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+        max = 1000; progressTintList = android.content.res.ColorStateList.valueOf(ui.focusAccent)
+        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
     // Last touch position for the click that follows it; keyboard and accessibility clicks go
     // forward.
     private var tapX = Float.MAX_VALUE
@@ -66,6 +71,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         holder.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
         holder.addView(pageBadge, android.widget.FrameLayout.LayoutParams(-2, -2,
             android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = ui.dp(12) })
+        holder.addView(progressLine, android.widget.FrameLayout.LayoutParams(-1, ui.dp(3), android.view.Gravity.BOTTOM))
         view.addView(holder, LinearLayout.LayoutParams(-1, 0, 1f))
         if (!tapOnly) view.addView(status)
         val controls = ui.column(true)
@@ -168,6 +174,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
                     image.contentDescription = "${selection.title}, page ${page + 1} of $count"
                     status.text = "${selection.title} · ${page + 1} / $count"
                     state.saveProgress(selection.uri, page.toLong())
+                    progressLine.progress = (page + 1) * 1000 / count
                     if (tapOnly) {
                         pageBadge.text = String.format(java.util.Locale.getDefault(), "%d / %d", page + 1, count)
                         pageBadge.visibility = android.view.View.VISIBLE

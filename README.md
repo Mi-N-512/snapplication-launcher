@@ -10,9 +10,13 @@ Snapplication keeps your last reading page or video in the centre of Home, with 
 
 [Features](#main-features) · [Choose your edition](#choose-your-edition) · [Download APKs](private-test-builds/) · [Get started](#get-started) · [Screenshots](#see-it-running) · [Build the project](#open-and-build-the-project)
 
-<p align="center"><img src="docs/images/demo-wake.gif" width="300" alt="The screen is off; the phone wakes straight into Snapplication showing the book on the page last read, and two taps turn to the next pages"></p>
+<p align="center"><img src="docs/images/demo-watch.gif" width="560" alt="Watch Home starts empty. A video app plays for a few seconds and is paused; back on Home, Snapplication shows the frame where it stopped. The screen turns off and on, the frame is still there, and tapping it reopens the app at that moment and carries on playing"></p>
 
-<p align="center">Wake the phone and you are back on your page. No app to find, no menu to open.</p>
+<p align="center">Pause a video in any supported player, go Home, and the moment you stopped is waiting. Tap it to carry on.</p>
+
+<p align="center"><img src="docs/images/demo-read.gif" width="300" alt="Read Home in the E-paper theme with round favourites shows a book on the page last read. Tapping it opens the book full screen; taps turn the pages and Back returns Home with the place saved"></p>
+
+<p align="center">Read mode in its own E-paper theme: your book is on Home, one tap away from full-screen reading.</p>
 
 ## Main features
 
@@ -24,17 +28,19 @@ Android and the other app still own that task, its playback buffer and its memor
 
 ### Read and watch local content
 
-Choose folders through Android's file picker. The built-in reader handles **PDF, CBZ and images** and saves your page. Recognised formats such as **EPUB** open in a compatible installed reader. Local videos and supported direct media links can play inside Home, and the launcher saves your position.
+Choose folders through Android's file picker. The built-in reader handles **EPUB, PDF, CBZ and images** and saves your place; other book formats open in a compatible installed reader. Local videos and supported direct media links play with your position saved. A thin bar along the bottom shows how far through the book or video you are.
+
+Your own books and videos open **full screen** by default: Home shows a preview, one tap opens it across the whole screen, and Back returns Home. If you prefer to read and watch between your favourites, set **Own books and videos** to **Inside Home** (Settings → Home & content).
 
 Picture sizing offers **Fit**, **Fill/crop** and **Stretch**. Turn pages by tapping the page, swiping sideways or pressing a page key, and add Previous/Next buttons if you prefer them.
 
 **Tap-only viewer** (Settings → Home & content) removes every button from the centre of Home. The book or video fills the space: tap the right of a page to go forward and the left to go back, or tap a video to play or pause. A small badge confirms each tap. With an app's saved preview, a tap reopens that app and resumes it.
 
-Local video queues can move on to the next episode once you pass the completion threshold you choose (for example 90%). When you leave Home or turn the screen off past that point, the next file waits at its start and the finished one keeps its position. Other video apps only move to the next episode if they offer a Next control that Snapplication can press.
+Local video queues can move on to the next episode once you pass the completion threshold you choose (for example 90%). When you leave Home or turn the screen off past that point, the next file waits at its start and the finished one keeps its position. When an episode plays to the end, a card counts down five seconds to the next one; tap it to start now or Cancel to stay. Other video apps only move to the next episode if they offer a Next control that Snapplication can press.
 
 ### Make Home yours
 
-Choose blocks or lists, symmetrical or asymmetrical arrangements, favourite limits, labels, wallpaper and themes. Separate Read and Watch favourite pools keep each activity's apps nearby if you want them. The alphabet rail and search help you find everything else.
+Choose lists, blocks or **Circles** (small round keys with space around them, like an old typewriter), symmetrical or asymmetrical arrangements, favourite limits, labels, wallpaper and themes. Read and Watch can each keep their own theme and their own favourites, so turning the phone can switch from a transparent Watch screen to an E-paper Read screen. The alphabet rail and search help you find everything else.
 
 You can import your own TTF or OTF font. Installed icon packs are optional; no icon pack or paid font is included.
 
@@ -54,12 +60,12 @@ Backups can contain recorded text and reference pictures. Keep them somewhere pr
 
 ## See it running
 
-These are Android emulator captures of version 0.99 (Universal edition, Android 15). Everything shown is free to reuse:
+These are Android emulator captures (Universal edition, Android 15). The two demos at the top show the current build; the stills below were taken earlier in 0.99, before the Circles style and full-screen viewer. Everything shown is free to reuse:
 
 - The book is Chapter I of *Alice's Adventures in Wonderland* (Lewis Carroll, 1865) with John Tenniel's 1865 illustrations, both public domain, set as a small PDF for these captures.
 - The video is "Earth Views from the ISS" footage from NASA (public domain), trimmed and without its soundtrack.
 - The wallpaper is NASA Goddard's *Blue Marble 2007 East* (public domain).
-- The app icons belong to the open-source [Fossify](https://github.com/FossifyOrg) apps (GPL-3.0), installed from F-Droid as examples. No apps are bundled with Snapplication.
+- The app icons belong to the open-source [Fossify](https://github.com/FossifyOrg) apps (GPL-3.0) and [Just Player](https://github.com/moneytoo/Player) (public domain, Unlicense), installed from F-Droid as examples. No apps are bundled with Snapplication.
 
 The captures show the built-in reader and player. They don't show that every external app supports the same controls.
 
