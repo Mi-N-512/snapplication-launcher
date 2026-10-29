@@ -8,25 +8,49 @@ Snapplication keeps your last reading page or video in the centre of Home, with 
 
 0.99 is a private preview on the way to 1.0. These builds are for testing and are not a public store release.
 
-[Choose your edition](#choose-your-edition) · [Download APKs](private-test-builds/) · [Get started](#get-started) · [Screenshots](#see-it-running) · [Build the project](#open-and-build-the-project)
+[Features](#main-features) · [Choose your edition](#choose-your-edition) · [Download APKs](private-test-builds/) · [Get started](#get-started) · [Screenshots](#see-it-running) · [Build the project](#open-and-build-the-project)
 
-<p align="center"><img src="docs/images/demo-rotate.gif" width="420" alt="A phone held upright shows a book page in Read mode, then turns sideways and Home switches to Watch mode with a video between the favourite apps"></p>
+<p align="center"><img src="docs/images/demo-wake.gif" width="300" alt="The screen is off; the phone wakes straight into Snapplication showing the book on the page last read, and two taps turn to the next pages"></p>
 
-## Why I wanted to create it
+<p align="center">Wake the phone and you are back on your page. No app to find, no menu to open.</p>
 
-I wanted a launcher that shows where I left off and gets me back there quickly. A home screen should show the book or video I was using, with my apps around it, so I don't have to search through menus every time.
+## Main features
 
-I also wanted the same idea to work in different situations: reading on an e-paper screen, watching on a phone connected to a TV, or rotating a phone between the two. Those devices need different controls and defaults, but they should still feel like the same application.
+### Pick up where you left off
 
-I intend to keep every feature free, with no advertising or feature paywalls, and to make the project something people can adapt to their own layouts and needs. A distribution licence still needs to be chosen before public release.
+The centre can show a saved frame or reading page from a supported external app. Select it to reopen that app where you were; if the app allows it, playback resumes too. Read and Watch each remember their own last app.
 
-## The design
+Android and the other app still own that task, its playback buffer and its memory. Snapplication can't freeze another app or guarantee an instant resume after Android closes it. Protected content, and apps that hide their page or player state, can limit previews and controls.
 
-The central Snapplication area is the largest part of Home, and favourites sit around it without headings. Layouts are angular by default, built from squares, rectangles and clear dividers, with options for people who prefer rounded corners.
+### Read and watch local content
 
-Optional transparency (**View wallpaper** in Appearance) lets your wallpaper show through Home, All Apps and Settings, with neutral accents. Each theme suits a kind of screen: Light uses pastel pink, Dark and OLED Black use British racing green, and E-paper favours contrast and static pages.
+Choose folders through Android's file picker. The built-in reader handles **PDF, CBZ and images** and saves your page. Recognised formats such as **EPUB** open in a compatible installed reader. Local videos and supported direct media links can play inside Home, and the launcher saves your position.
 
-Touch, directional navigation and reading each get their own layout. Phone setup can follow rotation or keep the content mode you chose.
+Picture sizing offers **Fit**, **Fill/crop** and **Stretch**. Turn pages by tapping the page, swiping sideways or pressing a page key, and add Previous/Next buttons if you prefer them.
+
+**Tap-only viewer** (Settings → Home & content) removes every button from the centre of Home. The book or video fills the space: tap the right of a page to go forward and the left to go back, or tap a video to play or pause. A small badge confirms each tap.
+
+Local video queues can move on to the next episode once you pass the completion threshold you choose (for example 90%). When you leave Home or turn the screen off past that point, the next file waits at its start and the finished one keeps its position. Other video apps only move to the next episode if they offer a Next control that Snapplication can press.
+
+### Make Home yours
+
+Choose blocks or lists, symmetrical or asymmetrical arrangements, favourite limits, labels, wallpaper and themes. Separate Read and Watch favourite pools keep each activity's apps nearby if you want them. The alphabet rail and search help you find everything else.
+
+You can import your own TTF or OTF font. Installed icon packs are optional; no icon pack or paid font is included.
+
+### Remote buttons and recorded actions
+
+The remote page shows a virtual remote. Pick an action on it, press the button on your physical remote, and that button now runs the action or a saved macro. Android reserves some keys, including Power on many devices, so not every physical button can be intercepted.
+
+Macros can follow recorded screens or run coordinates on the current screen. The editor has timing, step editing, reference images and a rehearsal view. Image-matched actions can wait for a matching screen before tapping. Optional markers show taps during playback, and a running action has a Stop control and a saved result.
+
+A reference screenshot alone does not grant permission to control protected Android screens. Current-screen coordinates can press the wrong place if the layout or orientation changes, so rehearse and check the position before assigning a remote button.
+
+### Keep your setup
+
+**Backup & restore** saves portable settings, favourites, remote assignments and macros, including their reference pictures, to a local file. Restore asks before replacing your setup. Permissions, folder access grants, media, preview frames, wallpapers and imported font files are not transferred.
+
+Backups can contain recorded text and reference pictures. Keep them somewhere private.
 
 ## See it running
 
@@ -64,26 +88,27 @@ The captures show the built-in reader and player. They don't show that every ext
 
 ### In motion
 
-| Turning pages in the built-in reader | Adding a favourite from All Apps |
-| --- | --- |
-| <img src="docs/images/demo-reader.gif" width="280" alt="Tapping Next moves the Alice PDF from page 1 to page 4, then Previous goes back a page"> | <img src="docs/images/demo-favourites.gif" width="280" alt="All Apps opens, the favourites editor adds Music Player, and Home shows the new tile"> |
+| Turn sideways to watch | Turning pages in the built-in reader | Adding a favourite from All Apps |
+| --- | --- | --- |
+| <img src="docs/images/demo-rotate.gif" width="260" alt="A phone held upright shows a book page in Read mode, then turns sideways and Home switches to Watch mode with a video between the favourite apps"> | <img src="docs/images/demo-reader.gif" width="200" alt="Tapping Next moves the Alice PDF from page 1 to page 4, then Previous goes back a page"> | <img src="docs/images/demo-favourites.gif" width="200" alt="All Apps opens, the favourites editor adds Music Player, and Home shows the new tile"> |
 
-The reader GIF has **Previous / Next buttons** switched on (Settings → Home & content). They are off by default. The white dots are Android's "show taps" indicator.
+The reader GIF has the optional **Previous / Next buttons** switched on (Settings → Home & content). Without them you can tap the page (left third goes back, the rest goes forward), swipe sideways, or use a remote, keyboard or page-turner key. The white dots are Android's "show taps" indicator.
 
-### How Home chooses what to show
+## Why I wanted to create it
 
-```mermaid
-flowchart TD
-    O[Phone setup with Follow rotation] -->|upright| R[Read]
-    O -->|sideways| W[Watch]
-    R --> S{Preview source<br/>saved separately for each mode}
-    W --> S
-    S -->|Resume your last app| P[Saved still of the last page or video frame]
-    P -->|select it| T[Android reopens that app's task]
-    S -->|Files from a folder| F{Open inside launcher?}
-    F -->|on| B[Built-in reader or player<br/>saves your page or position]
-    F -->|off| X[Opens in a compatible installed app]
-```
+I wanted a launcher that shows where I left off and gets me back there quickly. A home screen should show the book or video I was using, with my apps around it, so I don't have to search through menus every time.
+
+I also wanted the same idea to work in different situations: reading on an e-paper screen, watching on a phone connected to a TV, or rotating a phone between the two. Those devices need different controls and defaults, but they should still feel like the same application.
+
+I intend to keep every feature free, with no advertising or feature paywalls, and to make the project something people can adapt to their own layouts and needs. A distribution licence still needs to be chosen before public release.
+
+## The design
+
+The central Snapplication area is the largest part of Home, and favourites sit around it without headings. Layouts are angular by default, built from squares, rectangles and clear dividers, with options for people who prefer rounded corners.
+
+Optional transparency (**View wallpaper** in Appearance) lets your wallpaper show through Home, All Apps and Settings, with neutral accents. Each theme suits a kind of screen: Light uses pastel pink, Dark and OLED Black use British racing green, and E-paper favours contrast and static pages.
+
+Touch, directional navigation and reading each get their own layout. Phone setup can follow rotation or keep the content mode you chose.
 
 ## Choose your edition
 
@@ -110,51 +135,26 @@ Read mode does **not** use continuous screen recording. Watch previews use Andro
 
 In Phone setup, **Follow rotation** can choose Read upright and Watch sideways. You can also keep Read or Watch selected while changing orientation. The dedicated editions keep their intended content mode.
 
-## Main features
+## Permissions: what it needs and why
 
-### Pick up where you left off
+Android grants these when you install the app. You never see a prompt for them:
 
-The centre can show a saved frame or reading page from a supported external app. Selecting it returns to the remembered task and requests supported playback actions. Snapplication tracks the latest eligible Read app and Watch app separately.
-
-Android and the other app still own that task, its playback buffer and its memory. Snapplication can't freeze another app or guarantee an instant resume after Android closes it. Protected content, and apps that hide their page or player state, can limit previews and controls.
-
-### Read and watch local content
-
-Choose folders through Android's file picker. The built-in reader handles **PDF, CBZ and images** and saves your page. Recognised formats such as **EPUB** open in a compatible installed reader. Local videos and supported direct media links can play inside Home, and the launcher saves your position.
-
-Picture sizing offers **Fit**, **Fill/crop** and **Stretch**, and you can turn on navigation controls when you want them. Local video queues can prepare the next item at the completion threshold you choose. External next-episode requests depend on the controls the player offers, so they are not universal preloading.
-
-### Make Home yours
-
-Choose blocks or lists, symmetrical or asymmetrical arrangements, favourite limits, labels, wallpaper and themes. Separate Read and Watch favourite pools keep each activity's apps nearby if you want them. The alphabet rail and search help you find everything else.
-
-You can import your own TTF or OTF font. Installed icon packs are optional; no icon pack or paid font is included.
-
-### Remote buttons and recorded actions
-
-The remote page shows a virtual remote for learning buttons that Android delivers to the launcher and assigning actions to them. Assign ordinary actions or a saved macro. Android reserves some keys, including Power on many devices, so not every physical button can be intercepted.
-
-Macros can follow recorded screens or run coordinates on the current screen. The editor has timing, step editing, reference images and a rehearsal view. Image-matched actions can wait for a matching screen before tapping. Optional markers show taps during playback, and a running action has a Stop control and a saved result.
-
-A reference screenshot alone does not grant permission to control protected Android screens. Current-screen coordinates can press the wrong place if the layout or orientation changes, so rehearse and check the position before assigning a remote button.
-
-### Keep your setup
-
-**Backup & restore** saves portable settings, favourites, remote assignments and macros, including their reference pictures, to a local file. Restore asks before replacing your setup. Permissions, folder access grants, media, preview frames, wallpapers and imported font files are not transferred.
-
-Backups can contain recorded text and reference pictures. Keep them somewhere private.
-
-## Permissions, in plain language
-
-| Permission or access | Why you might enable it |
+| Permission | Why Snapplication needs it |
 | --- | --- |
-| Default Home app | Open Snapplication when you press Home. |
-| Accessibility support | Remote input, recorded actions and supported still reading-page previews. |
-| Screen sharing | Watch previews and image-matched macro checks. Android controls the consent and can end a session. |
-| Media notification access | Discover supported players and request their playback controls. Optional. |
-| Selected files/folders | Read the content you choose through Android's picker. |
+| Internet | Plays direct HTTPS video links you enter. Snapplication has no account, advertising or analytics. |
+| Foreground service (screen capture) | Keeps the Watch preview service running while it saves a still frame, with Android's notification showing that it is active. |
 
-Preview pictures and macro reference data are stored locally. No root is required. The launcher cannot bypass secure screens, DRM or Android's permission decisions.
+You choose whether to allow the rest in Android's settings. Only the first is needed to use Snapplication as your launcher:
+
+| Access | Needed? | What it is used for |
+| --- | --- | --- |
+| Default Home app | Yes | Opens Snapplication when you press Home. |
+| Folder access (Android's file picker) | Only for local books and videos | Reads the folders you pick, and nothing else on your storage. |
+| Accessibility service | Optional | Remote buttons, recorded actions, opening apps in landscape, and still reading-page previews on Android 11 and newer. |
+| Screen sharing | Optional, Watch only | Saves a still frame of your video for Home and checks image-matched actions. Android asks each time and can end the session. |
+| Notification access | Optional | Finds media apps that are playing and sends them play, pause and next requests. |
+
+Snapplication does not ask for your camera, microphone, contacts or location, and it does not need root. Preview pictures and macro reference data stay on the device. The launcher cannot get around secure screens, DRM or Android's permission decisions.
 
 ## Open and build the project
 
@@ -172,7 +172,7 @@ Choose `universalDebug`, `modernDebug`, `ereaderDebug` or `tvDebug` in **Build V
 
 Gradle writes the APKs to `app/build/outputs/apk/`. These private builds use a local debug signing key that is never committed. A build signed elsewhere with a different key will not update an installation signed with the original key.
 
-Start reading the code at `MainActivity.kt`. Its header maps the screens to their helpers. Class comments explain responsibilities, key variables, real parent/child relationships and where changes belong. [Project checks](CONSTRAINTS.md) describe the verification requirements.
+Start reading the code at `MainActivity.kt`. Its header maps the screens to their helpers. Class comments explain responsibilities, key variables, real parent/child relationships and where changes belong. Run `scripts/verify.ps1` before calling a build ready; a compiled APK alone is not a passed test.
 
 ## On the way to 1.0
 
