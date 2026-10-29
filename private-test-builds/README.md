@@ -15,13 +15,13 @@ Sign in to GitHub, open the APK and select **Download raw file**. Install the sa
 
 ## What was checked for this build
 
-- All four editions built and passed Android lint.
-- 61 unit tests passed per edition (244 across the four editions).
-- Android 15 emulator: local PDF rendering and local video playback; portrait/landscape, blocks/list, light, dark, OLED, E-paper and transparent screens.
-- Backup/restore retained settings, favourites, mappings, macros and reference pictures; malformed backups were rejected.
-- Profile checks covered portrait Read after TV setup, independent orientation choices and reading-only restore behaviour.
-- Recorded taps replayed once, including current-screen coordinates and faster timing; no repeat after five seconds. Mapping-window lifecycle checks passed.
+- All four editions built and passed Android lint with no new warnings.
+- 68 unit tests passed per edition (272 across the four editions), including EPUB packaging and page-turn input.
+- Android 15 emulator: EPUB and PDF reading inside Home and full screen, with the same place kept between the two; tap, swipe and Page Up/Down page turning; Tap-only viewer for books, videos and app previews.
+- Local videos: progress bar, five-second next-episode countdown, and moving on after the completion threshold (tested at 90%, including screen off).
+- A third-party video player paused on Home showed its saved frame after the screen turned off and on, and tapping it reopened the app at the same moment.
+- Separate Read and Watch themes, the Circles favourites style, and Home with no panel outlines.
 
-Physical HDMI, remote Power/Back, third-party streaming buffers and e-paper refresh were not re-tested for this packaging update. Earlier device checks do not replace the final 1.0 hardware regression pass. Android and other apps can restrict previews, protected-screen actions and resume.
+Physical HDMI, remote Power/Back, third-party streaming buffers and e-paper refresh were not re-tested for this build; the Huawei test install follows separately. Earlier device checks do not replace the final 1.0 hardware regression pass. Android and other apps can restrict previews, protected-screen actions and resume.
 
 See the [main README](../README.md) for setup, screenshots, permissions, design goals and edition differences.
