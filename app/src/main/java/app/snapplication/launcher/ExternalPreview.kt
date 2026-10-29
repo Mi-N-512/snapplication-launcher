@@ -80,6 +80,8 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
         if (mode == "Read") { previous.visibility = View.GONE; next.visibility = View.GONE }
         panel.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        // Tap-only viewer: no control bar; tapping the picture reopens and resumes the app.
+        if (state.tapViewer) controls.visibility = View.GONE
         // Before any app is chosen there is nothing to continue; offer local files instead.
         if (component == null && onUseFolder != null) {
             controls.visibility = View.GONE

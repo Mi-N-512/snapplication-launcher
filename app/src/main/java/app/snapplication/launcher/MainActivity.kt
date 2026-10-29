@@ -781,7 +781,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
         content.addView(ui.setting("Tap-only viewer",
             if (state.readerOnly) "No buttons on Home. Tap the right of a page to go forward, the left to go back"
-            else "No buttons on Home. Tap a page's right side to go forward, left side to go back; tap a video to play or pause",
+            else "No buttons on Home. Tap a page's right side to go forward, left side to go back; tap a video to play or pause, or an app preview to resume it",
             if (state.tapViewer) "On" else "Off") {
             state.tapViewer = !state.tapViewer; settings()
         })

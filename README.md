@@ -28,7 +28,7 @@ Choose folders through Android's file picker. The built-in reader handles **PDF,
 
 Picture sizing offers **Fit**, **Fill/crop** and **Stretch**. Turn pages by tapping the page, swiping sideways or pressing a page key, and add Previous/Next buttons if you prefer them.
 
-**Tap-only viewer** (Settings → Home & content) removes every button from the centre of Home. The book or video fills the space: tap the right of a page to go forward and the left to go back, or tap a video to play or pause. A small badge confirms each tap.
+**Tap-only viewer** (Settings → Home & content) removes every button from the centre of Home. The book or video fills the space: tap the right of a page to go forward and the left to go back, or tap a video to play or pause. A small badge confirms each tap. With an app's saved preview, a tap reopens that app and resumes it.
 
 Local video queues can move on to the next episode once you pass the completion threshold you choose (for example 90%). When you leave Home or turn the screen off past that point, the next file waits at its start and the finished one keeps its position. Other video apps only move to the next episode if they offer a Next control that Snapplication can press.
 

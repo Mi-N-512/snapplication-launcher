@@ -4,7 +4,7 @@
 
 ### Added
 
-- Tap-only viewer setting: no buttons on Home; tap a page to turn it or a video to play and pause.
+- Tap-only viewer setting: no buttons on Home; tap a page to turn it, a video to play and pause, or an app preview to resume it.
 - Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.
 - "Or read a book / play a video from this device" on an empty Home before any app is chosen.
 
