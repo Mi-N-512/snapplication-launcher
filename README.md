@@ -10,11 +10,11 @@ Snapplication keeps your last reading page or video in the centre of Home, with 
 
 [Features](#main-features) · [Choose your edition](#choose-your-edition) · [Download APKs](private-test-builds/) · [Get started](#get-started) · [Screenshots](#see-it-running) · [Build the project](#open-and-build-the-project)
 
-<p align="center"><img src="docs/images/demo-watch.gif" width="560" alt="Watch Home starts empty. A video app plays for a few seconds and is paused; back on Home, Snapplication shows the frame where it stopped. The screen turns off and on, the frame is still there, and tapping it reopens the app at that moment and carries on playing"></p>
+<p align="center"><img src="docs/images/demo-watch.webp" width="720" alt="Watch Home starts empty. A video app plays for a few seconds and is paused; back on Home, Snapplication shows the frame where it stopped. The screen turns off and on, the frame is still there, and tapping it reopens the app at that moment and carries on playing"></p>
 
 <p align="center">Pause a video in any supported player, go Home, and the moment you stopped is waiting. Tap it to carry on.</p>
 
-<p align="center"><img src="docs/images/demo-read.gif" width="300" alt="Read Home in the E-paper theme with round favourites shows a book on the page last read. Tapping it opens the book full screen; taps turn the pages and Back returns Home with the place saved"></p>
+<p align="center"><img src="docs/images/demo-read.webp" width="320" alt="Read Home with round favourites shows a book on the page last read. Tapping it opens the book full screen; taps turn the pages and Back returns Home with the place saved"></p>
 
 <p align="center">Read mode in its own E-paper theme: your book is on Home, one tap away from full-screen reading.</p>
 
@@ -94,11 +94,11 @@ The captures show the built-in reader and player. They don't show that every ext
 
 ### In motion
 
-| Turn sideways to watch | Turning pages in the built-in reader | Adding a favourite from All Apps |
+| Turn sideways to watch | Next episode countdown | Adding a favourite |
 | --- | --- | --- |
-| <img src="docs/images/demo-rotate.gif" width="260" alt="A phone held upright shows a book page in Read mode, then turns sideways and Home switches to Watch mode with a video between the favourite apps"> | <img src="docs/images/demo-reader.gif" width="200" alt="Tapping Next moves the Alice PDF from page 1 to page 4, then Previous goes back a page"> | <img src="docs/images/demo-favourites.gif" width="200" alt="All Apps opens, the favourites editor adds Music Player, and Home shows the new tile"> |
+| <img src="docs/images/demo-rotate.webp" width="260" alt="A phone held upright shows a book page in Read mode with round E-paper favourites, then turns sideways and Home switches to Watch mode with square favourite blocks and a video"> | <img src="docs/images/demo-countdown.webp" width="320" alt="A local episode plays to its end full screen; a card counts down from five and the next episode starts on its own"> | <img src="docs/images/demo-favourites.webp" width="200" alt="All Apps opens, the favourites editor adds Contacts, and Home shows the new round key"> |
 
-The reader GIF has the optional **Previous / Next buttons** switched on (Settings → Home & content). Without them you can tap the page (left third goes back, the rest goes forward), swipe sideways, or use a remote, keyboard or page-turner key. The white dots are Android's "show taps" indicator.
+Read and Watch use separate themes here: Watch shows the wallpaper with square blocks, Read uses E-paper with Circles. The white dots in some clips are Android's "show taps" indicator.
 
 ## Why I wanted to create it
 

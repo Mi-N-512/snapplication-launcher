@@ -813,7 +813,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Colours", if (state.separateThemes) "${state.theme} · ${state.mode} theme" else state.theme) { themeSettings() })
         if (!state.readerOnly && BuildConfig.FLAVOR != "tv" && state.deviceProfile == "Phone") {
             content.addView(ui.setting("Separate Read / Watch themes",
-                if (state.separateThemes) "Each mode keeps its own colours; rotate to edit the other" else "Use the same colours in both modes",
+                if (state.separateThemes) "Each mode keeps its own colours and favourites style; rotate to edit the other" else "Use the same colours in both modes",
                 if (state.separateThemes) "On" else "Off") {
                 state.separateThemes = !state.separateThemes; settings()
             })

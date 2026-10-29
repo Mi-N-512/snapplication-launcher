@@ -8,7 +8,7 @@
 - Own books and videos open full screen by default; "Inside Home" keeps the previous layout.
 - Thin progress bar under books and videos.
 - Five-second "Next episode" countdown when a local video ends, with Cancel.
-- Separate Read and Watch themes.
+- Separate Read and Watch themes; each mode also keeps its own favourites style.
 - Circles favourites style: small round keys with space between them.
 - Tap-only viewer setting: no buttons on Home; tap a page to turn it, a video to play and pause, or an app preview to resume it.
 - Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.

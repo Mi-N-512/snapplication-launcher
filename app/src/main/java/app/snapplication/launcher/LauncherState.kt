@@ -126,7 +126,11 @@ class LauncherState(private val context: Context) {
             val edit = prefs.edit().putBoolean("separateThemes", value)
             if (value) {
                 val shared = prefs.getString("theme", if (readerDevice) "E-paper" else "Dark")
-                for (contentMode in listOf("Read", "Watch")) if (!prefs.contains("theme:$contentMode")) edit.putString("theme:$contentMode", shared)
+                for (contentMode in listOf("Read", "Watch")) {
+                    if (!prefs.contains("theme:$contentMode")) edit.putString("theme:$contentMode", shared)
+                    for (key in listOf("grid", "circles")) if (!prefs.contains("$key:$contentMode"))
+                        edit.putBoolean("$key:$contentMode", prefs.getBoolean(key, false))
+                }
             }
             edit.apply()
         }
@@ -136,8 +140,16 @@ class LauncherState(private val context: Context) {
         set(value) { prefs.edit().putBoolean("fullscreenMedia", value).apply() }
     // Circles favourites style: small round keys with space between them instead of blocks.
     var circles: Boolean
-        get() = prefs.getBoolean("circles", false)
-        set(value) { prefs.edit().putBoolean("circles", value).apply() }
+        get() = modeBoolean("circles", false)
+        set(value) { setModeBoolean("circles", value) }
+    // Reads the current mode's own copy when themes are separate, otherwise the shared value.
+    private fun modeBoolean(key: String, default: Boolean): Boolean {
+        val shared = prefs.getBoolean(key, default)
+        return if (separateThemes) prefs.getBoolean("$key:$mode", shared) else shared
+    }
+    private fun setModeBoolean(key: String, value: Boolean) {
+        prefs.edit().putBoolean(if (separateThemes) "$key:$mode" else key, value).apply()
+    }
     // Phone rotation selects the matching content mode; dedicated editions keep their own layout.
     var automaticPhoneMode: Boolean
         get() = !readerOnly && BuildConfig.FLAVOR != "tv" && deviceProfile == "Phone" &&
@@ -218,9 +230,10 @@ class LauncherState(private val context: Context) {
     var fullscreen: Boolean
         get() = prefs.getBoolean("fullscreen", true)
         set(value) { prefs.edit().putBoolean("fullscreen", value).apply() }
+    // With separateThemes on, Read and Watch also keep their own favourites style.
     var grid: Boolean
-        get() = prefs.getBoolean("grid", false)
-        set(value) { prefs.edit().putBoolean("grid", value).apply() }
+        get() = modeBoolean("grid", false)
+        set(value) { setModeBoolean("grid", value) }
     var favouriteCount: Int
         get() = prefs.getInt("favouriteCount", 8).coerceIn(4, if (experimentalBlocks) 24 else 8)
         set(value) { require(value in 4..if (experimentalBlocks) 24 else 8); prefs.edit().putInt("favouriteCount", value).apply() }
