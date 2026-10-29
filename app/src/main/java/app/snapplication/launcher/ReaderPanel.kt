@@ -25,14 +25,19 @@ older load from replacing a newer page. cachedUri and cachedFile reuse the local
 decoder. MainActivity creates this panel and calls load; move changes pages; close releases its
 worker and image.
 
+The page itself turns pages: tap the left third to go back and elsewhere to go forward, swipe
+sideways, or press a remote, keyboard or page-turner key. PageTurn decides the direction. With
+LauncherState.tapViewer on, the title line and Previous/Next buttons are hidden and pageBadge
+briefly shows the page number after each turn instead.
+
 Used by or used with: MainActivity supplies LibraryItem content; LauncherState stores progress;
-LauncherUi styles controls. Screen controls: Embedded PDF, CBZ and image pages with navigation and
-fit behaviour. Changes belong here: Add supported local rendering formats here. EPUB currently opens
-an external reader; it is not rendered by this panel.
+LauncherUi styles controls; PageTurn maps taps, swipes and keys. Screen controls: Embedded PDF, CBZ
+and image pages with navigation and fit behaviour. Changes belong here: Add supported local
+rendering formats here. EPUB currently opens an external reader; it is not rendered by this panel.
 */
 class ReaderPanel(private val context: Context, private val state: LauncherState, private val ui: LauncherUi) {
     val view = ui.column()
-    private val image = ImageView(context)
+    private val image = PageImageView(context)
     private val status = ui.label("Choose a PDF, comic or image", 16f)
     private val worker = Executors.newSingleThreadExecutor()
     private var item: LibraryItem? = null
@@ -44,15 +49,79 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
     private var ready = false
     private var cachedUri: String? = null
     private var cachedFile: File? = null
+    private val tapOnly = state.tapViewer
+    private val pageBadge = ui.label("", 14f).apply {
+        setTextColor(Color.WHITE); setBackgroundColor(0xAA101010.toInt())
+        setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(4)); visibility = android.view.View.GONE
+        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    private val hideBadge = Runnable { pageBadge.visibility = android.view.View.GONE }
+    // Last touch position for the click that follows it; keyboard and accessibility clicks go
+    // forward.
+    private var tapX = Float.MAX_VALUE
 
     init {
         applyContentScale()
-        view.addView(image, LinearLayout.LayoutParams(-1, 0, 1f))
-        view.addView(status)
+        val holder = android.widget.FrameLayout(context)
+        holder.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
+        holder.addView(pageBadge, android.widget.FrameLayout.LayoutParams(-2, -2,
+            android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = ui.dp(12) })
+        view.addView(holder, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (!tapOnly) view.addView(status)
         val controls = ui.column(true)
         ui.addWeighted(controls, ui.button("Previous") { move(-1) })
         ui.addWeighted(controls, ui.button("Next") { move(1) })
-        if (state.readInLauncher && state.showReaderControls) view.addView(controls)
+        if (state.readInLauncher && state.showReaderControls && !tapOnly) view.addView(controls)
+        attachPageGestures()
+    }
+
+    // Lets the page itself turn pages by tap, sideways swipe, keys and screen-reader scroll actions.
+    private fun attachPageGestures() {
+        val minSwipe = ui.dp(48).toFloat()
+        val detector = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            // Claims the gesture so taps and flings on the page are reported.
+            override fun onDown(e: android.view.MotionEvent) = true
+            // Records a completed tap; PageImageView turns it into a real click.
+            override fun onSingleTapUp(e: android.view.MotionEvent): Boolean { tapX = e.x; image.tapPending = true; return true }
+            // A sideways fling turns one page; vertical flings are left to the drawer gesture.
+            override fun onFling(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, vx: Float, vy: Float): Boolean {
+                val start = e1 ?: return false
+                val direction = PageTurn.swipe(e2.x - start.x, e2.y - start.y, minSwipe)
+                if (direction != 0) move(direction)
+                return direction != 0
+            }
+        })
+        image.isFocusable = true
+        image.isClickable = true
+        image.gestures = detector
+        image.setOnClickListener {
+            val direction = if (tapX == Float.MAX_VALUE) 1 else PageTurn.tap(tapX, image.width)
+            tapX = Float.MAX_VALUE
+            if (direction != 0) move(direction)
+        }
+        image.setOnKeyListener { _, keyCode, event ->
+            // In landscape the favourites sit beside the page, so Left/Right keep moving focus
+            // there; page and media keys still turn pages.
+            val sideways = keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT || keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+            val landscape = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val direction = if (sideways && landscape) 0 else PageTurn.key(keyCode)
+            if (direction != 0 && event.action == android.view.KeyEvent.ACTION_DOWN) move(direction)
+            direction != 0
+        }
+        image.accessibilityDelegate = object : android.view.View.AccessibilityDelegate() {
+            // Offers next/previous page as scroll actions to TalkBack and switch access.
+            override fun onInitializeAccessibilityNodeInfo(host: android.view.View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+                info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD)
+            }
+            // Turns the page for screen-reader scroll gestures.
+            override fun performAccessibilityAction(host: android.view.View, action: Int, args: android.os.Bundle?): Boolean = when (action) {
+                android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> { move(1); true }
+                android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> { move(-1); true }
+                else -> super.performAccessibilityAction(host, action, args)
+            }
+        }
     }
 
     // Resizes the already-decoded page without copying the source or losing reading position.
@@ -84,7 +153,8 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         val request = ++generation
         val requestedPage = page
         ready = false
-        status.text = "Loading ${selection.title}…"
+        // Page turns keep the current title line; only the first load says it is loading.
+        if (bitmap == null) status.text = "Loading ${selection.title}…"
         worker.execute {
             if (closed) return@execute
             val result = runCatching { decode(selection, requestedPage) }
@@ -98,6 +168,11 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
                     image.contentDescription = "${selection.title}, page ${page + 1} of $count"
                     status.text = "${selection.title} · ${page + 1} / $count"
                     state.saveProgress(selection.uri, page.toLong())
+                    if (tapOnly) {
+                        pageBadge.text = String.format(java.util.Locale.getDefault(), "%d / %d", page + 1, count)
+                        pageBadge.visibility = android.view.View.VISIBLE
+                        pageBadge.removeCallbacks(hideBadge); pageBadge.postDelayed(hideBadge, 1500)
+                    }
                 }.onFailure { status.text = "Cannot open this document. Check folder access or choose another file." }
             }
         }
@@ -176,9 +251,25 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
         return requireNotNull(BitmapFactory.decodeByteArray(data, 0, data.size, options))
     }
 
+    // Page picture that passes touches to ReaderPanel's gesture detector; taps arrive as clicks.
+    private class PageImageView(context: Context) : ImageView(context) {
+        var gestures: android.view.GestureDetector? = null
+        var tapPending = false
+        // Lets the detector see the whole gesture; a recognised tap becomes a click so
+        // accessibility services and the click listener share one path.
+        override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+            val handled = gestures?.onTouchEvent(event) == true
+            if (tapPending) { tapPending = false; performClick() }
+            return handled || super.onTouchEvent(event)
+        }
+        // Kept explicit so accessibility clicks and touch taps share one path.
+        override fun performClick(): Boolean = super.performClick()
+    }
+
     // Prevents background decoding from updating a detached screen and frees the displayed bitmap.
     fun close() {
         closed = true; generation++
+        pageBadge.removeCallbacks(hideBadge)
         worker.execute { cachedFile?.delete(); cachedFile = null }
         worker.shutdown()
         image.setImageDrawable(null); bitmap?.recycle(); bitmap = null

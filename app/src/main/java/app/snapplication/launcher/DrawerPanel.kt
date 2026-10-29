@@ -66,6 +66,8 @@ class DrawerPanel(
     private val entries = discoverApps()
     private var visibleEntries = entries
     private var editing = false
+    // Lets MainActivity rebuild the drawer after an app change without leaving the editor.
+    val isEditing: Boolean get() = editing
     private val hint = ui.label("Select opens · Hold for app info", 12f)
     private val search = EditText(activity)
     private val list = ListView(activity)

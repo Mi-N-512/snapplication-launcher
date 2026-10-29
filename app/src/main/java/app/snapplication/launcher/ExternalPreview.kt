@@ -49,7 +49,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
 
     // Builds the saved-frame surface with visible transport icons; tapping the image resumes its
     // app.
-    fun build(onResumeCapture: () -> Unit, onChoose: () -> Unit): View {
+    fun build(onResumeCapture: () -> Unit, onUseFolder: (() -> Unit)? = null, onChoose: () -> Unit): View {
         val panel = FrameLayout(activity)
         val image = ImageView(activity).apply {
             scaleType = when (state.contentScale) {
@@ -80,6 +80,12 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
         if (mode == "Read") { previous.visibility = View.GONE; next.visibility = View.GONE }
         panel.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        // Before any app is chosen there is nothing to continue; offer local files instead.
+        if (component == null && onUseFolder != null) {
+            controls.visibility = View.GONE
+            panel.addView(ui.button(if (mode == "Read") "Or read a book from this device" else "Or play a video from this device") { onUseFolder() },
+                FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        }
         val setup = ui.button("Enable page previews") { onResumeCapture() }.apply { visibility = View.GONE }
         panel.addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         // Keep the saved image and playback controls usable while exposing stopped Watch capture.

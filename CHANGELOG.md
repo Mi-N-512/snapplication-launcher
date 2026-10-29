@@ -1,5 +1,30 @@
 # Changes
 
+## Unreleased
+
+### Added
+
+- Tap-only viewer setting: no buttons on Home; tap a page to turn it or a video to play and pause.
+- Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.
+- "Or read a book / play a video from this device" on an empty Home before any app is chosen.
+
+### Fixed
+
+- Choosing "Files from a folder" opens the folder picker when no folder is granted yet.
+- Episode advance switches the resume target immediately, so a stop before the player's callback cannot reopen the finished episode.
+- All Apps and Home favourites refresh when apps are installed, removed or disabled.
+- Settings search finds wallpaper transparency and other common terms; the search box clears when Settings opens and the page keeps its scroll position after a switch.
+- Landscape settings categories stay readable over a bright wallpaper.
+- Favourite labels shrink to fit narrow cells before being shortened.
+- Setup marks the selected device and theme with a tick and outline.
+- `scripts/verify.ps1` no longer stops on Gradle warnings when its output is redirected in Windows PowerShell 5.1.
+- Home panel edges and favourite dividers share one line colour in every theme.
+- Turning a page no longer flashes "Loading…" over the page already shown.
+
+### Removed
+
+- Development notes (`AGENTS.md`, `CONSTRAINTS.md`, `docs/*.md`), the unused `SetupGuide` and `SquareShortcut` classes, and unused logo resources.
+
 ## 0.99 — 25 October 2026
 
 Private preview preparing for 1.0.

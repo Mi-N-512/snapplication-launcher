@@ -9,5 +9,10 @@ $gradleArguments = @('-p', $projectRoot, '--console=plain',
     ':app:lintUniversalDebug', ':app:lintModernDebug', ':app:lintEreaderDebug', ':app:lintTvDebug',
     ':app:testUniversalDebugUnitTest', ':app:testModernDebugUnitTest', ':app:testEreaderDebugUnitTest', ':app:testTvDebugUnitTest')
 if ($Offline) { $gradleArguments += '--offline' }
+# Windows PowerShell 5.1 turns redirected native stderr (Gradle warnings) into terminating errors
+# under 'Stop', so Gradle runs under 'Continue' and its exit code decides the result.
+$ErrorActionPreference = 'Continue'
 & (Join-Path $projectRoot 'gradlew.bat') @gradleArguments
-if ($LASTEXITCODE -ne 0) { throw "Android acceptance checks failed (exit $LASTEXITCODE)." }
+$gradleExit = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($gradleExit -ne 0) { throw "Android acceptance checks failed (exit $gradleExit)." }

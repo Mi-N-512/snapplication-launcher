@@ -28,7 +28,7 @@ object LauncherBackup {
     @Volatile var restoring = false
         private set
     private const val LIMIT = 32 * 1024 * 1024
-    private val booleans = "previewWarnings watchPreviewExpected profileSetupComplete automaticPhoneMode showLabels showFavouriteHeading playVideosInLauncher readInLauncher readPagePreviews showReaderControls useWallpaper dynamicBlocks asymmetricBlocks experimentalBlocks roundedCorners animations tutorialSeen landscapeApps fullscreen grid separateFavourites followMediaApps:Read followMediaApps:Watch".split(" ").toSet()
+    private val booleans = "previewWarnings watchPreviewExpected profileSetupComplete automaticPhoneMode showLabels showFavouriteHeading playVideosInLauncher readInLauncher readPagePreviews showReaderControls tapViewer useWallpaper dynamicBlocks asymmetricBlocks experimentalBlocks roundedCorners animations tutorialSeen landscapeApps fullscreen grid separateFavourites followMediaApps:Read followMediaApps:Watch".split(" ").toSet()
     private val integers = setOf("favouriteCount", "accent", "background", "completion")
     private val strings = setOf("deviceProfile", "mode", "theme", "phoneOrientation", "orientation", "orientation:Read", "orientation:Watch", "viewerSource:Read", "viewerSource:Watch", "contentScale:Read", "contentScale:Watch", "iconPack", "favourites", "favourites:Read", "favourites:Watch")
     private val macroFlags = setOf("showPlaybackTaps", "confirmReplay", "touchRecording")

@@ -114,6 +114,31 @@ class MainActivity : Activity() {
     private var guidePanel: View? = null
     private val worker = Executors.newSingleThreadExecutor()
     private var scanGeneration = 0
+    private var drawerPanel: DrawerPanel? = null
+    private val appsHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var homeAppsChanged = false
+    // Rebuilds All Apps, or Home when a favourite changed, once a burst of package events settles.
+    private val refreshApps = Runnable {
+        if (isFinishing || isDestroyed) return@Runnable
+        when (screen) {
+            "Apps" -> drawer(editFavourites = drawerPanel?.isEditing == true)
+            "Home" -> if (homeAppsChanged) home()
+        }
+        homeAppsChanged = false
+    }
+    // Keeps the visible app list and Home favourites in step with installs and removals.
+    private val appsCallback = object : android.content.pm.LauncherApps.Callback() {
+        override fun onPackageRemoved(packageName: String, user: android.os.UserHandle) = appsChanged(listOf(packageName))
+        override fun onPackageAdded(packageName: String, user: android.os.UserHandle) = appsChanged(listOf(packageName))
+        override fun onPackageChanged(packageName: String, user: android.os.UserHandle) = appsChanged(listOf(packageName))
+        override fun onPackagesAvailable(packageNames: Array<out String>, user: android.os.UserHandle, replacing: Boolean) = appsChanged(packageNames.toList())
+        override fun onPackagesUnavailable(packageNames: Array<out String>, user: android.os.UserHandle, replacing: Boolean) = appsChanged(packageNames.toList())
+    }
+    // Home is rebuilt only for favourite apps, so a background update never interrupts playback.
+    private fun appsChanged(packages: List<String>) {
+        if (state.favourites().any { flat -> ComponentName.unflattenFromString(flat)?.packageName in packages }) homeAppsChanged = true
+        appsHandler.removeCallbacks(refreshApps); appsHandler.postDelayed(refreshApps, 400)
+    }
     // Receives system screen-off events to stage the next episode through WatchPlayer.
     private val screenReceiver = object : BroadcastReceiver() {
         // Applies completion behavior only when the device screen actually turns off.
@@ -297,7 +322,8 @@ class MainActivity : Activity() {
         }
         val last = state.last(state.mode)
         if (state.viewerSource == "App") {
-            panel.addView(ExternalPreview(this, state).build(onResumeCapture = { repairPreviews() }) {
+            panel.addView(ExternalPreview(this, state).build(onResumeCapture = { repairPreviews() },
+                onUseFolder = { useFolderSource() }) {
                 choosingPreview = true; drawer()
             }, FrameLayout.LayoutParams(-1, -1))
         } else if (last == null) {
@@ -313,10 +339,11 @@ class MainActivity : Activity() {
             panel.addView(player.view, FrameLayout.LayoutParams(-1, -1))
             player.load(last, false)
             player.view.useController = state.playVideosInLauncher
+            player.setTapOnly(state.playVideosInLauncher && state.tapViewer)
             if (!state.playVideosInLauncher) {
                 player.view.hideController()
                 addOpenContentOverlay(panel, last, "▶")
-            } else player.view.showController()
+            } else if (!state.tapViewer) player.view.showController()
         } else if (!ReadingFormats.canRenderInline(last.title, last.mime)) {
             panel.addView(ui.label(last.title, 24f))
             addOpenContentOverlay(panel, last, "Open book in reader")
@@ -378,8 +405,17 @@ class MainActivity : Activity() {
     // Lets the viewer switch between an app resume entry and user-selected folder media.
     private fun chooseViewerSource() {
         AlertDialog.Builder(this).setTitle("Preview source").setItems(arrayOf("Resume the last app", "Files from a folder on this device")) { _, index ->
-            state.viewerSource = if (index == 0) "App" else "Folder"; settings()
+            if (index == 0) { state.viewerSource = "App"; settings() } else useFolderSource()
         }.setNegativeButton("Cancel", null).show()
+    }
+
+    // Switches this mode to folder content and asks for the folder straight away when none is
+    // granted yet; Home offers the library when a folder is already available.
+    private fun useFolderSource() {
+        state.viewerSource = "Folder"
+        val folder = state.folder(state.mode)
+        val granted = folder != null && contentResolver.persistedUriPermissions.any { it.isReadPermission && it.uri.toString() == folder }
+        if (!granted) pickFolder() else if (screen == "Settings") settings() else library()
     }
 
     // Saves preview and local-media sizing without changing another app's display.
@@ -405,7 +441,7 @@ class MainActivity : Activity() {
         })
         val column = ui.column().apply {
             gravity = android.view.Gravity.CENTER
-            dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.border); setSize(ui.dp(1), ui.dp(1)) }
+            dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.homeLine); setSize(ui.dp(1), ui.dp(1)) }
             showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
         }
         shell.addView(column, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -416,7 +452,7 @@ class MainActivity : Activity() {
         slots.chunked(columns).forEach { group ->
             val row = ui.column(true).apply {
                 gravity = android.view.Gravity.CENTER
-                dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.border); setSize(ui.dp(1), ui.dp(1)) }
+                dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(ui.homeLine); setSize(ui.dp(1), ui.dp(1)) }
                 showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
             }
             group.forEach { flat ->
@@ -437,7 +473,12 @@ class MainActivity : Activity() {
                 }
                 button.compoundDrawablePadding = ui.dp(12)
                 button.textSize = if (landscape) 12f else 18f
-                button.setSingleLine(true)
+                // Narrow cells shrink the label before cutting it short. Auto-size needs maxLines
+                // rather than setSingleLine, which scrolls sideways and never reports overflow.
+                if (!state.grid && state.showLabels) {
+                    button.maxLines = 1
+                    button.setAutoSizeTextTypeUniformWithConfiguration(11, if (landscape) 12 else 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+                } else button.setSingleLine(true)
                 button.ellipsize = android.text.TextUtils.TruncateAt.END
                 button.gravity = android.view.Gravity.CENTER
                 button.contentDescription = label; button.tooltipText = label
@@ -486,7 +527,9 @@ class MainActivity : Activity() {
     // Hosts the alphabetical drawer; DrawerPanel owns search, remote focus and favourite editing.
     private fun drawer(editFavourites: Boolean = false) {
         begin("Apps")
-        val panel = DrawerPanel(this, state, ui, { launch(it) }, { settings() }, { home() }, guidedSetup = guideActive)
+        // Settings opened fresh from All Apps starts with an empty search box.
+        val panel = DrawerPanel(this, state, ui, { launch(it) }, { settingsQuery = ""; settings() }, { home() }, guidedSetup = guideActive)
+        drawerPanel = panel
         root.addView(panel.view, LinearLayout.LayoutParams(-1, 0, 1f))
         if (editFavourites) panel.beginFavouriteEditing()
         drawerGestureAreas.add((panel.view.getChildAt(0) as ViewGroup).getChildAt(0))
@@ -649,8 +692,11 @@ class MainActivity : Activity() {
     // Exposes genuine settings; unsupported hardware actions are not presented as working switches.
     private var settingsCategory: String? = null
     private var settingsQuery = ""
+    private var settingsScroll: ScrollView? = null
 
     private fun settings(category: String? = settingsCategory) {
+        // A switch rebuilds this page; keep the user's place instead of jumping to the top.
+        val keepScroll = if (screen == "Settings" && category == settingsCategory) settingsScroll?.scrollY ?: 0 else 0
         if (category != settingsCategory) settingsQuery = ""
         settingsCategory = category
         begin("Settings")
@@ -658,8 +704,9 @@ class MainActivity : Activity() {
         val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val body = ui.column(wide).apply { tag = "settingsBody" }
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
-        body.addView(ScrollView(this).apply { addView(content) },
-            if (wide) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, -1))
+        val scroll = ScrollView(this).apply { addView(content) }
+        settingsScroll = scroll
+        body.addView(scroll, if (wide) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, -1))
         content.addView(ui.section("Appearance"))
         content.addView(ui.setting("Device setup", state.deviceProfile) {
             state.profileSetupComplete = false; introduction()
@@ -732,7 +779,15 @@ class MainActivity : Activity() {
         })
         content.addView(ui.setting("Preview source", if (state.viewerSource == "App") "Resume your last app" else "Files from your chosen folder") { chooseViewerSource() })
         content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
-        if (state.mode == "Read") content.addView(ui.setting("Previous / Next buttons", "Show page controls in the reading panel", if (state.showReaderControls) "On" else "Off") {
+        content.addView(ui.setting("Tap-only viewer",
+            if (state.readerOnly) "No buttons on Home. Tap the right of a page to go forward, the left to go back"
+            else "No buttons on Home. Tap a page's right side to go forward, left side to go back; tap a video to play or pause",
+            if (state.tapViewer) "On" else "Off") {
+            state.tapViewer = !state.tapViewer; settings()
+        })
+        if (state.mode == "Read") content.addView(ui.setting("Previous / Next buttons",
+            if (state.tapViewer) "Hidden while Tap-only viewer is on" else "Show page controls in the reading panel",
+            if (state.showReaderControls) "On" else "Off") {
             state.showReaderControls = !state.showReaderControls; settings()
         })
         content.addView(ui.setting("Browse local files", "Open ${if (state.mode == "Read") "books and documents" else "videos"} from your selected folder") { library() })
@@ -784,7 +839,7 @@ class MainActivity : Activity() {
         content.addView(ui.button("Device diagnostics") { diagnostics() })
         content.addView(ui.label("Snapplication · Private development\nAll features free. No launcher advertisements or paid feature gates.", 16f))
         organizeSettings(content)
-
+        if (keepScroll > 0) scroll.post { scroll.scrollTo(0, keepScroll) }
     }
 
     // Provides an explicit portable backup workflow without copying media or pretending to restore
@@ -886,7 +941,8 @@ class MainActivity : Activity() {
         val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         if (wide) {
             val body = root.findViewWithTag<LinearLayout>("settingsBody")
-            body.addView(ScrollView(this).apply { addView(categories) }, 0, LinearLayout.LayoutParams(ui.dp(192), -1))
+            // Over a wallpaper the rail gets a text backing so names stay readable on bright areas.
+            body.addView(ScrollView(this).apply { addView(categories); setBackgroundColor(ui.textSurface()) }, 0, LinearLayout.LayoutParams(ui.dp(192), -1))
         } else content.addView(categories, 0, LinearLayout.LayoutParams(-1, -2))
         val search = EditText(this).apply {
             hint = "Search all settings"; setText(settingsQuery); setTextColor(ui.text); setHintTextColor(ui.muted)
@@ -911,6 +967,18 @@ class MainActivity : Activity() {
             "Remote & macros" to "Button assignments and recorded actions", "Setup & help" to "Setup guide, permissions and diagnostics")
         fun words(view: View): String = if (view is android.widget.TextView) view.text.toString() else if (view is ViewGroup)
             (0 until view.childCount).joinToString(" ") { words(view.getChildAt(it)) } else ""
+        // Extra search words for settings people describe differently from their labels.
+        val synonyms = mapOf("View wallpaper" to "transparent transparency translucent glass see-through background",
+            "Colours" to "theme dark light oled black e-paper eink colour color",
+            "Tap-only viewer" to "no buttons minimal clean tap click touch",
+            "Previous / Next buttons" to "page turn controls arrows",
+            "Content sizing" to "fit fill crop stretch zoom scale",
+            "Fullscreen" to "immersive status bar navigation bar",
+            "Show App Labels" to "names text",
+            "Favourites Style" to "grid list blocks layout")
+        fun searchText(view: View): String = words(view).let { text ->
+            text + " " + synonyms.filterKeys { text.startsWith(it) }.values.joinToString(" ")
+        }
         fun update(query: String) {
             categories.removeAllViews()
             if (wide) {
@@ -932,7 +1000,7 @@ class MainActivity : Activity() {
                 categories.addView(ui.row("← All settings") { settings(null) })
             }
             groups.forEach { (name, rows) -> rows.forEach { row ->
-                row.visibility = if (if (query.isBlank()) name == (settingsCategory ?: if (wide) "Home & content" else null) else words(row).contains(query, true)) View.VISIBLE else View.GONE
+                row.visibility = if (if (query.isBlank()) name == (settingsCategory ?: if (wide) "Home & content" else null) else searchText(row).contains(query, true)) View.VISIBLE else View.GONE
             } }
         }
         search.addTextChangedListener(object : TextWatcher {
@@ -1464,6 +1532,7 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart(); thermal.start()
         getSharedPreferences("remoteMacros", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(macroSavedListener)
+        getSystemService(android.content.pm.LauncherApps::class.java).registerCallback(appsCallback, android.os.Handler(mainLooper))
     }
 
     // Reloads the newest captured external frame after the source app returns to Home.
@@ -1500,6 +1569,8 @@ class MainActivity : Activity() {
     // Saves and pauses playback whenever another app or the lock screen takes over.
     override fun onStop() {
         getSharedPreferences("remoteMacros", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(macroSavedListener)
+        getSystemService(android.content.pm.LauncherApps::class.java).unregisterCallback(appsCallback)
+        appsHandler.removeCallbacks(refreshApps)
         thermal.stop(); watch?.pause(); super.onStop()
     }
 

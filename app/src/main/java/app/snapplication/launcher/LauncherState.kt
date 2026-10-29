@@ -146,6 +146,10 @@ class LauncherState(private val context: Context) {
     var showReaderControls: Boolean
         get() = prefs.getBoolean("showReaderControls", false)
         set(value) { prefs.edit().putBoolean("showReaderControls", value).apply() }
+    // Tap-only viewer hides page/player controls; taps on the picture turn pages or play/pause.
+    var tapViewer: Boolean
+        get() = prefs.getBoolean("tapViewer", false)
+        set(value) { prefs.edit().putBoolean("tapViewer", value).apply() }
     var viewerSource: String
         get() = prefs.getString("viewerSource:$mode", "App")!!
         set(value) { prefs.edit().putString("viewerSource:$mode", value).apply() }

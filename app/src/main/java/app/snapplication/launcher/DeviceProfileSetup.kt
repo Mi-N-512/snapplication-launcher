@@ -22,6 +22,14 @@ descriptions and layout here; change saved profile defaults in LauncherState. A 
 profile needs defaults and a real destination too.
 */
 class DeviceProfileSetup(private val activity: Activity, private val state: LauncherState) {
+    // Outlines and ticks the chosen row so the current choice stands out at a glance and is
+    // announced as selected.
+    private fun choice(ui: LauncherUi, title: String, description: String, selected: Boolean, action: () -> Unit): View =
+        ui.setting(title, description, if (selected) "✓ Selected" else "Choose", action).apply {
+            isSelected = selected
+            if (selected) foreground = android.graphics.drawable.GradientDrawable().apply { setStroke(ui.dp(2), ui.text) }
+        }
+
     // Lets users choose a device and see its theme before any permission or media setup pages.
     fun build(onChanged: () -> Unit, onContinue: () -> Unit): View {
         // Setup stays still. E-paper is opaque; other themes can show the wallpaper.
@@ -37,9 +45,9 @@ class DeviceProfileSetup(private val activity: Activity, private val state: Laun
         val descriptions = linkedMapOf(
             "Reader" to "E-paper · books and pages, portrait, no animation",
             "Phone" to "Rotate upright to read · sideways to watch",
-            "TV" to "Landscape · large controls for a remote")
+            "TV" to "Landscape · grid favourites · large controls for a remote")
         if (!state.readerOnly) descriptions.forEach { (profile, description) ->
-            body.addView(ui.setting(profile, description, if (state.deviceProfile == profile) "Selected" else "Choose") {
+            body.addView(choice(ui, profile, description, state.deviceProfile == profile) {
                 state.applyDeviceProfile(profile)
                 onChanged()
             })
@@ -52,7 +60,7 @@ class DeviceProfileSetup(private val activity: Activity, private val state: Laun
                 "OLED Black" -> "Black surfaces · racing green accents"
                 else -> "Dark surfaces · racing green accents"
             }
-            body.addView(ui.setting(theme, explanation, if (state.theme == theme) "Selected" else "Choose") {
+            body.addView(choice(ui, theme, explanation, state.theme == theme) {
                 state.theme = theme
                 onChanged()
             })

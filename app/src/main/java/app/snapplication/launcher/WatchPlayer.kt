@@ -20,7 +20,8 @@ player is the local video engine; view shows its picture and controls; session e
 controls to Android. item and queue identify the selected video and nearby files. stagedNext tracks
 preparation of the next file, while checkpoint saves progress regularly. MainActivity creates this
 player and calls load. pause saves progress and checks whether to prepare the next file; close
-releases playback resources.
+releases playback resources. setTapOnly hides the player controls so a tap on the picture plays or
+pauses, with tapBadge briefly confirming which.
 
 Used by or used with: MainActivity supplies LibraryItem content; LauncherState stores progress;
 EpisodeResume supplies completion rules. Screen controls: Embedded video surface and its player
@@ -40,6 +41,23 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         textSize = 16f; setTextColor(android.graphics.Color.WHITE); setBackgroundColor(0xAA101010.toInt())
         setPadding(16, 8, 16, 8); visibility = android.view.View.GONE
     }
+    private val tapBadge = android.widget.TextView(context).apply {
+        textSize = 32f; setTextColor(android.graphics.Color.WHITE); setBackgroundColor(0x99101010.toInt())
+        setPadding(40, 16, 40, 16); visibility = android.view.View.GONE
+        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    private val hideBadge = Runnable { tapBadge.visibility = android.view.View.GONE }
+    private val tapLayer = android.view.View(context).apply {
+        visibility = android.view.View.GONE
+        isFocusable = true; isClickable = true
+        contentDescription = "Video. Select to play or pause"
+        setOnClickListener {
+            if (player.isPlaying) player.pause() else player.play()
+            tapBadge.text = if (player.playWhenReady) "▶" else "❚❚"
+            tapBadge.visibility = android.view.View.VISIBLE
+            tapBadge.removeCallbacks(hideBadge); tapBadge.postDelayed(hideBadge, 900)
+        }
+    }
     // Periodic checkpoint owned by this player and cancelled by close.
     private val checkpoint = object : Runnable {
         // Periodically saves progress while this player is alive.
@@ -49,6 +67,8 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     init {
         view.player = player
         view.addView(nextTitle, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.TOP))
+        view.addView(tapLayer, android.widget.FrameLayout.LayoutParams(-1, -1))
+        view.addView(tapBadge, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
         player.setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
@@ -108,6 +128,16 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         player.playWhenReady = autoplay && state.playVideosInLauncher
     }
 
+    // Tap-only viewer: no control bar; a tap or Select on the picture toggles playback and shows
+    // a short badge. PlayerView ignores touches without its controller, so a clear layer takes
+    // them.
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    fun setTapOnly(enabled: Boolean) {
+        view.useController = !enabled && state.playVideosInLauncher
+        tapLayer.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
+        if (enabled) view.hideController()
+    }
+
     // Commits current time for restoration after process death or shutdown.
     fun save() { item?.let { state.saveProgress(it.uri, player.currentPosition) } }
 
@@ -128,10 +158,14 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
         if (!state.playVideosInLauncher || stagedNext) return
         if (player.hasNextMediaItem() && EpisodeResume.shouldAdvance(player.currentPosition, player.duration, state.completion)) {
             stagedNext = true
-            nextTitle.text = "Preparing next: ${queue.getOrNull(player.currentMediaItemIndex + 1)?.title.orEmpty()}"
+            val next = queue.getOrNull(player.currentMediaItemIndex + 1)
+            nextTitle.text = "Preparing next: ${next?.title.orEmpty()}"
             nextTitle.visibility = android.view.View.VISIBLE
             player.seekToNextMediaItem()
             player.seekTo(0)
+            // The transition callback arrives later; switch the resume target now so a stop or
+            // process death before it cannot reopen the finished episode or reset its progress.
+            if (next != null) { item = next; state.remember(next) }
             save()
         }
     }
@@ -140,6 +174,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     fun close() {
         save()
         handler.removeCallbacks(checkpoint)
+        tapBadge.removeCallbacks(hideBadge)
         view.player = null
         session.release()
         player.release()
