@@ -60,7 +60,7 @@ Backups can contain recorded text and reference pictures. Keep them somewhere pr
 
 ## See it running
 
-These are Android emulator captures (Universal edition, Android 15). The two demos at the top show the current build; the stills below were taken earlier in 0.99, before the Circles style and full-screen viewer. Everything shown is free to reuse:
+These are Android emulator captures (Universal edition, Android 15). All captures show the current build. Everything shown is free to reuse:
 
 - The book is Chapter I of *Alice's Adventures in Wonderland* (Lewis Carroll, 1865) with John Tenniel's 1865 illustrations, both public domain, set as a small PDF for these captures.
 - The video is "Earth Views from the ISS" footage from NASA (public domain), trimmed and without its soundtrack.
@@ -71,11 +71,11 @@ The captures show the built-in reader and player. They don't show that every ext
 
 | Read · Light · blocks | Read · E-paper · list |
 | --- | --- |
-| <img src="docs/images/read-light-blocks.png" width="280" alt="Portrait Read Home showing the Alice title page with the White Rabbit above four favourite blocks"> | <img src="docs/images/read-epaper-list.png" width="280" alt="Portrait Read Home with the E-paper theme, an illustrated text page and list favourites"> |
+| <img src="docs/images/read-light-blocks.png" width="280" alt="Portrait Read Home in the Light theme showing the Alice title page with the White Rabbit above six favourite blocks"> | <img src="docs/images/read-epaper-list.png" width="280" alt="Portrait Read Home with the E-paper theme, an illustrated text page and list favourites"> |
 
 **Watch · Dark · blocks**
 
-<img src="docs/images/watch-dark-blocks.png" width="850" alt="Landscape Watch Home playing Earth footage from the space station between favourite blocks">
+<img src="docs/images/watch-dark-blocks.png" width="850" alt="Landscape Watch Home with a paused space station video preview between favourite blocks">
 
 **Watch · OLED Black · list**
 
@@ -83,7 +83,7 @@ The captures show the built-in reader and player. They don't show that every ext
 
 **Transparent Home and All Apps**
 
-<img src="docs/images/watch-transparent.png" width="850" alt="Watch Home with the Blue Marble wallpaper visible behind translucent favourite panels">
+<img src="docs/images/watch-transparent.png" width="850" alt="Watch Home in the Circles style: round favourite keys either side of the video preview, over the Blue Marble wallpaper">
 <img src="docs/images/drawer-transparent.png" width="850" alt="Transparent app drawer with alphabet navigation over the Blue Marble wallpaper">
 
 **Settings · Light, Dark and transparent**
