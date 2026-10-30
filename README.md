@@ -220,7 +220,7 @@ Android grants these when you install the app. You never see a prompt for them:
 
 | Permission | Why Snapplication needs it |
 | --- | --- |
-| Internet | Plays direct HTTPS video links you enter. Snapplication has no account, advertising or analytics. |
+| Internet | Only used when you tap **Open video link** in Watch mode and type in an HTTPS video address. There's no account, advertising or analytics. The E-reader edition doesn't ask for internet access. |
 | Foreground service (screen capture) | Keeps the Watch preview service running while it saves a still frame, with Android's notification showing that it is active. |
 
 You choose whether to allow the rest in Android's settings. Only the first is needed to use Snapplication as your launcher:
@@ -259,7 +259,7 @@ Start reading the code at `MainActivity.kt`. Its header maps the screens to thei
 
 Ideas I would like to include in future versions:
 
-- **Provider plugins** so streaming and manga apps such as Cloudstream and Mihon can hand their episode or chapter straight to Home.
+- **Provider plugins** so video and reading apps can send the episode or chapter you're on straight to Home.
 - **A gaming mode** with its own layout for controllers, emulators and game launchers.
 - **Recently read and watched**: a long press on the centre to switch between your last few books and videos.
 - **TV and HDMI control**: HDMI-CEC so the television remote and power button work with Snapplication.
