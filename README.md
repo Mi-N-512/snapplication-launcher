@@ -27,6 +27,10 @@ Snapplication puts the book or video you were last using in the centre of Home, 
 
 Version 1.0 is free to [download from GitHub Releases](https://github.com/Mi-N-512/snapplication-launcher/releases/latest). It has also been [submitted to F-Droid](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/54996) and will appear there once it's reviewed.
 
+To get updates automatically, add it to [Obtainium](https://github.com/ImranR98/Obtainium), which installs straight from GitHub Releases. When it asks which APK to use, pick your edition.
+
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Mi-N-512/snapplication-launcher"><img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="54" alt="Get it on Obtainium"></a>
+
 ## See it in action
 
 <p align="center"><img src="docs/images/demo-watch.webp" width="720" alt="Watch Home starts empty. A video app plays for a few seconds and is paused; back on Home, Snapplication shows the frame where it stopped with a progress bar. The screen turns off and on, the frame is still there, and tapping it reopens the app at that moment and carries on playing"></p>
