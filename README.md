@@ -24,7 +24,7 @@ Snapplication keeps your last reading page or video in the centre of Home, with 
 
 The centre can show a saved frame or reading page from a supported external app. Select it to reopen that app where you were; if the app allows it, playback resumes too. Read and Watch each remember their own last app.
 
-Android and the other app still own that task, its playback buffer and its memory. **Keep apps ready** (Settings → Home & content) shows whether Android may close Snapplication or your app to save battery, and opens the switches that prevent it, including Huawei's App launch manager. Snapplication can't freeze another app or guarantee an instant resume after Android closes it. Protected content, and apps that hide their page or player state, can limit previews and controls.
+Android and the other app still own that task, its playback buffer and its memory. **Keep apps ready** (Settings → Home & content) shows whether Android may close Snapplication or your app to save battery, and opens the switches that prevent it, including Huawei's Battery page, where App launch lives. Snapplication can't freeze another app or guarantee an instant resume after Android closes it. Protected content, and apps that hide their page or player state, can limit previews and controls.
 
 ### Read and watch local content
 

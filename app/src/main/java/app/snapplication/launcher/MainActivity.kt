@@ -478,8 +478,9 @@ class MainActivity : Activity() {
         if (owner != null) actions += "$ownerLabel app info · allow background activity" to {
             openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$owner")))
         }
-        if (huawei) actions += "Huawei App launch · Manage manually, allow all three for both apps" to {
-            openSettings(Intent("huawei.intent.action.HSM_STARTUPAPP_MANAGER"))
+        // Huawei protects its App launch screen from other apps; its Battery page links to it.
+        if (huawei) actions += "Huawei Battery · open App launch, set both apps to Manage manually" to {
+            openSettings(Intent(Intent.ACTION_POWER_USAGE_SUMMARY))
         }
         AlertDialog.Builder(this).setTitle("Keep apps ready")
             .setMessage("Android, not Snapplication, decides when to close apps. These switches make it much less likely, " +
@@ -659,9 +660,15 @@ class MainActivity : Activity() {
             contentDescription = label; tooltipText = label
             setOnClickListener { onClick() }
             onLongClick?.let { action -> setOnLongClickListener { action(); true } }
+            // Every icon is cut to the circle, so square legacy icons match adaptive ones.
             if (icon != null) addView(android.widget.ImageView(this@MainActivity).apply {
                 setImageDrawable(icon); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, FrameLayout.LayoutParams(size * 2 / 3, size * 2 / 3, android.view.Gravity.CENTER))
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) { outline.setOval(0, 0, view.width, view.height) }
+                }
+                clipToOutline = true
+            }, FrameLayout.LayoutParams(size * 4 / 5, size * 4 / 5, android.view.Gravity.CENTER))
             else addView(ui.label("+", 22f).apply {
                 setBackgroundColor(Color.TRANSPARENT); gravity = android.view.Gravity.CENTER
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
