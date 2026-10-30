@@ -35,7 +35,7 @@ Snapplication puts the book or video you were last using in the centre of Home, 
 <table>
   <tr>
     <td align="center" width="50%"><img src="docs/images/demo-read.webp" width="300" alt="The screen wakes onto Read Home in the E-paper theme with round favourites and a book on the page last read. Tapping it opens the book full screen; taps turn the pages and Back returns Home with the place saved"></td>
-    <td align="center" width="50%"><img src="docs/images/demo-custom.webp" width="300" alt="Settings change the icon style from Circles to Squares, then the Home viewer quick layout to Clean plus progress; Home updates after each change"></td>
+    <td align="center" width="50%"><img src="docs/images/demo-custom.webp" width="300" alt="Settings change the icon style from Circles to Squares, then the Home viewer quick layout from Standard to Clean plus progress; Home updates after each change"></td>
   </tr>
   <tr>
     <td align="center"><b>Read.</b> Your book waits on Home. One tap opens it full screen.</td>
@@ -45,51 +45,51 @@ Snapplication puts the book or video you were last using in the centre of Home, 
 
 ## Themes and layouts
 
-Every screen below comes from the same build with a different combination of settings. Themes, icon styles and viewer layouts can be mixed freely, and Read and Watch can each keep their own.
+Every screen below comes from the same build with a different combination of settings. Themes, icon styles, icon packs and viewer layouts can be mixed freely, and Read and Watch can each keep their own.
 
 <table>
   <tr>
-    <td align="center"><img src="docs/images/read-light-squares.webp" width="200" alt="Read Home in the Light theme: the Alice title page above square favourite blocks"></td>
-    <td align="center"><img src="docs/images/read-epaper-circles.webp" width="200" alt="Read Home in the E-paper theme: an EPUB page above round favourite keys"></td>
-    <td align="center"><img src="docs/images/read-dark-wallpaper.webp" width="200" alt="Read Home in the Dark theme with the Blue Marble wallpaper showing behind square favourites"></td>
+    <td align="center"><img src="docs/images/read-epaper-circles.webp" width="200" alt="Read Home in the E-paper theme: an EPUB page above symmetrical round favourite keys with black line icons, no buttons and a progress bar"></td>
+    <td align="center"><img src="docs/images/read-light-squares.webp" width="200" alt="Read Home in the Light theme: the Alice title page above square favourite blocks with the title line shown"></td>
+    <td align="center"><img src="docs/images/read-dark-wallpaper.webp" width="200" alt="Read Home in the Dark theme with a black and white mountain photograph behind round favourite keys"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Light · Squares</sub></td>
-    <td align="center"><sub>E-paper · Circles</sub></td>
-    <td align="center"><sub>Dark · wallpaper · Squares</sub></td>
+    <td align="center"><sub>E-paper · Circles · clean + progress</sub></td>
+    <td align="center"><sub>Light · Squares · standard</sub></td>
+    <td align="center"><sub>Dark · wallpaper · Circles</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/images/read-oled-circles.webp" width="200" alt="Read Home in the OLED Black theme: an EPUB chapter page above round favourite keys"></td>
-    <td align="center"><img src="docs/images/read-material-you.webp" width="200" alt="Read Home in the Material You theme using Android's wallpaper colours"></td>
-    <td align="center"><img src="docs/images/read-custom-colours.webp" width="200" alt="Read Home with custom background and accent colours"></td>
+    <td align="center"><img src="docs/images/read-oled-list.webp" width="200" alt="Read Home in the OLED Black theme: an EPUB chapter above list favourites with app names"></td>
+    <td align="center"><img src="docs/images/read-material-you.webp" width="200" alt="Read Home in the Material You theme using Android's wallpaper colours, with square blocks"></td>
+    <td align="center"><img src="docs/images/read-custom-colours.webp" width="200" alt="Read Home with custom colours and an asymmetrical arrangement of round keys"></td>
   </tr>
   <tr>
-    <td align="center"><sub>OLED Black · Circles</sub></td>
+    <td align="center"><sub>OLED Black · List with names</sub></td>
     <td align="center"><sub>Material You · Squares</sub></td>
-    <td align="center"><sub>Custom colours</sub></td>
+    <td align="center"><sub>Custom colours · asymmetrical Circles</sub></td>
   </tr>
 </table>
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="docs/images/watch-dark-squares.webp" width="400" alt="Watch Home sideways: a saved video frame between square favourite blocks over the wallpaper, with a progress bar"></td>
-    <td align="center" width="50%"><img src="docs/images/watch-clean-progress.webp" width="400" alt="Watch Home with the Clean + progress layout: the video frame with no buttons and a thin progress bar"></td>
+    <td align="center" width="50%"><img src="docs/images/watch-dark-squares.webp" width="400" alt="Watch Home sideways: a saved video frame with no buttons and a progress bar, between asymmetrical square blocks with white line icons over a mountain photograph"></td>
+    <td align="center" width="50%"><img src="docs/images/watch-standard-progress.webp" width="400" alt="The same Watch Home with the standard layout: previous, play and next buttons under the video frame"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Watch · Standard layout with progress</sub></td>
-    <td align="center"><sub>Watch · Clean + progress, tap the centre to continue</sub></td>
+    <td align="center"><sub>Watch · asymmetrical Squares · clean + progress</sub></td>
+    <td align="center"><sub>Watch · standard layout with buttons</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/images/watch-light-list.webp" width="400" alt="Watch Home in the Light theme with labelled list favourites either side of the video frame"></td>
-    <td align="center"><img src="docs/images/watch-oled-circles.webp" width="400" alt="Watch Home in OLED Black with round favourite keys over the wallpaper"></td>
+    <td align="center"><img src="docs/images/watch-oled-circles.webp" width="400" alt="Watch Home in OLED Black with round favourite keys over the photograph"></td>
   </tr>
   <tr>
     <td align="center"><sub>Light · List with names</sub></td>
     <td align="center"><sub>OLED Black · Circles · wallpaper</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/images/drawer-transparent.webp" width="400" alt="All Apps over the wallpaper with search and an alphabet rail"></td>
-    <td align="center"><img src="docs/images/settings-transparent.webp" width="400" alt="Settings sideways over the wallpaper with a category rail"></td>
+    <td align="center"><img src="docs/images/drawer-transparent.webp" width="400" alt="All Apps over the photograph with search, line icons and an alphabet rail"></td>
+    <td align="center"><img src="docs/images/settings-transparent.webp" width="400" alt="Settings sideways over the photograph with a category rail"></td>
   </tr>
   <tr>
     <td align="center"><sub>All Apps with search and A–Z rail</sub></td>
@@ -101,7 +101,7 @@ Every screen below comes from the same build with a different combination of set
   <tr>
     <td align="center"><img src="docs/images/settings-home-viewer.webp" width="200" alt="Home viewer settings: Quick layout, buttons on the viewer, progress bar, own books and videos, page buttons and content sizing"></td>
     <td align="center"><img src="docs/images/settings-mode.webp" width="200" alt="The Mode dialog offering Watch, Read and Universal"></td>
-    <td align="center"><img src="docs/images/demo-rotate.webp" width="230" alt="A phone held upright shows Read in E-paper with round favourites, then turns sideways and Home switches to Watch with square favourites and a video"></td>
+    <td align="center"><img src="docs/images/demo-rotate.webp" width="230" alt="A phone held upright shows Read in E-paper with round keys, then turns sideways and Home switches to Watch with square blocks and a video"></td>
   </tr>
   <tr>
     <td align="center"><sub>Home viewer settings</sub></td>
@@ -109,7 +109,7 @@ Every screen below comes from the same build with a different combination of set
     <td align="center"><sub>Universal: upright Read, sideways Watch</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/images/demo-favourites.webp" width="200" alt="All Apps opens, the favourites editor adds Contacts, and Home shows the new key"></td>
+    <td align="center"><img src="docs/images/demo-favourites.webp" width="200" alt="All Apps opens, the favourites editor adds Files, and Home shows the new key"></td>
     <td align="center" colspan="2"><img src="docs/images/demo-countdown.webp" width="420" alt="A local episode plays to its end full screen; a card counts down from five and the next episode starts on its own"></td>
   </tr>
   <tr>
@@ -121,12 +121,12 @@ Every screen below comes from the same build with a different combination of set
 <details>
 <summary>About these captures</summary>
 
-These are Android 15 emulator captures of the Universal edition. Everything shown is free to reuse:
+These are Android 15 emulator captures of the Universal edition, recorded at 60 frames per second. Read uses E-paper with symmetrical round keys; Watch uses a dark theme over a photograph with asymmetrical square blocks; both hide the viewer buttons and show a progress bar. Everything shown is free to reuse:
 
 - The books are Chapters I and II of *Alice's Adventures in Wonderland* (Lewis Carroll, 1865) with John Tenniel's 1865 illustrations, both public domain, set as a small PDF and EPUB for these captures.
 - The video is "Earth Views from the ISS" footage from NASA (public domain), trimmed and without its soundtrack.
-- The wallpaper is NASA Goddard's *Blue Marble 2007 East* (public domain).
-- The app icons belong to the open-source [Fossify](https://github.com/FossifyOrg) apps (GPL-3.0) and [Just Player](https://github.com/moneytoo/Player) (public domain, Unlicense), installed from F-Droid as examples. No apps are bundled with Snapplication.
+- The wallpaper is Ansel Adams' *The Tetons and the Snake River* (1942), made for the US National Park Service and in the public domain.
+- The line icons come from the open-source [Arcticons](https://github.com/Arcticons-Team/Arcticons) icon pack (GPL-3.0), white for Watch and black for Read. The apps are the open-source [Fossify](https://github.com/FossifyOrg) apps (GPL-3.0) and [Just Player](https://github.com/moneytoo/Player) (public domain, Unlicense), installed from F-Droid as examples. No apps or icon packs are bundled with Snapplication.
 
 They show the built-in reader and player and one supported video app. Not every external app offers the same controls. The white dots in some clips are Android's "show taps" indicator.
 
@@ -156,9 +156,9 @@ With the buttons hidden, tap the centre to carry on: a video plays or pauses, a 
 
 ### Make Home yours
 
-Pick lists, square blocks or **Circles** (small round keys with space around them, like an old typewriter) under Settings → Favourites → **Icon style**, then choose the block count, symmetry, labels, wallpaper and theme. With **Separate Read / Watch themes** on, each mode keeps its own colours and icon style, so turning the phone can switch from a transparent Watch screen to an E-paper Read screen. The alphabet rail and search find everything else.
+Pick lists, square blocks or **Circles** (small round keys with space around them, like an old typewriter) under Settings → Favourites → **Icon style**, then choose the block count, symmetry, labels, wallpaper and theme. With **Separate Read / Watch themes** on, each mode keeps its own colours, icon pack, icon style and symmetry, so turning the phone can switch from a transparent Watch screen to an E-paper Read screen. The alphabet rail and search find everything else.
 
-You can import your own TTF or OTF font. Installed icon packs are optional; no icon pack or paid font is included.
+You can import your own TTF or OTF font and use any installed icon pack. Icon packs are chosen in Settings and are left out of the All Apps list. No icon pack or paid font is included.
 
 ### Remote buttons and recorded actions
 
