@@ -46,6 +46,7 @@ class EpubPanel(private val context: Context, private val state: LauncherState, 
     private val progressLine = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 1000; progressTintList = android.content.res.ColorStateList.valueOf(ui.focusAccent)
         importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        visibility = if (state.showProgress) android.view.View.VISIBLE else android.view.View.GONE
     }
     private val pageBadge = ui.label("", 14f).apply {
         setTextColor(Color.WHITE); setBackgroundColor(0xAA101010.toInt())

@@ -24,23 +24,23 @@ Snapplication keeps your last reading page or video in the centre of Home, with 
 
 The centre can show a saved frame or reading page from a supported external app. Select it to reopen that app where you were; if the app allows it, playback resumes too. Read and Watch each remember their own last app.
 
-Android and the other app still own that task, its playback buffer and its memory. Snapplication can't freeze another app or guarantee an instant resume after Android closes it. Protected content, and apps that hide their page or player state, can limit previews and controls.
+Android and the other app still own that task, its playback buffer and its memory. **Keep apps ready** (Settings → Home & content) shows whether Android may close Snapplication or your app to save battery, and opens the switches that prevent it, including Huawei's App launch manager. Snapplication can't freeze another app or guarantee an instant resume after Android closes it. Protected content, and apps that hide their page or player state, can limit previews and controls.
 
 ### Read and watch local content
 
 Choose folders through Android's file picker. The built-in reader handles **EPUB, PDF, CBZ and images** and saves your place; other book formats open in a compatible installed reader. Local videos and supported direct media links play with your position saved. A thin bar along the bottom shows how far through the book or video you are.
 
-Your own books and videos open **full screen** by default: Home shows a preview, one tap opens it across the whole screen, and Back returns Home. If you prefer to read and watch between your favourites, set **Own books and videos** to **Inside Home** (Settings → Home & content).
+Your own books and videos open **full screen** by default: Home shows a preview, one tap opens it across the whole screen, and Back returns Home. If you prefer to read and watch between your favourites, set **Own books and videos** to **Inside Home** (Settings → Home viewer).
 
 Picture sizing offers **Fit**, **Fill/crop** and **Stretch**. Turn pages by tapping the page, swiping sideways or pressing a page key, and add Previous/Next buttons if you prefer them.
 
-**Tap-only viewer** (Settings → Home & content) removes every button from the centre of Home. The book or video fills the space: tap the right of a page to go forward and the left to go back, or tap a video to play or pause. A small badge confirms each tap. With an app's saved preview, a tap reopens that app and resumes it.
+**Home viewer** (Settings → Home viewer) lets you choose how the centre of Home looks. **Quick layout** offers Standard (buttons), Progress (buttons and a progress bar), Clean (no buttons) and Clean + progress, and each part can also be switched on its own. With the buttons hidden, tap the centre to carry on: a video plays or pauses, a page turns (tap the left side to go back), and an app's saved preview reopens that app. The progress bar works for your own books and videos and for other apps' video previews, where it shows how far you had watched when you left.
 
 Local video queues can move on to the next episode once you pass the completion threshold you choose (for example 90%). When you leave Home or turn the screen off past that point, the next file waits at its start and the finished one keeps its position. When an episode plays to the end, a card counts down five seconds to the next one; tap it to start now or Cancel to stay. Other video apps only move to the next episode if they offer a Next control that Snapplication can press.
 
 ### Make Home yours
 
-Choose lists, blocks or **Circles** (small round keys with space around them, like an old typewriter), symmetrical or asymmetrical arrangements, favourite limits, labels, wallpaper and themes. Read and Watch can each keep their own theme and their own favourites, so turning the phone can switch from a transparent Watch screen to an E-paper Read screen. The alphabet rail and search help you find everything else.
+Choose lists, square blocks or **Circles** (small round keys with space around them, like an old typewriter) under Settings → Favourites → **Icon style**; symmetrical or asymmetrical arrangements, favourite limits, labels, wallpaper and themes. Read and Watch can each keep their own theme and their own favourites, so turning the phone can switch from a transparent Watch screen to an E-paper Read screen. The alphabet rail and search help you find everything else.
 
 You can import your own TTF or OTF font. Installed icon packs are optional; no icon pack or paid font is included.
 
@@ -134,12 +134,12 @@ Read mode does **not** use continuous screen recording. Watch previews use Andro
 ## Get started
 
 1. Open the [private test builds](private-test-builds/) while signed in to the repository. Select your APK and choose **Download raw file**, then install it on a compatible device. Keep the same edition when updating to retain its settings.
-2. Choose **Phone**, **Reader** or **TV** where offered, then choose your theme. Follow the guided introduction and enable only the features you want.
+2. Choose **Watch**, **Read** or **Universal** where offered (you can change it later under Settings → Appearance → **Mode**), then choose your theme. Follow the guided introduction and enable only the features you want.
 3. Open **All Apps** and enter its favourites editor. Tap apps to add them, then drag the preview icons into the order you want. An empty Home block opens this editor too.
 4. In **Settings → Home & content**, choose whether Home returns to an app or shows content from a folder. Read and Watch remember separate choices. Built-in playback and reading are optional.
 5. Use **Settings → Setup & help → Status & repair** to review the default Home app and preview permissions. Android may ask for fresh Watch capture consent after an update or a stopped session.
 
-In Phone setup, **Follow rotation** can choose Read upright and Watch sideways. You can also keep Read or Watch selected while changing orientation. The dedicated editions keep their intended content mode.
+In Universal mode, **Follow rotation** can choose Read upright and Watch sideways. You can also keep Read or Watch selected while changing orientation. The dedicated editions keep their intended content mode.
 
 ## Permissions: what it needs and why
 

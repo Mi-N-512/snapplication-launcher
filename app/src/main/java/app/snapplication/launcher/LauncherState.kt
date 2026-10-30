@@ -15,6 +15,9 @@ still load. Planned, not implemented: a future Gaming mode may require a distinc
 with launch identity and its own progress semantics rather than treating games as videos or books.
 Coordinate that model with MainActivity and LauncherState before extending this.
 */
+// The names people see for the three stored profiles: Phone, TV and Reader.
+fun profileLabel(profile: String): String = when (profile) { "TV" -> "Watch"; "Reader" -> "Read"; else -> "Universal" }
+
 data class LibraryItem(val uri: String, val title: String, val mime: String, val mode: String)
 
 /*
@@ -90,6 +93,19 @@ class LauncherState(private val context: Context) {
         if (profile == "TV") applyTvDefaults()
     }
 
+    // Switches the mode from Settings without touching the user's look: only content mode and
+    // rotation behaviour change, so themes, favourites and viewer choices are kept.
+    fun switchDeviceProfile(profile: String) {
+        require(profile in listOf("Phone", "TV", "Reader"))
+        if (readerOnly && profile != "Reader") return
+        deviceProfile = profile
+        prefs.edit().putString("mode", if (profile == "Reader") "Read" else "Watch")
+            .putString("orientation:Read", if (profile == "Phone") "Auto" else "Portrait")
+            .putString("orientation:Watch", if (profile == "Phone") "Auto" else "Landscape")
+            .putBoolean("automaticPhoneMode", profile == "Phone")
+            .putString("phoneOrientation", "Auto").apply()
+    }
+
     // Applies television layout defaults without personal content, bindings or permission grants.
     private fun applyTvDefaults() {
         prefs.edit().putString("theme", "Dark")
@@ -138,6 +154,10 @@ class LauncherState(private val context: Context) {
     var fullscreenMedia: Boolean
         get() = prefs.getBoolean("fullscreenMedia", true)
         set(value) { prefs.edit().putBoolean("fullscreenMedia", value).apply() }
+    // Thin progress line under books, videos and app previews on Home.
+    var showProgress: Boolean
+        get() = prefs.getBoolean("showProgress", true)
+        set(value) { prefs.edit().putBoolean("showProgress", value).apply() }
     // Circles favourites style: small round keys with space between them instead of blocks.
     var circles: Boolean
         get() = modeBoolean("circles", false)

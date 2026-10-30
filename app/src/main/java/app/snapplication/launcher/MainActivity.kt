@@ -452,6 +452,79 @@ class MainActivity : Activity() {
         }
     }
 
+    // Summarises whether Android may close Snapplication or the app Home resumes to save battery.
+    private fun keepReadyStatus(): String {
+        val power = getSystemService(android.os.PowerManager::class.java)
+        val owner = state.lastApp()?.let(ComponentName::unflattenFromString)?.packageName
+        val self = power.isIgnoringBatteryOptimizations(packageName)
+        val app = owner?.let { power.isIgnoringBatteryOptimizations(it) }
+        return when {
+            self && (app == null || app) -> "Protected from battery optimisation"
+            !self && app == false -> "Android may close Snapplication and your app"
+            !self -> "Android may close Snapplication"
+            else -> "Android may close the app Home resumes"
+        }
+    }
+
+    // Android decides when to close apps; this opens the switches that make it far less likely.
+    private fun keepAppsReady() {
+        val owner = state.lastApp()?.let(ComponentName::unflattenFromString)?.packageName
+        val ownerLabel = owner?.let { runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(it, 0)).toString() }.getOrNull() }
+        val huawei = android.os.Build.MANUFACTURER.equals("HUAWEI", true) || android.os.Build.MANUFACTURER.equals("HONOR", true)
+        val actions = mutableListOf<Pair<String, () -> Unit>>()
+        actions += "Battery optimisation · set Snapplication${if (ownerLabel != null) " and $ownerLabel" else ""} to Don't optimise" to {
+            openSettings(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        }
+        if (owner != null) actions += "$ownerLabel app info · allow background activity" to {
+            openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$owner")))
+        }
+        if (huawei) actions += "Huawei App launch · Manage manually, allow all three for both apps" to {
+            openSettings(Intent("huawei.intent.action.HSM_STARTUPAPP_MANAGER"))
+        }
+        AlertDialog.Builder(this).setTitle("Keep apps ready")
+            .setMessage("Android, not Snapplication, decides when to close apps. These switches make it much less likely, " +
+                "so the app reopens where you left it. You can also lock the app in Recents (swipe down on its card). " +
+                "Some players still reload protected streams after a while.")
+            .setPositiveButton("Choose") { _, _ ->
+                AlertDialog.Builder(this).setTitle("Keep apps ready")
+                    .setItems(actions.map { it.first }.toTypedArray()) { _, index -> actions[index].second() }
+                    .setNegativeButton("Close", null).show()
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    // Opens a system settings page, explaining when this device does not offer it.
+    private fun openSettings(intent: Intent) {
+        runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { message("This settings page is not available on this device.") }
+    }
+
+    // Picks Watch, Read or Universal without the tutorial; the user's look is kept.
+    private fun chooseDeviceMode() {
+        val profiles = arrayOf("TV", "Reader", "Phone")
+        val labels = arrayOf("Watch · videos in landscape", "Read · books in portrait", "Universal · read upright, watch sideways")
+        AlertDialog.Builder(this).setTitle("Mode").setSingleChoiceItems(labels, profiles.indexOf(state.deviceProfile)) { dialog, index ->
+            state.switchDeviceProfile(profiles[index]); dialog.dismiss(); applyOrientation(); settings()
+        }.setNegativeButton("Cancel", null).show()
+    }
+
+    // Names the current combination of viewer buttons and progress bar.
+    private fun viewerLayoutName(): String = when {
+        state.tapViewer && state.showProgress -> "Clean + progress"
+        state.tapViewer -> "Clean"
+        state.showProgress -> "Progress"
+        else -> "Standard"
+    }
+
+    // Sets viewer buttons and progress bar together; both stay individually adjustable after.
+    private fun chooseViewerLayout() {
+        val names = arrayOf("Standard · buttons on the viewer", "Progress · buttons and a progress bar",
+            "Clean · no buttons, tap the centre to continue", "Clean + progress · no buttons, with a progress bar")
+        val current = listOf("Standard", "Progress", "Clean", "Clean + progress").indexOf(viewerLayoutName())
+        AlertDialog.Builder(this).setTitle("Quick layout").setSingleChoiceItems(names, current) { dialog, index ->
+            state.tapViewer = index >= 2; state.showProgress = index % 2 == 1; dialog.dismiss(); settings()
+        }.setNegativeButton("Cancel", null).show()
+    }
+
     // Lets the viewer switch between an app resume entry and user-selected folder media.
     private fun chooseViewerSource() {
         AlertDialog.Builder(this).setTitle("Preview source").setItems(arrayOf("Resume the last app", "Files from a folder on this device")) { _, index ->
@@ -807,13 +880,12 @@ class MainActivity : Activity() {
         settingsScroll = scroll
         body.addView(scroll, if (wide) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, -1))
         content.addView(ui.section("Appearance"))
-        content.addView(ui.setting("Device setup", state.deviceProfile) {
-            state.profileSetupComplete = false; introduction()
-        })
+        if (!state.readerOnly) content.addView(ui.setting("Mode", profileLabel(state.deviceProfile) + " · " + when (state.deviceProfile) {
+            "TV" -> "videos in landscape"; "Reader" -> "books in portrait"; else -> "read upright, watch sideways" }) { chooseDeviceMode() })
         content.addView(ui.setting("Colours", if (state.separateThemes) "${state.theme} · ${state.mode} theme" else state.theme) { themeSettings() })
         if (!state.readerOnly && BuildConfig.FLAVOR != "tv" && state.deviceProfile == "Phone") {
             content.addView(ui.setting("Separate Read / Watch themes",
-                if (state.separateThemes) "Each mode keeps its own colours and favourites style; rotate to edit the other" else "Use the same colours in both modes",
+                if (state.separateThemes) "Each mode keeps its own colours and icon style; rotate to edit the other" else "Use the same colours in both modes",
                 if (state.separateThemes) "On" else "Off") {
                 state.separateThemes = !state.separateThemes; settings()
             })
@@ -827,9 +899,6 @@ class MainActivity : Activity() {
         })
         content.addView(ui.setting("App icon", AppIconTheme.currentLabel(this)) {
             AppIconTheme.showChooser(this) { settings() }
-        })
-        content.addView(ui.setting("Show App Labels", "Display names beside favourites", if (state.showLabels) "On" else "Off") {
-            state.showLabels = !state.showLabels; settings()
         })
         content.addView(ui.setting("View wallpaper", "Show your background behind Home, apps and settings", if (state.useWallpaper) "On" else "Off") {
             state.useWallpaper = !state.useWallpaper; settings()
@@ -856,6 +925,18 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancel", null).show()
         })
         content.addView(ui.section("Favourites"))
+        content.addView(ui.setting("Icon style", if (state.circles) "Circles · small round keys" else if (state.grid) "Squares · icon blocks" else "List · icon and app name",
+            if (state.circles) "Circles" else if (state.grid) "Squares" else "List") {
+            val styles = arrayOf("List · icon and app name", "Squares · icon blocks", "Circles · small round keys")
+            AlertDialog.Builder(this).setTitle("Icon style").setItems(styles) { _, index ->
+                state.circles = index == 2; state.grid = index != 0; settings()
+            }.setNegativeButton("Cancel", null).show()
+        })
+        content.addView(ui.setting("App labels", "Show names beside list icons", if (state.showLabels) "On" else "Off") {
+            state.showLabels = !state.showLabels; settings()
+        })
+        content.addView(ui.setting("Layout & block count", "${state.favouriteCount} blocks · ${if (state.asymmetricBlocks) "asymmetrical" else "symmetrical"}") { favouriteSettings() })
+        content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
         if (!state.readerOnly && BuildConfig.FLAVOR != "tv" && state.deviceProfile == "Phone") {
             content.addView(ui.setting("Separate Read / Watch favourites",
                 if (state.separateFavourites) "Editing ${state.mode} favourites. Your shared list is kept." else "Use the same favourites in both modes",
@@ -866,43 +947,28 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Favourites heading", "Show the heading above home shortcuts", if (state.showFavouriteHeading) "On" else "Off") {
             state.showFavouriteHeading = !state.showFavouriteHeading; settings()
         })
-        content.addView(ui.setting("Favourites Style", "${if (state.circles) "Circles" else if (state.grid) "Grid" else "List"} · ${state.favouriteCount} blocks") { favouriteSettings() })
-        content.addView(ui.row("Arrange favourites    ›") { manageFavourites() })
-        content.addView(ui.section("Home & content"))
-        if (!state.readerOnly && state.deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv") content.addView(ui.setting("Home content", if (state.automaticPhoneMode) "Follow rotation: upright Read, sideways Watch" else "${state.mode} in either orientation") { chooseMode() })
-        content.addView(ui.setting("Screen rotation", state.orientation, "Change") {
-            val choices = arrayOf("Auto", "Landscape", "Portrait")
-            AlertDialog.Builder(this).setTitle("Screen rotation").setItems(choices) { _, index ->
-                state.orientation = choices[index]; applyOrientation(); settings()
-            }.setNegativeButton("Cancel", null).show()
+        content.addView(ui.section("Home viewer"))
+        content.addView(ui.setting("Quick layout", viewerLayoutName() + " · each option below can also be changed on its own") { chooseViewerLayout() })
+        content.addView(ui.setting("Buttons on the viewer",
+            if (state.tapViewer) "Hidden · tap the centre to continue; on pages tap left to go back"
+            else "Shown · play, next and page controls on the viewer",
+            if (state.tapViewer) "Hidden" else "Shown") {
+            state.tapViewer = !state.tapViewer; settings()
         })
-        content.addView(ui.setting("Home preview", if (state.readerOnly) "Save your last reading page on this device" else "Follow your last video or book; save a still picture locally") { previewSettings() })
-        if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("Play local videos here", "For your selected files or direct links; app previews resume their own player", if (state.playVideosInLauncher) "On" else "Off") {
-            state.playVideosInLauncher = !state.playVideosInLauncher; settings()
+        content.addView(ui.setting("Progress bar", "How much of the book or video you have read or watched", if (state.showProgress) "On" else "Off") {
+            state.showProgress = !state.showProgress; settings()
         })
-        if (state.mode == "Read") content.addView(ui.setting("Open documents inside launcher", "PDF, EPUB, CBZ and images. Other formats open a reading app.", if (state.readInLauncher) "On" else "Off") {
-            state.readInLauncher = !state.readInLauncher; settings()
-        })
-        content.addView(ui.setting("Preview source", if (state.viewerSource == "App") "Resume your last app" else "Files from your chosen folder") { chooseViewerSource() })
-        content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
         content.addView(ui.setting("Own books and videos",
-            if (state.fullscreenMedia) "Full screen · select the preview on Home to open it" else "Inside Home · read and play between your favourites",
+            if (state.fullscreenMedia) "Open full screen from the Home preview" else "Read and play between your favourites",
             if (state.fullscreenMedia) "Full screen" else "Inside Home") {
             state.fullscreenMedia = !state.fullscreenMedia; settings()
         })
-        content.addView(ui.setting("Tap-only viewer",
-            if (state.readerOnly) "No buttons on Home. Tap the right of a page to go forward, the left to go back"
-            else "No buttons on Home. Tap a page's right side to go forward, left side to go back; tap a video to play or pause, or an app preview to resume it",
-            if (state.tapViewer) "On" else "Off") {
-            state.tapViewer = !state.tapViewer; settings()
-        })
         if (state.mode == "Read") content.addView(ui.setting("Previous / Next buttons",
-            if (state.tapViewer) "Hidden while Tap-only viewer is on" else "Show page controls in the reading panel",
+            if (state.tapViewer) "Hidden while viewer buttons are hidden" else "Page buttons under the reading panel",
             if (state.showReaderControls) "On" else "Off") {
             state.showReaderControls = !state.showReaderControls; settings()
         })
-        content.addView(ui.setting("Browse local files", "Open ${if (state.mode == "Read") "books and documents" else "videos"} from your selected folder") { library() })
-        if (state.deviceProfile != "Reader") content.addView(ui.row("Playback permissions & controls    ›") { externalPlayback() })
+        content.addView(ui.setting("Content sizing", "${if (state.contentScale == "Fill") "Crop to fill" else state.contentScale} · ${if (state.readerOnly) "page previews and documents" else "preview, documents and videos"}") { chooseContentScale() })
         if (state.mode == "Watch" && state.deviceProfile != "Reader") {
         val threshold = ui.label("Next episode after ${state.completion}%", 18f)
         content.addView(threshold)
@@ -925,6 +991,25 @@ class MainActivity : Activity() {
         })
         content.addView(ui.label("Videos played here prepare the next file when you leave or turn the screen off. For other apps, the next Play request advances after this percentage when the player supplies duration and a Next control. Supported players can use their visible Next button with accessibility enabled. If no next episode is available, the current episode resumes. The other app still owns loading and buffering.", 16f))
         }
+        content.addView(ui.section("Home & content"))
+        if (!state.readerOnly && state.deviceProfile == "Phone" && BuildConfig.FLAVOR != "tv") content.addView(ui.setting("Home content", if (state.automaticPhoneMode) "Follow rotation: upright Read, sideways Watch" else "${state.mode} in either orientation") { chooseMode() })
+        content.addView(ui.setting("Screen rotation", state.orientation, "Change") {
+            val choices = arrayOf("Auto", "Landscape", "Portrait")
+            AlertDialog.Builder(this).setTitle("Screen rotation").setItems(choices) { _, index ->
+                state.orientation = choices[index]; applyOrientation(); settings()
+            }.setNegativeButton("Cancel", null).show()
+        })
+        content.addView(ui.setting("Preview source", if (state.viewerSource == "App") "Resume your last app" else "Files from your chosen folder") { chooseViewerSource() })
+        content.addView(ui.setting("Browse local files", "Open ${if (state.mode == "Read") "books and documents" else "videos"} from your selected folder") { library() })
+        if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("Play local videos here", "For your selected files or direct links; app previews resume their own player", if (state.playVideosInLauncher) "On" else "Off") {
+            state.playVideosInLauncher = !state.playVideosInLauncher; settings()
+        })
+        if (state.mode == "Read") content.addView(ui.setting("Open documents inside launcher", "PDF, EPUB, CBZ and images. Other formats open a reading app.", if (state.readInLauncher) "On" else "Off") {
+            state.readInLauncher = !state.readInLauncher; settings()
+        })
+        content.addView(ui.setting("Keep apps ready", keepReadyStatus()) { keepAppsReady() })
+        content.addView(ui.setting("App previews", if (state.readerOnly) "Save your last reading page on this device" else "Follow your last video or book; save a still picture locally") { previewSettings() })
+        if (state.deviceProfile != "Reader") content.addView(ui.row("Playback permissions & controls    ›") { externalPlayback() })
         content.addView(ui.section("Display"))
         content.addView(ui.setting("Fullscreen", "Hide system bars; swipe an edge to reveal them", if (state.fullscreen) "On" else "Off") {
             state.fullscreen = !state.fullscreen; settings()
@@ -1004,7 +1089,7 @@ class MainActivity : Activity() {
         val content = ui.column()
         root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         val service = RemoteActionService.instance
-        content.addView(ui.label("${state.mode} · ${state.deviceProfile} setup", 22f))
+        content.addView(ui.label("${state.mode} · ${profileLabel(state.deviceProfile)} mode", 22f))
         val defaultHome = packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)?.activityInfo?.packageName == packageName
         content.addView(ui.setting("Default launcher", if (defaultHome) "Snapplication is your Home app" else "Another Home app is selected", "Choose") {
             runCatching { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }.onFailure { message("Home app settings are unavailable on this device.") }
@@ -1042,7 +1127,7 @@ class MainActivity : Activity() {
     private fun organizeSettings(content: LinearLayout) {
         val groups = linkedMapOf<String, MutableList<View>>()
         var group = "Appearance"
-        val names = setOf("APPEARANCE", "FAVOURITES", "HOME & CONTENT", "DISPLAY", "REMOTE & MACROS", "SETUP & HELP")
+        val names = setOf("APPEARANCE", "FAVOURITES", "HOME VIEWER", "HOME & CONTENT", "DISPLAY", "REMOTE & MACROS", "SETUP & HELP")
         for (index in 0 until content.childCount) {
             val child = content.getChildAt(index)
             if (child is android.widget.TextView && child.text.toString() in names) group = child.text.toString().lowercase().replaceFirstChar { it.uppercase() }
@@ -1075,20 +1160,25 @@ class MainActivity : Activity() {
                 true
             }
         }
-        val summaries = mapOf("Appearance" to "Colours, wallpaper, font and icons", "Favourites" to "Choose and arrange your home shortcuts",
-            "Home & content" to "Read or Watch, previews, files and playback", "Display" to "Fullscreen, external apps and connected displays",
+        val summaries = mapOf("Appearance" to "Colours, wallpaper, font and icons", "Favourites" to "Icon style, labels and arrangement",
+            "Home viewer" to "Buttons, progress bar and full screen",
+            "Home & content" to "Read or Watch, sources, files and permissions", "Display" to "Fullscreen, external apps and connected displays",
             "Remote & macros" to "Button assignments and recorded actions", "Setup & help" to "Setup guide, permissions and diagnostics")
         fun words(view: View): String = if (view is android.widget.TextView) view.text.toString() else if (view is ViewGroup)
             (0 until view.childCount).joinToString(" ") { words(view.getChildAt(it)) } else ""
         // Extra search words for settings people describe differently from their labels.
         val synonyms = mapOf("View wallpaper" to "transparent transparency translucent glass see-through background",
             "Colours" to "theme dark light oled black e-paper eink colour color",
-            "Tap-only viewer" to "no buttons minimal clean tap click touch",
+            "Buttons on the viewer" to "tap-only no buttons minimal clean tap click touch centre",
+            "Progress bar" to "played watched read amount position",
+            "Icon style" to "round circles square grid list shape",
+            "Mode" to "device setup watch read universal profile",
+            "Keep apps ready" to "battery optimisation background killed closed cleared memory speed fast lock",
             "Previous / Next buttons" to "page turn controls arrows",
             "Content sizing" to "fit fill crop stretch zoom scale",
             "Fullscreen" to "immersive status bar navigation bar",
-            "Show App Labels" to "names text",
-            "Favourites Style" to "grid list blocks layout")
+            "App labels" to "names text",
+            "Layout & block count" to "grid list blocks layout count")
         fun searchText(view: View): String = words(view).let { text ->
             text + " " + synonyms.filterKeys { text.startsWith(it) }.values.joinToString(" ")
         }

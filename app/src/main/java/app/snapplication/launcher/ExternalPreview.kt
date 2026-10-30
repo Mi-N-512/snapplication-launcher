@@ -80,6 +80,25 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         }
         if (mode == "Read") { previous.visibility = View.GONE; next.visibility = View.GONE }
         panel.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        // How much of the other app's video has played, from its media session (Watch only).
+        val played = android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000; visibility = View.GONE
+            progressTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        panel.addView(played, FrameLayout.LayoutParams(-1, ui.dp(3), Gravity.BOTTOM))
+        val progressTick = object : Runnable {
+            override fun run() {
+                val fraction = if (state.showProgress) playedFraction() else null
+                played.visibility = if (fraction == null) View.GONE else View.VISIBLE
+                if (fraction != null) played.progress = (fraction * 1000).toInt()
+                if (panel.isAttachedToWindow) panel.postDelayed(this, 1000)
+            }
+        }
+        panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) { panel.post(progressTick) }
+            override fun onViewDetachedFromWindow(v: View) { panel.removeCallbacks(progressTick) }
+        })
         // Tap-only viewer: no control bar; tapping the picture reopens and resumes the app.
         if (state.tapViewer) controls.visibility = View.GONE
         // Before any app is chosen there is nothing to continue; offer local files instead.
@@ -164,6 +183,19 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
     private fun active(): MediaController? = if (mode == "Read") null else runCatching {
         sessions?.getActiveSessions(access)?.firstOrNull { it.packageName == packageName }
     }.getOrNull()
+
+    // Played share of the session's current item, or null when the player gives no duration.
+    private fun playedFraction(): Float? {
+        val saved = prefs.getInt("played:$mode:$packageName", -1).takeIf { it >= 0 }?.let { it / 1000f }
+        val controller = active() ?: return saved
+        val playback = controller.playbackState ?: return saved
+        val duration = controller.metadata?.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        if (duration <= 0) return saved
+        var position = playback.position
+        if (playback.state == PlaybackState.STATE_PLAYING && playback.lastPositionUpdateTime > 0)
+            position += ((android.os.SystemClock.elapsedRealtime() - playback.lastPositionUpdateTime) * playback.playbackSpeed).toLong()
+        return (position.toFloat() / duration).coerceIn(0f, 1f)
+    }
 
     // Old Cloudstream screenshots may contain its catalogue; only the clean-player policy can
     // replace them.

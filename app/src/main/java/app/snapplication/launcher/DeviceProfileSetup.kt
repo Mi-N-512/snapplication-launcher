@@ -40,14 +40,14 @@ class DeviceProfileSetup(private val activity: Activity, private val state: Laun
             LinearLayout.LayoutParams(-1, 0, 1f))
         body.addView(ui.section("WELCOME TO SNAPPLICATION"))
         body.addView(ui.label("Make this screen yours", 28f))
-        body.addView(ui.label(if (state.readerOnly) "Your reading launcher. Choose a comfortable theme to begin." else "Choose your device and theme first. You can change either later in Settings.", 16f))
-        if (!state.readerOnly) body.addView(ui.section("1 · Your device"))
+        body.addView(ui.label(if (state.readerOnly) "Your reading launcher. Choose a comfortable theme to begin." else "Choose your mode and theme first. You can change either later in Settings.", 16f))
+        if (!state.readerOnly) body.addView(ui.section("1 · Your mode"))
         val descriptions = linkedMapOf(
-            "Reader" to "E-paper · books and pages, portrait, no animation",
-            "Phone" to "Rotate upright to read · sideways to watch",
-            "TV" to "Landscape · grid favourites · large controls for a remote")
+            "TV" to "Videos and players in landscape · large controls for a remote",
+            "Reader" to "Books and pages in portrait · E-paper friendly, no animation",
+            "Phone" to "Both · upright to read, sideways to watch")
         if (!state.readerOnly) descriptions.forEach { (profile, description) ->
-            body.addView(choice(ui, profile, description, state.deviceProfile == profile) {
+            body.addView(choice(ui, profileLabel(profile), description, state.deviceProfile == profile) {
                 state.applyDeviceProfile(profile)
                 onChanged()
             })

@@ -63,6 +63,7 @@ class WatchPlayer(context: Context, private val state: LauncherState, private va
     private val progressLine = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 1000; importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
         progressTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+        visibility = if (state.showProgress) android.view.View.VISIBLE else android.view.View.GONE
     }
     // Refreshes the progress line once a second while this player exists.
     private val progressTick = object : Runnable {

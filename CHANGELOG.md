@@ -9,6 +9,10 @@
 - Thin progress bar under books and videos.
 - Five-second "Next episode" countdown when a local video ends, with Cancel.
 - Separate Read and Watch themes; each mode also keeps its own favourites style.
+- Mode setting (Watch, Read, Universal) that switches without the tutorial and keeps your look.
+- Home viewer settings with quick layouts; buttons and progress bar can be mixed freely.
+- Progress bar on other apps' video previews, saved with each captured frame.
+- Keep apps ready: battery-optimisation status with shortcuts, including Huawei App launch.
 - Circles favourites style: small round keys with space between them.
 - Tap-only viewer setting: no buttons on Home; tap a page to turn it, a video to play and pause, or an app preview to resume it.
 - Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.
@@ -22,7 +26,7 @@
 - Settings search finds wallpaper transparency and other common terms; the search box clears when Settings opens and the page keeps its scroll position after a switch.
 - Landscape settings categories stay readable over a bright wallpaper.
 - Favourite labels shrink to fit narrow cells before being shortened.
-- Setup marks the selected device and theme with a tick and outline.
+- Setup marks the selected mode and theme with a tick and outline; Settings regrouped with an Icon style row under Favourites.
 - `scripts/verify.ps1` no longer stops on Gradle warnings when its output is redirected in Windows PowerShell 5.1.
 - Home panel edges and favourite dividers share one line colour in every theme.
 - Turning a page no longer flashes "Loading…" over the page already shown.

@@ -60,6 +60,7 @@ class ReaderPanel(private val context: Context, private val state: LauncherState
     private val progressLine = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 1000; progressTintList = android.content.res.ColorStateList.valueOf(ui.focusAccent)
         importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        visibility = if (state.showProgress) android.view.View.VISIBLE else android.view.View.GONE
     }
     // Last touch position for the click that follows it; keyboard and accessibility clicks go
     // forward.

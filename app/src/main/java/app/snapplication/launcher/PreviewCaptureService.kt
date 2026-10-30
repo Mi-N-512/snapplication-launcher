@@ -249,8 +249,20 @@ class PreviewCaptureService : Service() {
                     val out = file.startWrite()
                     try { out.write(bytes); file.finishWrite(out) }
                     catch (error: Exception) { file.failWrite(out); throw error }
+                    // Players often close their session once they leave the screen, so the played
+                    // share is kept with the frame for Home's progress bar (in thousandths).
+                    val played = runCatching {
+                        getSystemService(android.media.session.MediaSessionManager::class.java)
+                            .getActiveSessions(ComponentName(this, MediaAccessService::class.java))
+                            .firstOrNull { it.packageName == target }?.let { controller ->
+                                val duration = controller.metadata?.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+                                val position = controller.playbackState?.position ?: -1L
+                                if (duration > 0 && position >= 0) (position * 1000 / duration).toInt().coerceIn(0, 1000) else null
+                            }
+                    }.getOrNull()
                     getSharedPreferences("externalPreview", MODE_PRIVATE).edit()
                         .putLong("capturedAt:$mode:$target", System.currentTimeMillis())
+                        .putInt("played:$mode:$target", played ?: -1)
                         .putInt("cleanPolicy:$mode:$target", 2).commit()
                     // Home reads the identity under this same lock. A target changes only after its
                     // image exists; retaining each app's frame also makes manual switching
