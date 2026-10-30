@@ -604,9 +604,10 @@ class MainActivity : Activity() {
                 val button = ui.button(if (state.grid || !state.showLabels) "" else label) { launch(component) }
                 val icon = IconPacks.load(this@MainActivity, component) { info.loadIcon(packageManager) }.apply { setBounds(0, 0, ui.dp(40), ui.dp(40)) }
                 if (!state.grid && state.showLabels) {
-                    // An invisible twin of the icon on the right keeps the name centred on the row.
+                    // On full-width rows an invisible twin of the icon keeps the name centred; narrow
+                    // cells need that space for the name itself.
                     if (portrait) button.setCompoundDrawables(icon, null,
-                        android.graphics.drawable.ColorDrawable(Color.TRANSPARENT).apply { setBounds(icon.bounds) }, null)
+                        if (columns == 1) android.graphics.drawable.ColorDrawable(Color.TRANSPARENT).apply { setBounds(icon.bounds) } else null, null)
                     else button.setCompoundDrawables(null, icon, null, null)
                 }
                 button.compoundDrawablePadding = ui.dp(12)
