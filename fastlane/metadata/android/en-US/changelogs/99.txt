@@ -1,0 +1,7 @@
+First public preview.
+• Watch, Read and Universal modes
+• Saved video frames with progress, tap to resume
+• Built-in EPUB, PDF, CBZ and image reader; full-screen viewer
+• Home viewer layouts: buttons or clean, with a progress bar
+• List, square and round icons; per-mode themes and icon packs
+• Next-episode countdown for your own videos

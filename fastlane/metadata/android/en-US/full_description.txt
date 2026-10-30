@@ -1,0 +1,24 @@
+Snapplication is a home screen built around returning to what you were doing. The book or video you last used sits in the centre of Home, with your favourite apps around it. Wake the phone and your place is already there.
+
+<b>Read and Watch</b>
+<ul>
+<li>Choose Watch, Read or Universal mode. Universal reads upright and watches sideways.</li>
+<li>Pause a video in a supported player and Home shows the frame where you stopped, with how far you got. Tap it to carry on.</li>
+<li>A built-in reader for EPUB, PDF, CBZ and images, and a built-in player for your own videos, with your place saved.</li>
+<li>Open your own books and videos full screen, or keep them between your favourites.</li>
+<li>A five-second countdown to the next episode of your own videos.</li>
+</ul>
+
+<b>Make it yours</b>
+<ul>
+<li>Light, Dark, OLED Black, E-paper, Material You and custom colours.</li>
+<li>List, square or round icons, symmetrical or asymmetrical, with any installed icon pack.</li>
+<li>Viewer buttons, progress bar and layout can be mixed freely, and Read and Watch can keep their own look.</li>
+<li>Your wallpaper behind Home, All Apps and Settings.</li>
+</ul>
+
+<b>Remote and recorded actions</b>
+Assign buttons on a remote to actions or recorded macros. Backup and restore keeps your setup on a local file.
+
+<b>Privacy</b>
+No account, advertising or analytics. Optional permissions (accessibility, screen sharing, notification access) are explained in the app and only used for the features you switch on. Preview pictures stay on the device.
