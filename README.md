@@ -139,7 +139,7 @@ They show the built-in reader and player and one supported video app. Not every 
 
 The centre can show a saved frame or reading page from a supported external app. Select it to reopen that app where you were; if the app allows it, playback resumes too. Read and Watch each remember their own last app.
 
-Android and the other app still own that task, its playback buffer and its memory, so Snapplication can't freeze another app or guarantee an instant resume after Android closes it. **Keep apps ready** (Settings → Home & content) shows whether Android may close Snapplication or your app to save battery, and opens the switches that make it less likely, including Huawei's Battery page, where App launch lives. Protected content, and apps that hide their page or player state, can limit previews and controls.
+Android and the other app still own that task, its playback buffer and its memory, so Snapplication can't freeze another app or guarantee an instant resume after Android closes it. **Keep apps ready** (Settings → Home & content) shows whether Android may close Snapplication or your app to save battery, and opens the switches that make it less likely, including your phone maker's own battery settings where it has them. Protected content, and apps that hide their page or player state, can limit previews and controls.
 
 ### Read and watch local content
 
@@ -255,7 +255,7 @@ Start reading the code at `MainActivity.kt`. Its header maps the screens to thei
 
 ## Version 1.0 and what comes next
 
-1.0 brings together everything above: Watch, Read and Universal modes, saved video frames with progress, the EPUB, PDF and comic reader, Home viewer layouts, per-mode themes and icon styles, remote buttons, recorded actions and backup/restore. All four editions pass build, lint and unit tests, and 1.0 has been used on a Huawei Mate 10 Pro and a Meebook M6 e-reader. The captures above come from an emulator.
+1.0 brings together everything above: Watch, Read and Universal modes, saved video frames with progress, the EPUB, PDF and comic reader, Home viewer layouts, per-mode themes and icon styles, remote buttons, recorded actions and backup/restore. All four editions pass build, lint and unit tests. The captures above come from an emulator.
 
 Ideas I would like to include in future versions:
 
