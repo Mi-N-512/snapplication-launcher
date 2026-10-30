@@ -25,7 +25,7 @@
 
 Snapplication puts the book or video you were last using in the centre of Home, with your favourite apps around it. Wake the phone and your place is already there, one tap from carrying on. The same launcher covers reading on e-paper, watching on a phone or TV, and turning a phone between the two.
 
-Version 1.0 is free to [download from GitHub Releases](https://github.com/Mi-N-512/snapplication-launcher/releases/latest). An F-Droid listing is on its way.
+Version 1.0 is free to [download from GitHub Releases](https://github.com/Mi-N-512/snapplication-launcher/releases/latest). It has also been [submitted to F-Droid](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/54996) and will appear there once it's reviewed.
 
 ## See it in action
 
