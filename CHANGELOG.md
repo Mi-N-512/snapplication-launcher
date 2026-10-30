@@ -14,7 +14,7 @@ First public release.
 - Mode setting (Watch, Read, Universal) that switches without the tutorial and keeps your look.
 - Home viewer settings with quick layouts; buttons and progress bar can be mixed freely.
 - Progress bar on other apps' video previews, saved with each captured frame.
-- Keep apps ready: battery-optimisation status with shortcuts, including Huawei's Battery page.
+- Keep apps ready: battery-optimisation status with shortcuts, including phone makers' own battery settings.
 - Circles clip every icon to the circle so square icons match round ones.
 - Home list labels, reader status lines and preview titles are centred.
 - With separate themes, Read and Watch also keep their own icon pack and symmetry.
