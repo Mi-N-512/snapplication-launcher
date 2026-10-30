@@ -9,6 +9,7 @@
   <img src="https://img.shields.io/badge/version-0.99_preview-1f6feb" alt="Version 0.99 preview">
   <img src="https://img.shields.io/badge/Android-8%2B-3ddc84?logo=android&logoColor=white" alt="Android 8 and newer">
   <img src="https://img.shields.io/badge/editions-Universal%20%C2%B7%20Modern%20%C2%B7%20E--reader%20%C2%B7%20TV-6e7681" alt="Editions: Universal, Modern, E-reader and TV">
+  <img src="https://img.shields.io/badge/licence-GPL--3.0-1f6feb" alt="Licence: GPL-3.0">
   <img src="https://img.shields.io/badge/ads-none-6e7681" alt="No advertising">
 </p>
 
@@ -180,7 +181,7 @@ I wanted a launcher that shows where I left off and gets me back there quickly. 
 
 I also wanted the same idea to work in different situations: reading on an e-paper screen, watching on a phone connected to a TV, or rotating a phone between the two. Those devices need different controls and defaults, but they should still feel like the same application.
 
-I intend to keep every feature free, with no advertising or feature paywalls, and to make the project something people can adapt to their own layouts and needs. A distribution licence still needs to be chosen before public release.
+I intend to keep every feature free, with no advertising or feature paywalls, and to make the project something people can adapt to their own layouts and needs. Snapplication is licensed under GPL-3.0, so every copy and every modified version has to stay free and open source too.
 
 ## The design
 
@@ -256,4 +257,10 @@ Start reading the code at `MainActivity.kt`. Its header maps the screens to thei
 
 0.99 includes the combined Read/Watch setup, the Mode switch, Home viewer layouts, the EPUB reader, rotation support, preview repair tools, macro editing and backup/restore. All four editions pass build, lint and unit tests. The captures above come from an emulator and don't replace physical e-paper, HDMI and remote testing.
 
-Before public 1.0, the physical-device regression pass needs finishing, a distribution licence needs choosing, and release signing and distribution need setting up. Provider plugins and a gaming mode remain future work. There is no public GitHub Release, Play Store or F-Droid listing for this build.
+Before public 1.0, the physical-device regression pass needs finishing and the public release needs publishing. Release signing is in place. Provider plugins and a gaming mode remain future work. There is no public GitHub Release, Play Store or F-Droid listing for this build.
+
+## Licence
+
+Snapplication is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License version 3](LICENSE), as published by the Free Software Foundation. It is distributed in the hope that it will be useful, but without any warranty; see the licence for details.
+
+Screenshots and demos use public domain media and open-source apps and icons, credited under [About these captures](#themes-and-layouts).

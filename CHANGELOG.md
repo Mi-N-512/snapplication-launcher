@@ -19,6 +19,7 @@
 - Icon packs no longer appear in All Apps; they are chosen in Settings.
 - App icons are cached, so All Apps and Home redraw without reloading artwork.
 - Release builds are signed with a dedicated release key.
+- Licensed under GPL-3.0.
 - Circles favourites style: small round keys with space between them.
 - Tap-only viewer setting: no buttons on Home; tap a page to turn it, a video to play and pause, or an app preview to resume it.
 - Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.
@@ -70,5 +71,5 @@ Private preview preparing for 1.0.
 ### Still to do before public 1.0
 
 - Finish the physical-device regression pass, including e-paper and TV/remote combinations.
-- Select the distribution licence and establish release signing and publication.
+- Publish the release; licensed under GPL-3.0 with release signing in place.
 - External-app resume and protected-screen restrictions remain dependent on Android and the source app.
