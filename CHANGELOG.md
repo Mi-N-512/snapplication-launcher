@@ -15,6 +15,10 @@
 - Keep apps ready: battery-optimisation status with shortcuts, including Huawei's Battery page.
 - Circles clip every icon to the circle so square icons match round ones.
 - Home list labels, reader status lines and preview titles are centred.
+- With separate themes, Read and Watch also keep their own icon pack and symmetry.
+- Icon packs no longer appear in All Apps; they are chosen in Settings.
+- App icons are cached, so All Apps and Home redraw without reloading artwork.
+- Release builds are signed with a dedicated release key.
 - Circles favourites style: small round keys with space between them.
 - Tap-only viewer setting: no buttons on Home; tap a page to turn it, a video to play and pause, or an app preview to resume it.
 - Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.

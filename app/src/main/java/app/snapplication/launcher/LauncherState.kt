@@ -144,7 +144,8 @@ class LauncherState(private val context: Context) {
                 val shared = prefs.getString("theme", if (readerDevice) "E-paper" else "Dark")
                 for (contentMode in listOf("Read", "Watch")) {
                     if (!prefs.contains("theme:$contentMode")) edit.putString("theme:$contentMode", shared)
-                    for (key in listOf("grid", "circles")) if (!prefs.contains("$key:$contentMode"))
+                    if (!prefs.contains("iconPack:$contentMode")) edit.putString("iconPack:$contentMode", prefs.getString("iconPack", ""))
+                    for (key in listOf("grid", "circles", "asymmetricBlocks")) if (!prefs.contains("$key:$contentMode"))
                         edit.putBoolean("$key:$contentMode", prefs.getBoolean(key, false))
                 }
             }
@@ -227,9 +228,18 @@ class LauncherState(private val context: Context) {
     var dynamicBlocks: Boolean
         get() = prefs.getBoolean("dynamicBlocks", true)
         set(value) { prefs.edit().putBoolean("dynamicBlocks", value).apply() }
+    // The icon pack package, kept per mode with separate themes (e.g. white icons for a dark
+    // Watch screen, black for E-paper Read); empty means the apps' own icons.
+    var iconPack: String
+        get() {
+            val shared = prefs.getString("iconPack", "").orEmpty()
+            return if (separateThemes) prefs.getString("iconPack:$mode", shared).orEmpty() else shared
+        }
+        set(value) { prefs.edit().putString(if (separateThemes) "iconPack:$mode" else "iconPack", value).apply() }
+    // Like icon style, symmetry is kept per mode when Read and Watch have separate themes.
     var asymmetricBlocks: Boolean
-        get() = prefs.getBoolean("asymmetricBlocks", false)
-        set(value) { prefs.edit().putBoolean("asymmetricBlocks", value).apply() }
+        get() = modeBoolean("asymmetricBlocks", false)
+        set(value) { setModeBoolean("asymmetricBlocks", value) }
     var experimentalBlocks: Boolean
         get() = prefs.getBoolean("experimentalBlocks", false)
         set(value) { prefs.edit().putBoolean("experimentalBlocks", value).apply() }

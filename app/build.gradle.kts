@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,6 +20,21 @@ android {
     signingConfigs.getByName("debug") {
         val localDebugKey = rootProject.file(".local/debug.keystore")
         if (localDebugKey.exists()) storeFile = localDebugKey
+    }
+    // Public builds are signed with a release key kept outside the repository in
+    // .local/release-signing.properties (storeFile, storePassword, keyAlias, keyPassword).
+    val releaseSigning = rootProject.file(".local/release-signing.properties").takeIf { it.exists() }
+        ?.let { file -> Properties().apply { file.inputStream().use { load(it) } } }
+    if (releaseSigning != null) signingConfigs.create("release") {
+        storeFile = rootProject.file(releaseSigning.getProperty("storeFile"))
+        storePassword = releaseSigning.getProperty("storePassword")
+        keyAlias = releaseSigning.getProperty("keyAlias")
+        keyPassword = releaseSigning.getProperty("keyPassword")
+    }
+    buildTypes {
+        getByName("release") {
+            if (releaseSigning != null) signingConfig = signingConfigs.getByName("release")
+        }
     }
     buildFeatures { buildConfig = true }
     flavorDimensions += "edition"

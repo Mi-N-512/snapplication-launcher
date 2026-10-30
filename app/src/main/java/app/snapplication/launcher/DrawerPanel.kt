@@ -66,6 +66,8 @@ class DrawerPanel(
     private val entries = discoverApps()
     private var visibleEntries = entries
     private var editing = false
+    // Favourites as a set, read once per list refresh rather than once per row while scrolling.
+    private var favouriteSet: Set<String> = state.favourites().toSet()
     // Lets MainActivity rebuild the drawer after an app change without leaving the editor.
     val isEditing: Boolean get() = editing
     private val hint = ui.label("Select opens · Hold for app info", 12f)
@@ -114,7 +116,10 @@ class DrawerPanel(
             manager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(category), 0)
         }
         val collator = Collator.getInstance()
-        return found.filter { it.activityInfo.packageName != activity.packageName && it.activityInfo.enabled && it.activityInfo.applicationInfo.enabled }
+        // Icon packs are chosen under Settings > Icon pack, so they are left out of the app list.
+        val iconPacks = IconPacks.listInstalled(activity).map { it.first }.toSet()
+        return found.filter { it.activityInfo.packageName != activity.packageName && it.activityInfo.enabled && it.activityInfo.applicationInfo.enabled &&
+                it.activityInfo.packageName !in iconPacks }
             .distinctBy { ComponentName(it.activityInfo.packageName, it.activityInfo.name) }
             .map { Entry(ComponentName(it.activityInfo.packageName, it.activityInfo.name), it.loadLabel(manager).toString(), it) }
             .sortedWith { first, second ->
@@ -242,6 +247,7 @@ class DrawerPanel(
     // Changes one Home entry while keeping query, scroll offset and remote selection intact.
     private fun toggleFavourite(entry: Entry) {
         state.toggleFavourite(entry.component.flattenToString())
+        favouriteSet = state.favourites().toSet()
         refreshVisibleRows()
         refreshPreview()
         val added = entry.component.flattenToString() in state.favourites()
@@ -518,7 +524,7 @@ class DrawerPanel(
 
     // Sets membership markers and a complete spoken label without creating another focus target.
     private fun bindText(row: TextView, entry: Entry) {
-        val added = entry.component.flattenToString() in state.favourites()
+        val added = entry.component.flattenToString() in favouriteSet
         row.text = if (editing) "${if (added) "✓" else "＋"}  ${entry.label}" else entry.label
         row.contentDescription = if (editing) "${entry.label}, ${if (added) "on Home, select to remove" else "select to add to Home"}"
             else "${entry.label}, open app"

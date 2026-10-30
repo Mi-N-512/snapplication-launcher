@@ -139,6 +139,7 @@ class MainActivity : Activity() {
     }
     // Home is rebuilt only for favourite apps, so a background update never interrupts playback.
     private fun appsChanged(packages: List<String>) {
+        IconPacks.clearIcons()
         if (state.favourites().any { flat -> ComponentName.unflattenFromString(flat)?.packageName in packages }) homeAppsChanged = true
         appsHandler.removeCallbacks(refreshApps); appsHandler.postDelayed(refreshApps, 400)
     }
@@ -895,7 +896,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Colours", if (state.separateThemes) "${state.theme} · ${state.mode} theme" else state.theme) { themeSettings() })
         if (!state.readerOnly && BuildConfig.FLAVOR != "tv" && state.deviceProfile == "Phone") {
             content.addView(ui.setting("Separate Read / Watch themes",
-                if (state.separateThemes) "Each mode keeps its own colours and icon style; rotate to edit the other" else "Use the same colours in both modes",
+                if (state.separateThemes) "Each mode keeps its own colours, icon style and layout; rotate to edit the other" else "Use the same colours in both modes",
                 if (state.separateThemes) "On" else "Off") {
                 state.separateThemes = !state.separateThemes; settings()
             })
@@ -931,7 +932,7 @@ class MainActivity : Activity() {
         content.addView(ui.setting("Icon pack", IconPacks.selectedLabel(this)) {
             val packs = listOf("" to "System icons") + IconPacks.listInstalled(this)
             AlertDialog.Builder(this).setTitle("Icon pack").setItems(packs.map { it.second }.toTypedArray()) { _, index ->
-                getSharedPreferences("launcher", MODE_PRIVATE).edit().putString("iconPack", packs[index].first).apply(); settings()
+                state.iconPack = packs[index].first; IconPacks.clearIcons(); settings()
             }.setNegativeButton("Cancel", null).show()
         })
         content.addView(ui.section("Favourites"))

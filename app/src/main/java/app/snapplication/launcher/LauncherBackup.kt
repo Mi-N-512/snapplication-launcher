@@ -28,9 +28,9 @@ object LauncherBackup {
     @Volatile var restoring = false
         private set
     private const val LIMIT = 32 * 1024 * 1024
-    private val booleans = "previewWarnings watchPreviewExpected profileSetupComplete automaticPhoneMode showLabels showFavouriteHeading playVideosInLauncher readInLauncher readPagePreviews showReaderControls tapViewer separateThemes fullscreenMedia showProgress circles circles:Read circles:Watch grid:Read grid:Watch useWallpaper dynamicBlocks asymmetricBlocks experimentalBlocks roundedCorners animations tutorialSeen landscapeApps fullscreen grid separateFavourites followMediaApps:Read followMediaApps:Watch".split(" ").toSet()
+    private val booleans = "previewWarnings watchPreviewExpected profileSetupComplete automaticPhoneMode showLabels showFavouriteHeading playVideosInLauncher readInLauncher readPagePreviews showReaderControls tapViewer separateThemes fullscreenMedia showProgress circles circles:Read circles:Watch grid:Read grid:Watch asymmetricBlocks:Read asymmetricBlocks:Watch useWallpaper dynamicBlocks asymmetricBlocks experimentalBlocks roundedCorners animations tutorialSeen landscapeApps fullscreen grid separateFavourites followMediaApps:Read followMediaApps:Watch".split(" ").toSet()
     private val integers = setOf("favouriteCount", "accent", "background", "completion")
-    private val strings = setOf("deviceProfile", "mode", "theme", "theme:Read", "theme:Watch", "phoneOrientation", "orientation", "orientation:Read", "orientation:Watch", "viewerSource:Read", "viewerSource:Watch", "contentScale:Read", "contentScale:Watch", "iconPack", "favourites", "favourites:Read", "favourites:Watch")
+    private val strings = setOf("deviceProfile", "mode", "theme", "theme:Read", "theme:Watch", "phoneOrientation", "orientation", "orientation:Read", "orientation:Watch", "viewerSource:Read", "viewerSource:Watch", "contentScale:Read", "contentScale:Watch", "iconPack", "iconPack:Read", "iconPack:Watch", "favourites", "favourites:Read", "favourites:Watch")
     private val macroFlags = setOf("showPlaybackTaps", "confirmReplay", "touchRecording")
 
     // Limits document and image reads before allocating or parsing untrusted backup contents.

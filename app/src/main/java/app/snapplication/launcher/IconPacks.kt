@@ -64,17 +64,34 @@ object IconPacks {
 
     // Names the stored selection so Settings makes fallback versus pack selection visible.
     fun selectedLabel(context: Context): String {
-        val selected = context.getSharedPreferences("launcher", Context.MODE_PRIVATE).getString("iconPack", "").orEmpty()
+        val selected = LauncherState(context).iconPack
         if (selected.isBlank()) return "System icons"
         return runCatching { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(selected, 0)).toString() }
             .getOrDefault("Selected pack is unavailable")
     }
 
+    // Resolved icons by "pack|component". Scrolling All Apps and rebuilding Home reuse them
+    // instead of asking the package manager and decoding the same artwork on every frame.
+    private val resolved = android.util.LruCache<String, Drawable.ConstantState>(400)
+    // When each pack's installed version was last checked; packs are re-checked at most every 10 s.
+    private val checkedAt = mutableMapOf<String, Long>()
+
+    // Forgets cached icons after apps or icon packs are installed, updated or removed.
+    fun clearIcons() { resolved.evictAll(); synchronized(cache) { checkedAt.clear() } }
+
     // Returns the selected pack's exact component icon or invokes the original native-icon loader.
-    @SuppressLint("DiscouragedApi")
     fun load(context: Context, component: ComponentName, fallback: () -> Drawable): Drawable {
-        val selected = context.getSharedPreferences("launcher", Context.MODE_PRIVATE).getString("iconPack", "").orEmpty()
-        if (selected.isBlank()) return fallback()
+        val selected = LauncherState(context).iconPack
+        val key = selected + "|" + component.flattenToString()
+        resolved.get(key)?.let { return it.newDrawable(context.resources).mutate() }
+        val icon = (if (selected.isBlank()) null else packIcon(context, selected, component)) ?: fallback()
+        icon.constantState?.let { resolved.put(key, it) }
+        return icon
+    }
+
+    // Looks the component up in the pack's appfilter index and loads its drawable, or null.
+    @SuppressLint("DiscouragedApi")
+    private fun packIcon(context: Context, selected: String, component: ComponentName): Drawable? {
         val themed = try {
             val manager = context.packageManager
             val info = manager.getPackageInfo(selected, 0)
@@ -85,10 +102,15 @@ object IconPacks {
             val resources = manager.getResourcesForApplication(selected)
             val index = synchronized(cache) {
                 val existing = cache[selected]
-                if (existing != null && existing.version == version && existing.updated == info.lastUpdateTime) existing
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (existing != null && now - (checkedAt[selected] ?: 0L) < 10_000) existing
+                else if (existing != null && existing.version == version && existing.updated == info.lastUpdateTime) {
+                    checkedAt[selected] = now; existing
+                }
                 else {
                     val replacement = PackIndex(version, info.lastUpdateTime, readIndex(resources, selected))
                     cache[selected] = replacement
+                    checkedAt[selected] = now
                     // A small bound avoids retaining old maps after repeatedly changing packs.
                     while (cache.size > 4) cache.remove(cache.keys.first())
                     replacement
@@ -98,7 +120,7 @@ object IconPacks {
             val resourceId = drawableName?.let { resources.getIdentifier(it, "drawable", selected) } ?: 0
             if (resourceId == 0) null else resources.getDrawable(resourceId, null)
         } catch (_: Exception) { null }
-        return themed ?: fallback()
+        return themed
     }
 
     // Reads a compiled appfilter resource first, or a limited asset; malformed packs get an empty
