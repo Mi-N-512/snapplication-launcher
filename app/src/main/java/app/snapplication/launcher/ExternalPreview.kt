@@ -62,6 +62,7 @@ class ExternalPreview(private val activity: Activity, private val state: Launche
         panel.addView(image, FrameLayout.LayoutParams(-1, -1))
         val title = ui.label(if (component == null) (if (mode == "Read") "Open a book in your reading app" else "Open a video in your player") else
             if (requiresCleanFrame()) "Watch a video to save a clean preview" else "No saved preview yet", 16f)
+        title.gravity = Gravity.CENTER
         panel.addView(title, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         val reveal = ui.button("Show preview controls") { }.apply {
             text = ""

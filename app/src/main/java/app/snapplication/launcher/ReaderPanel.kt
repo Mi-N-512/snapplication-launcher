@@ -39,7 +39,7 @@ rendering formats here. EPUB currently opens an external reader; it is not rende
 class ReaderPanel(private val context: Context, private val state: LauncherState, private val ui: LauncherUi) {
     val view = ui.column()
     private val image = PageImageView(context)
-    private val status = ui.label("Choose a PDF, comic or image", 16f)
+    private val status = ui.label("Choose a PDF, comic or image", 16f).apply { gravity = android.view.Gravity.CENTER }
     private val worker = Executors.newSingleThreadExecutor()
     private var item: LibraryItem? = null
     private var page = 0

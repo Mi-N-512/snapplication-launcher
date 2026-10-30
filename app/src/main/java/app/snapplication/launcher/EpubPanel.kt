@@ -41,7 +41,7 @@ display, pagination and its page-turn input.
 class EpubPanel(private val context: Context, private val state: LauncherState, private val ui: LauncherUi) {
     val view = ui.column()
     private val page = PageWebView(context)
-    private val status = ui.label("Choose a book", 16f)
+    private val status = ui.label("Choose a book", 16f).apply { gravity = android.view.Gravity.CENTER }
     private val tapOnly = state.tapViewer
     private val progressLine = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 1000; progressTintList = android.content.res.ColorStateList.valueOf(ui.focusAccent)

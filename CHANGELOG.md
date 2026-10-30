@@ -14,6 +14,7 @@
 - Progress bar on other apps' video previews, saved with each captured frame.
 - Keep apps ready: battery-optimisation status with shortcuts, including Huawei's Battery page.
 - Circles clip every icon to the circle so square icons match round ones.
+- Home list labels, reader status lines and preview titles are centred.
 - Circles favourites style: small round keys with space between them.
 - Tap-only viewer setting: no buttons on Home; tap a page to turn it, a video to play and pause, or an app preview to resume it.
 - Built-in reader turns pages by tapping, sideways swipes, remote/keyboard page keys and screen-reader scroll actions.
