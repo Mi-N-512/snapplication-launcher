@@ -1,4 +1,4 @@
-First public preview.
+First public release.
 • Watch, Read and Universal modes
 • Saved video frames with progress, tap to resume
 • Built-in EPUB, PDF, CBZ and image reader; full-screen viewer

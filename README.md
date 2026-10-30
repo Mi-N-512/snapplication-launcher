@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.99_preview-1f6feb" alt="Version 0.99 preview">
+  <img src="https://img.shields.io/badge/version-1.0-1f6feb" alt="Version 1.0">
   <img src="https://img.shields.io/badge/Android-8%2B-3ddc84?logo=android&logoColor=white" alt="Android 8 and newer">
   <img src="https://img.shields.io/badge/editions-Universal%20%C2%B7%20Modern%20%C2%B7%20E--reader%20%C2%B7%20TV-6e7681" alt="Editions: Universal, Modern, E-reader and TV">
   <img src="https://img.shields.io/badge/licence-GPL--3.0-1f6feb" alt="Licence: GPL-3.0">
@@ -18,14 +18,14 @@
   <a href="#themes-and-layouts">Themes and layouts</a> ·
   <a href="#main-features">Features</a> ·
   <a href="#choose-your-edition">Editions</a> ·
-  <a href="private-test-builds/">Download</a> ·
+  <a href="https://github.com/Mi-N-512/snapplication-launcher/releases/latest">Download</a> ·
   <a href="#get-started">Get started</a> ·
   <a href="#open-and-build-the-project">Build</a>
 </p>
 
 Snapplication puts the book or video you were last using in the centre of Home, with your favourite apps around it. Wake the phone and your place is already there, one tap from carrying on. The same launcher covers reading on e-paper, watching on a phone or TV, and turning a phone between the two.
 
-0.99 is a private preview on the way to 1.0. These builds are for testing and are not a public store release.
+Version 1.0 is free to [download from GitHub Releases](https://github.com/Mi-N-512/snapplication-launcher/releases/latest). An F-Droid listing is on its way.
 
 ## See it in action
 
@@ -197,10 +197,10 @@ All four editions share the same core code. Each has its own app identity, so th
 
 | Edition | Android | Read / Watch | Best fit |
 | --- | --- | --- | --- |
-| [Universal](private-test-builds/snapplication-universal-debug.apk) | 8+ | Both | Phones, including older ones. Choose Watch, Read or Universal mode; Universal switches with rotation. |
-| [Modern Universal](private-test-builds/snapplication-modern-debug.apk) | 11+ | Both | The same combined launcher with Android 11 as its minimum, including access to Android's still-screenshot API. |
-| [E-reader](private-test-builds/snapplication-ereader-debug.apk) | 8+ | Read only | A reading-focused interface with E-paper defaults and no Watch, remote or macro settings. |
-| [TV](private-test-builds/snapplication-tv-debug.apk) | 8+ | Watch | Landscape, directional navigation, remote controls and an Android TV launcher entry. |
+| [Universal](https://github.com/Mi-N-512/snapplication-launcher/releases/latest) | 8+ | Both | Phones, including older ones. Choose Watch, Read or Universal mode; Universal switches with rotation. |
+| [Modern Universal](https://github.com/Mi-N-512/snapplication-launcher/releases/latest) | 11+ | Both | The same combined launcher with Android 11 as its minimum, including access to Android's still-screenshot API. |
+| [E-reader](https://github.com/Mi-N-512/snapplication-launcher/releases/latest) | 8+ | Read only | A reading-focused interface with E-paper defaults and no Watch, remote or macro settings. |
+| [TV](https://github.com/Mi-N-512/snapplication-launcher/releases/latest) | 8+ | Watch | Landscape, directional navigation, remote controls and an Android TV launcher entry. |
 
 Automatic still-page capture needs **Android 11+**, an enabled accessibility service and a supported reading screen. Universal on Android 11+ can do this too; it isn't exclusive to Modern. On older systems you can still read local files and return to reader apps, but automatic still-page screenshots are unavailable.
 
@@ -208,7 +208,7 @@ Read mode does **not** use continuous screen recording. Watch previews use Andro
 
 ## Get started
 
-1. Open the [private test builds](private-test-builds/) while signed in to the repository. Select your APK and choose **Download raw file**, then install it on a compatible device. Keep the same edition when updating to retain its settings.
+1. Download the APK for your edition from [the latest release](https://github.com/Mi-N-512/snapplication-launcher/releases/latest) and install it. Android may ask you to allow installs from your browser or files app. Check the file against `SHA256SUMS.txt` if you like. Keep the same edition when updating to retain its settings.
 2. Choose **Watch**, **Read** or **Universal** where offered, then choose your theme. You can change the mode later under Settings → Appearance → **Mode** without repeating setup.
 3. Open **All Apps** and enter its favourites editor. Tap apps to add them, then drag the preview icons into the order you want. An empty Home block opens this editor too.
 4. In **Settings → Home & content**, choose whether Home returns to an app or shows content from a folder. Read and Watch remember separate choices.
@@ -249,15 +249,24 @@ Choose `universalDebug`, `modernDebug`, `ereaderDebug` or `tvDebug` in **Build V
 .\scripts\verify.ps1
 ```
 
-Gradle writes the APKs to `app/build/outputs/apk/`. These private builds use a local debug signing key that is never committed. A build signed elsewhere with a different key will not update an installation signed with the original key.
+Gradle writes the APKs to `app/build/outputs/apk/`. Debug builds use a local debug key. Release builds are signed only when `.local/release-signing.properties` is present; that key is never committed. A build signed with a different key will not update an installation signed with the official release key.
 
 Start reading the code at `MainActivity.kt`. Its header maps the screens to their helpers. Class comments explain responsibilities, key variables, real parent/child relationships and where changes belong. Run `scripts/verify.ps1` before calling a build ready; a compiled APK alone is not a passed test.
 
-## On the way to 1.0
+## Version 1.0 and what comes next
 
-0.99 includes the combined Read/Watch setup, the Mode switch, Home viewer layouts, the EPUB reader, rotation support, preview repair tools, macro editing and backup/restore. All four editions pass build, lint and unit tests. The captures above come from an emulator and don't replace physical e-paper, HDMI and remote testing.
+1.0 brings together everything above: Watch, Read and Universal modes, saved video frames with progress, the EPUB, PDF and comic reader, Home viewer layouts, per-mode themes and icon styles, remote buttons, recorded actions and backup/restore. All four editions pass build, lint and unit tests, and 1.0 has been used on a Huawei Mate 10 Pro and a Meebook M6 e-reader. The captures above come from an emulator.
 
-Before public 1.0, the physical-device regression pass needs finishing and the public release needs publishing. Release signing is in place. Provider plugins and a gaming mode remain future work. There is no public GitHub Release, Play Store or F-Droid listing for this build.
+Ideas I would like to include in future versions:
+
+- **Provider plugins** so streaming and manga apps such as Cloudstream and Mihon can hand their episode or chapter straight to Home.
+- **A gaming mode** with its own layout for controllers, emulators and game launchers.
+- **Recently read and watched**: a long press on the centre to switch between your last few books and videos.
+- **TV and HDMI control**: HDMI-CEC so the television remote and power button work with Snapplication.
+- **Better e-paper support**: vendor refresh modes for supported e-readers to reduce ghosting.
+- **More languages**, with the interface ready for translation.
+
+Suggestions and bug reports are welcome on the [issue tracker](https://github.com/Mi-N-512/snapplication-launcher/issues).
 
 ## Licence
 

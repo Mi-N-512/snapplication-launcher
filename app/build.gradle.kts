@@ -11,8 +11,8 @@ android {
         applicationId = "app.snapplication.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = 99
-        versionName = "0.99"
+        versionCode = 100
+        versionName = "1.0"
         testInstrumentationRunner = "app.snapplication.launcher.RemoteLearningLifecycleTest"
     }
     // A local, ignored key keeps development updates compatible across Android Studio and test

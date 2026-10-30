@@ -1,6 +1,8 @@
 # Changes
 
-## Unreleased
+## 1.0 — 30 October 2026
+
+First public release.
 
 ### Added
 
@@ -71,5 +73,4 @@ Private preview preparing for 1.0.
 ### Still to do before public 1.0
 
 - Finish the physical-device regression pass, including e-paper and TV/remote combinations.
-- Publish the release; licensed under GPL-3.0 with release signing in place.
 - External-app resume and protected-screen restrictions remain dependent on Android and the source app.
