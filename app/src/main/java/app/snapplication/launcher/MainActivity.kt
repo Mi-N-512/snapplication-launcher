@@ -189,6 +189,7 @@ class MainActivity : Activity() {
             "Page previews" -> readingPreviewSettings()
             "Other app playback" -> externalPlayback()
             "Device diagnostics" -> diagnostics()
+            "Remote diagnostics" -> remoteDiagnostics()
             "Library" -> library()
             "Welcome" -> introduction(savedInstanceState?.getInt("guideStep") ?: 0)
             else -> home()
@@ -240,6 +241,7 @@ class MainActivity : Activity() {
         watch?.pause()
         reader?.close(); reader = null
         epub?.close(); epub = null
+        if (QuietMode.launcherReading) QuietMode.launcherReading = false
         screen = title
         drawerGestureAreas.clear(); drawerSwipeEligible = false
         ui = LauncherUi(this, state, state.useWallpaper && state.theme != "E-paper")
@@ -362,13 +364,30 @@ class MainActivity : Activity() {
             panel.addView(ui.label(last.title, 24f))
             addOpenContentOverlay(panel, last, "Open book in reader")
         } else if (ReadingFormats.inlineKind(last.title, last.mime) == ReadingFormats.InlineKind.EPUB) {
-            epub = EpubPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }
+            epub = EpubPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }; updateLauncherReading()
             if (!state.readInLauncher) addOpenContentOverlay(panel, last, "Open book")
             else if (state.fullscreenMedia) addViewerOverlay(panel, last, "")
         } else {
-            reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }
+            reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(last) }; updateLauncherReading()
             if (!state.readInLauncher) addOpenContentOverlay(panel, last, "Open book")
             else if (state.fullscreenMedia) addViewerOverlay(panel, last, "")
+        }
+        // TV / Universal Watch: like Repair previews on the right, this reminder on the left only
+        // appears while it is needed. Android resets "Disable HW overlays" on every restart, so it
+        // shows once per boot until the switch is set again or the reminder is dismissed.
+        if (state.mode == "Watch" && state.deviceProfile != "Reader" && !state.readerOnly && HwOverlayReminder.needed(this, state)) {
+            panel.addView(ui.button(if (HwOverlayReminder.everSet(this)) "HW overlays reset · Disable again"
+                else "Disable HW overlays") { disableHwOverlays() }.apply {
+                // Keep to the left half so it never covers Repair previews on the right.
+                panel.addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ -> if (r > l) maxWidth = (r - l) / 2 - ui.dp(8) }
+                contentDescription = "Disable HW overlays. Hold to hide until the next restart"
+                setOnLongClickListener {
+                    HwOverlayReminder.dismiss(this@MainActivity)
+                    visibility = View.GONE
+                    android.widget.Toast.makeText(this@MainActivity, "Hidden until the next restart", android.widget.Toast.LENGTH_SHORT).show()
+                    true
+                }
+            }, FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP or android.view.Gravity.START))
         }
         root.addView(ui.row("ALL APPS") { drawer() }.apply {
             ui.flatFocus(this, ui.textSurface(), outline = false)
@@ -417,9 +436,9 @@ class MainActivity : Activity() {
             if (!state.tapViewer) player.view.showController()
             player.load(item, true)
         } else if (ReadingFormats.inlineKind(item.title, item.mime) == ReadingFormats.InlineKind.EPUB) {
-            epub = EpubPanel(this, state, ui).also { panel.addView(it.view); it.load(item) }
+            epub = EpubPanel(this, state, ui).also { panel.addView(it.view); it.load(item) }; updateLauncherReading()
         } else {
-            reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(item) }
+            reader = ReaderPanel(this, state, ui).also { panel.addView(it.view); it.load(item) }; updateLauncherReading()
         }
     }
 
@@ -1031,20 +1050,50 @@ class MainActivity : Activity() {
             settings()
         })
         if (state.deviceProfile != "Reader") content.addView(ui.setting("Second Screen", "Connected displays and device information") { diagnostics() })
+        content.addView(ui.setting("Quiet while watching or reading",
+            if (!QuietMode.accessGranted(this)) "Needs media / notification access · tap to enable"
+            else "Silences notification pop-ups and sounds while a video plays or a book is open. Alarms still ring.",
+            if (state.quietWhileWatching && QuietMode.accessGranted(this)) "On" else "Off") {
+            if (!QuietMode.accessGranted(this)) {
+                state.quietWhileWatching = true
+                runCatching { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                    .onFailure { message("Notification access settings are unavailable on this device.") }
+            } else { state.quietWhileWatching = !state.quietWhileWatching; QuietMode.refresh() }
+            settings()
+        })
+        if (state.mode == "Watch" && state.deviceProfile != "Reader") content.addView(ui.setting("HW overlay reminder",
+            "After a restart, Watch Home reminds you to disable HW overlays again (fixes many TV-out glitches)", if (state.hwOverlayButton) "On" else "Off") {
+            state.hwOverlayButton = !state.hwOverlayButton; settings()
+        })
         content.addView(ui.row("Set as default launcher    ›") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) })
         if (!state.readerOnly && state.deviceProfile != "Reader") {
             content.addView(ui.section("Remote & macros"))
             content.addView(ui.setting("Remote buttons", "Choose an action on the remote diagram, then press your physical button") { remoteSettings() })
             content.addView(ui.setting("Macros", "Record a sequence, choose how it runs, then assign a button") { macroSettings() })
+            content.addView(ui.setting("Remote diagnostics", "See what happened to each button press when the remote does nothing") { remoteDiagnostics() })
         }
         content.addView(ui.section("Setup & help"))
         content.addView(ui.setting("Status & repair", "Check previews, permissions and your selected source") { statusSettings() })
         content.addView(ui.setting("Backup & restore", if (state.readerOnly) "Save reading settings and favourites" else "Save settings, favourites, remote buttons and macros") { backupSettings() })
         content.addView(ui.button("Introduction and setup") { introduction() })
-        content.addView(ui.button("Android display settings") { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) })
-        if (state.deviceProfile != "Reader") content.addView(ui.label("Mirror / desktop mode is controlled by your phone's projection menu when a compatible display is connected. Screen off locks the phone; an independent desktop display may remain on.", 14f))
-        content.addView(ui.button("Device diagnostics") { diagnostics() })
         content.addView(ui.label("Snapplication · Private development\nAll features free. No launcher advertisements or paid feature gates.", 16f))
+        // Android's own settings live in their own tab, kept apart from the launcher's categories.
+        content.addView(ui.section("Android settings"))
+        content.addView(ui.label("These open Android's own settings pages, outside Snapplication.", 14f))
+        content.addView(ui.setting("All Android settings", "Your phone's main settings app") { openDeviceSettings(Settings.ACTION_SETTINGS) })
+        content.addView(ui.setting("Display", "Brightness, screen timeout and font size") { openDeviceSettings(Settings.ACTION_DISPLAY_SETTINGS) })
+        content.addView(ui.setting("Sound & notifications", "Volume, ringtone and Do Not Disturb") { openDeviceSettings(Settings.ACTION_SOUND_SETTINGS) })
+        content.addView(ui.setting("Bluetooth", "Pair or reconnect a remote") { openDeviceSettings(Settings.ACTION_BLUETOOTH_SETTINGS) })
+        content.addView(ui.setting("Accessibility", "Turn Snapplication remote support on or off") { openDeviceSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
+        content.addView(ui.setting("Notification access", "Media controls and quiet while watching use this") { openDeviceSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS) })
+        content.addView(ui.setting("Default Home app", "Choose which launcher opens on Home") { openDeviceSettings(Settings.ACTION_HOME_SETTINGS) })
+        content.addView(ui.setting("Snapplication app info", "Storage, permissions and battery for this launcher") {
+            openDeviceSettings(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+        })
+        content.addView(ui.setting("Developer options", if (developerOptionsEnabled()) "Disable HW overlays, animation scales and USB debugging"
+            else "Hidden on this phone · tap Build number seven times in About phone") { openDeveloperOptions() })
+        content.addView(ui.setting("Device diagnostics", "Connected displays and values Android reports") { diagnostics() })
+        if (state.deviceProfile != "Reader") content.addView(ui.label("Mirror / desktop mode is controlled by your phone's projection menu when a compatible display is connected. Screen off locks the phone; an independent desktop display may remain on.", 14f))
         organizeSettings(content)
         if (keepScroll > 0) scroll.post { scroll.scrollTo(0, keepScroll) }
     }
@@ -1129,6 +1178,7 @@ class MainActivity : Activity() {
             content.addView(ui.setting("Media controls", if (sessions.isSuccess) "Access granted · ${sessions.getOrNull()?.size ?: 0} active sessions" else "Optional media access not enabled", "Review") { externalPlayback() })
             content.addView(ui.label(macroRunSummary(), 16f).apply { tag = "macroRunSummary" })
             content.addView(ui.button("Remote & macros") { settings("Remote & macros") })
+            content.addView(ui.button("Remote diagnostics") { remoteDiagnostics() })
         }
         content.addView(ui.button("Refresh status") { statusSettings() })
     }
@@ -1138,7 +1188,7 @@ class MainActivity : Activity() {
     private fun organizeSettings(content: LinearLayout) {
         val groups = linkedMapOf<String, MutableList<View>>()
         var group = "Appearance"
-        val names = setOf("APPEARANCE", "FAVOURITES", "HOME VIEWER", "HOME & CONTENT", "DISPLAY", "REMOTE & MACROS", "SETUP & HELP")
+        val names = setOf("APPEARANCE", "FAVOURITES", "HOME VIEWER", "HOME & CONTENT", "DISPLAY", "REMOTE & MACROS", "SETUP & HELP", "ANDROID SETTINGS")
         for (index in 0 until content.childCount) {
             val child = content.getChildAt(index)
             if (child is android.widget.TextView && child.text.toString() in names) group = child.text.toString().lowercase().replaceFirstChar { it.uppercase() }
@@ -1174,7 +1224,8 @@ class MainActivity : Activity() {
         val summaries = mapOf("Appearance" to "Colours, wallpaper, font and icons", "Favourites" to "Icon style, labels and arrangement",
             "Home viewer" to "Buttons, progress bar and full screen",
             "Home & content" to "Read or Watch, sources, files and permissions", "Display" to "Fullscreen, external apps and connected displays",
-            "Remote & macros" to "Button assignments and recorded actions", "Setup & help" to "Setup guide, permissions and diagnostics")
+            "Remote & macros" to "Button assignments and recorded actions", "Setup & help" to "Setup guide, status and backups",
+            "Android settings" to "Display, Bluetooth, accessibility and developer options")
         fun words(view: View): String = if (view is android.widget.TextView) view.text.toString() else if (view is ViewGroup)
             (0 until view.childCount).joinToString(" ") { words(view.getChildAt(it)) } else ""
         // Extra search words for settings people describe differently from their labels.
@@ -1189,14 +1240,26 @@ class MainActivity : Activity() {
             "Content sizing" to "fit fill crop stretch zoom scale",
             "Fullscreen" to "immersive status bar navigation bar",
             "App labels" to "names text",
-            "Layout & block count" to "grid list blocks layout count")
+            "Layout & block count" to "grid list blocks layout count",
+            "Quiet while watching or reading" to "do not disturb dnd notifications popup pop-up sound interrupt silence",
+            "HW overlay reminder" to "hardware overlay developer gpu tv hdmi glitch flicker",
+            "Developer options" to "hw overlays developer gpu usb debugging animation",
+            "All Android settings" to "device phone system android settings",
+            "Remote diagnostics" to "test troubleshoot not working log buttons keys")
         fun searchText(view: View): String = words(view).let { text ->
             text + " " + synonyms.filterKeys { text.startsWith(it) }.values.joinToString(" ")
         }
         fun update(query: String) {
             categories.removeAllViews()
+            // A rule and heading set Android's own settings apart from the launcher categories.
+            fun androidDivider() {
+                categories.addView(View(this).apply { setBackgroundColor(ui.muted); alpha = .5f },
+                    LinearLayout.LayoutParams(-1, ui.dp(1)).apply { setMargins(ui.dp(12), ui.dp(14), ui.dp(12), ui.dp(4)) })
+                categories.addView(ui.section("Android"))
+            }
             if (wide) {
                 groups.keys.forEach { name ->
+                    if (name == "Android settings") androidDivider()
                     val selected = query.isBlank() && name == (settingsCategory ?: "Home & content")
                     categories.addView(ui.button(name) { settings(name) }.apply {
                         gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
@@ -1209,7 +1272,10 @@ class MainActivity : Activity() {
                     }, LinearLayout.LayoutParams(-1, ui.dp(48)))
                 }
             } else if (query.isBlank() && settingsCategory == null) {
-                groups.keys.forEach { name -> categories.addView(ui.setting(name, summaries[name].orEmpty()) { settings(name) }) }
+                groups.keys.forEach { name ->
+                    if (name == "Android settings") androidDivider()
+                    categories.addView(ui.setting(name, summaries[name].orEmpty()) { settings(name) })
+                }
             } else if (query.isBlank()) {
                 categories.addView(ui.row("← All settings") { settings(null) })
             }
@@ -1296,6 +1362,82 @@ class MainActivity : Activity() {
         values.text = reader.snapshot()
         content.addView(values)
         content.addView(ui.label("These are Android-reported values at the last refresh. Independent display power and e-paper refresh depend on the connected hardware.", 16f))
+    }
+
+    // Opens one Android settings page, falling back to the main settings list.
+    private fun openDeviceSettings(action: String, data: Uri? = null) {
+        runCatching { startActivity(Intent(action, data)) }.onFailure {
+            runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }.onFailure { message("Android settings are unavailable on this device.") }
+        }
+    }
+
+    private fun developerOptionsEnabled(): Boolean =
+        Settings.Global.getInt(contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) != 0
+
+    private fun openDeveloperOptions() {
+        if (!developerOptionsEnabled()) {
+            message("Developer options are hidden. In Android settings open About phone and tap Build number seven times, then try again.")
+            return
+        }
+        openDeviceSettings(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+    }
+
+    // Turns on Android's "Disable HW overlays" through remote support, then returns Home. Without
+    // remote support it opens Developer options and treats the reminder as handled for this boot.
+    private fun disableHwOverlays() {
+        if (!developerOptionsEnabled()) { openDeveloperOptions(); return }
+        val service = RemoteActionService.instance
+        if (service == null) {
+            AlertDialog.Builder(this).setTitle("Disable HW overlays")
+                .setMessage("With remote support on, this sets the switch for you. Without it, Developer options opens and you turn on \"Disable HW overlays\" yourself (Hardware accelerated rendering section).")
+                .setPositiveButton("Open Developer options") { _, _ ->
+                    HwOverlayReminder.markSet(this)
+                    openDeviceSettings(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                }
+                .setNeutralButton("Enable remote support") { _, _ -> explainAccessibility() }
+                .setNegativeButton("Cancel", null).show()
+            return
+        }
+        service.disableHwOverlays()
+    }
+
+    // Shows each remote press with the reason it was run, passed on or dropped.
+    private fun remoteDiagnostics() {
+        begin("Remote diagnostics")
+        RemoteDiagnostics.attach(this)
+        val content = ui.column()
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        content.addView(ui.label("Press the remote button that misbehaves. Each press appears below with what happened to it. Then try it inside the app where it fails and come back here.", 16f))
+        val health = ui.label("", 16f)
+        content.addView(health)
+        val live = ui.label("Waiting for a button press…", 18f).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+        content.addView(live)
+        val log = ui.label("", 14f).apply { typeface = android.graphics.Typeface.MONOSPACE }
+        fun render() {
+            val list = RemoteDiagnostics.snapshot().asReversed()
+            log.text = if (list.isEmpty()) "No presses recorded yet." else list.joinToString("\n\n") { RemoteDiagnostics.format(it) }
+            health.text = RemoteDiagnostics.health(this).joinToString("\n")
+        }
+        val pageRoot = root
+        RemoteDiagnostics.listener = { entry ->
+            if (root === pageRoot && screen == "Remote diagnostics") { live.text = RemoteDiagnostics.format(entry); render() }
+            else RemoteDiagnostics.listener = null
+        }
+        val buttons = ui.column(true)
+        buttons.addView(ui.button("Refresh") { render() }, LinearLayout.LayoutParams(0, -2, 1f))
+        buttons.addView(ui.button("Copy log") {
+            val text = RemoteDiagnostics.health(this).joinToString("\n") + "\n\n" +
+                RemoteDiagnostics.snapshot().joinToString("\n") { RemoteDiagnostics.format(it) }
+            getSystemService(android.content.ClipboardManager::class.java)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Snapplication remote log", text))
+            message("Remote log copied. It contains only button names, device names and actions.")
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        buttons.addView(ui.button("Clear") { RemoteDiagnostics.clear(this); render() }, LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(buttons)
+        if (RemoteActionService.instance == null) content.addView(ui.button("Fix: enable remote support") { explainAccessibility() })
+        content.addView(ui.label("Common causes: remote support stopped by battery saving (use Keep apps ready), the remote reconnected with a new identity (assign the button again), or the app on screen handles that button itself.", 14f))
+        content.addView(log)
+        render()
     }
 
     // Presents the visual remote and individual key assignments using RemoteMappingPanel.
@@ -1673,7 +1815,14 @@ class MainActivity : Activity() {
             message("Remote buttons reset. Standard controls restored.")
             return true
         }
-        val action = remote.assignment(event) { currentFocus is EditText } ?: return super.dispatchKeyEvent(event)
+        val action = remote.assignment(event) { currentFocus is EditText }
+        if (event.device?.isVirtual == false && event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            val saved = action ?: remote.action(event)
+            RemoteDiagnostics.record(this, "Launcher", event, saved,
+                if (action != null) "Accepted by launcher ($screen)" else if (saved != null) "Held back: a text field has focus"
+                else "Not assigned: normal Android handling in the launcher")
+        }
+        if (action == null) return super.dispatchKeyEvent(event)
         if (action == "Screen off") {
             if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0)
                 RemoteActionService.instance?.performMappedAction(action) ?: explainAccessibility()
@@ -1727,7 +1876,7 @@ class MainActivity : Activity() {
         when (screen) {
             "Settings" -> if (settingsQuery.isNotEmpty()) { settingsQuery = ""; settings() } else if (settingsCategory != null) settings(null) else drawer()
             "Apps", "Library", "Viewer" -> home()
-            "Remote buttons", "Recorded actions" -> settings("Remote & macros")
+            "Remote buttons", "Recorded actions", "Remote diagnostics" -> settings("Remote & macros")
             "Home" -> Unit
             else -> settings()
         }
@@ -1742,7 +1891,12 @@ class MainActivity : Activity() {
     }
 
     // Physical orientation changes apply only while this launcher is the active screen.
-    override fun onPause() { phoneRotation.stop(); super.onPause() }
+    override fun onPause() { phoneRotation.stop(); QuietMode.launcherReading = false; super.onPause() }
+
+    // Tells QuietMode whether a book is open inside the launcher right now.
+    private fun updateLauncherReading() {
+        QuietMode.launcherReading = ::state.isInitialized && state.mode == "Read" && (reader != null || epub != null)
+    }
 
     // Notices recordings saved while this activity is already visible.
     private val macroSavedListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -1765,6 +1919,7 @@ class MainActivity : Activity() {
         phoneRotation.start()
         ExternalWatchPlayback.cancelResume()
         if (!::state.isInitialized) return
+        updateLauncherReading()
         if (state.mode == "Read") stopService(Intent(this, PreviewCaptureService::class.java))
         RemoteActionService.instance?.onLauncherResume(!state.automaticPhoneMode && (state.orientation == "Landscape" ||
             (state.orientation == "Mode default" && state.mode == "Watch" && state.theme != "E-paper")))

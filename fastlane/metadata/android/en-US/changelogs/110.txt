@@ -1,0 +1,5 @@
+Everyday fixes from using 1.0.
+• Quiet while watching or reading
+• Android settings in their own tab
+• HW overlay reminder after a restart
+• Remote diagnostics for ignored presses

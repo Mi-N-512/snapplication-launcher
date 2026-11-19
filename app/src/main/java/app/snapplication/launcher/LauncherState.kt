@@ -51,6 +51,16 @@ class LauncherState(private val context: Context) {
         get() = prefs.getBoolean("previewWarnings", true)
         set(value) { prefs.edit().putBoolean("previewWarnings", value).apply() }
 
+    // Silence notification pop-ups/sounds while a video plays or a book is open (QuietMode).
+    var quietWhileWatching: Boolean
+        get() = prefs.getBoolean("quietWhileWatching", true)
+        set(value) { prefs.edit().putBoolean("quietWhileWatching", value).apply() }
+
+    // Shows the left-side "HW overlay" shortcut on Watch Home.
+    var hwOverlayButton: Boolean
+        get() = prefs.getBoolean("hwOverlayButton", true)
+        set(value) { prefs.edit().putBoolean("hwOverlayButton", value).apply() }
+
     var watchPreviewExpected: Boolean
         get() = prefs.getBoolean("watchPreviewExpected", true)
         set(value) { prefs.edit().putBoolean("watchPreviewExpected", value).apply() }

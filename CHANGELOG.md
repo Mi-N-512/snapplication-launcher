@@ -1,5 +1,16 @@
 # Changes
 
+## 1.1 "User experience" — 19 November 2026
+
+Fixes from daily driving 1.0.
+
+### Added
+
+- Android settings tab in Settings, below Setup & help and set apart from the launcher's own categories. It opens Android's display, sound, Bluetooth, accessibility, notification access, default Home app, app info and developer options pages, plus device diagnostics.
+- Quiet while watching or reading: priority-only Do Not Disturb turns on while a video plays or a book is open and turns off a few seconds after you stop. Alarms still ring, and a Do Not Disturb you set yourself is left alone. It uses the media access you already granted and is on by default.
+- HW overlay reminder on Watch Home in TV and Universal modes. Android turns "Disable HW overlays" off on every restart, so after a restart a reminder appears on the left, opposite Repair previews. Tapping it turns the switch back on through remote support and returns Home; holding it hides it until the next restart. It can be turned off in Settings.
+- Remote diagnostics in Remote & macros and Status & repair. It logs each remote press with what happened to it: run, passed to Android, held back by a text field, unassigned because the remote reconnected with a new identity, or dropped because remote support had stopped. A health check and Copy log button are included.
+
 ## 1.0 — 30 October 2026
 
 First public release.

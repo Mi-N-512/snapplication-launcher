@@ -64,6 +64,118 @@ class RemoteActionService : AccessibilityService() {
         handler.postDelayed({ updateForeground() }, 8100)
     }
 
+    private var hwOverlayGeneration = 0
+
+    /*
+    Opens Developer options, finds "Disable HW overlays" (scrolling the list as needed) and turns it
+    on, then returns to the launcher. It never turns the switch off: if it is already on, nothing is
+    pressed. Only that one row is touched; if it cannot be found the page is left open for the user.
+    */
+    fun disableHwOverlays() {
+        val generation = ++hwOverlayGeneration
+        val opened = runCatching {
+            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        }.isSuccess
+        if (!opened) { message("Developer options could not be opened on this device."); return }
+        handler.postDelayed({ findHwOverlayRow(generation, 0) }, 700)
+    }
+
+    private fun hwOverlaysDone(text: String) {
+        HwOverlayReminder.markSet(this)
+        message(text)
+        startActivity(Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+    }
+
+    private fun findHwOverlayRow(generation: Int, attempt: Int) {
+        if (generation != hwOverlayGeneration) return
+        val root = rootInActiveWindow
+        if (root == null || root.packageName?.toString() == packageName) {
+            root?.recycle()
+            if (attempt < 12) handler.postDelayed({ findHwOverlayRow(generation, attempt + 1) }, 300)
+            else message("Developer options did not open. Turn on \"Disable HW overlays\" there yourself.")
+            return
+        }
+        try {
+            val label = listOf("Disable HW overlays", "HW overlays", "hardware overlays", "HW overlay")
+                .firstNotNullOfOrNull { text -> root.findAccessibilityNodeInfosByText(text).firstOrNull { it.isVisibleToUser } }
+            if (label != null) {
+                // Huawei/EMUI rows are not clickable; only the Switch inside the row is. Climb to the
+                // smallest ancestor that holds a switch and use that switch.
+                var row: AccessibilityNodeInfo? = label
+                var toggle: AccessibilityNodeInfo? = null
+                var levels = 0
+                while (row != null && levels++ < 5) {
+                    // Never search the whole list: that could press another row's switch.
+                    if (row.isScrollable) break
+                    toggle = checkableNode(row)
+                    if (toggle != null) break
+                    row = row.parent
+                }
+                if (toggle?.isChecked == true) {
+                    hwOverlaysDone("HW overlays are already disabled until the next restart.")
+                    return
+                }
+                val target = toggle ?: run {
+                    var clickable: AccessibilityNodeInfo? = label
+                    while (clickable != null && !clickable.isClickable) clickable = clickable.parent
+                    clickable
+                }
+                if (target == null || !target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    message("Found \"Disable HW overlays\" but Android refused the tap. Turn it on yourself.")
+                    return
+                }
+                handler.postDelayed({
+                    if (generation != hwOverlayGeneration) return@postDelayed
+                    runCatching { target.refresh() }
+                    when (runCatching { checkedState(target) }.getOrNull()) {
+                        false -> message("\"Disable HW overlays\" did not turn on. Developer options is open for you to switch it.")
+                        else -> hwOverlaysDone("HW overlays disabled until the next restart.")
+                    }
+                }, 500)
+                return
+            }
+            val list = firstScrollable(root)
+            if (list != null && attempt < 45 && list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+                handler.postDelayed({ findHwOverlayRow(generation, attempt + 1) }, 250)
+            } else message("Could not find \"Disable HW overlays\". Developer options is open for you to switch it.")
+        } finally { root.recycle() }
+    }
+
+    // Finds the switch or checkbox inside a settings row.
+    private fun checkableNode(node: AccessibilityNodeInfo, depth: Int = 0): AccessibilityNodeInfo? {
+        if (node.isCheckable) return node
+        if (depth > 6) return null
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            checkableNode(child, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    // Reads the checked state of the row's switch or checkbox, if Android exposes one.
+    private fun checkedState(node: AccessibilityNodeInfo, depth: Int = 0): Boolean? {
+        if (node.isCheckable) return node.isChecked
+        if (depth > 6) return null
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            checkedState(child, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    private fun firstScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        var visited = 0
+        while (queue.isNotEmpty() && visited++ < 400) {
+            val node = queue.removeFirst()
+            if (node.isScrollable && node.isVisibleToUser) return node
+            for (index in 0 until node.childCount) node.getChild(index)?.let(queue::add)
+        }
+        return null
+    }
+
     // Releases the launch orientation immediately when its setting is disabled.
     fun cancelLandscape() { landscapeLaunch.clear() }
     // Avoids rotating a retained player when the launcher explicitly uses the same landscape
@@ -147,6 +259,7 @@ class RemoteActionService : AccessibilityService() {
     // settings/XML.
     override fun onServiceConnected() {
         instance = this
+        RemoteDiagnostics.service(this, "Remote support connected")
         updateForeground()
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             readingSnapshots = ReadingSnapshots(this)
@@ -468,37 +581,66 @@ class RemoteActionService : AccessibilityService() {
     // through.
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (BuildConfig.FLAVOR == "ereader") return false
+        val src = "Remote support"
         if (event.action == KeyEvent.ACTION_UP && controls.hasHeldAssignment(event)) {
             controls.assignment(event) { false }
             return true
         }
-        if (!RemoteInputPolicy.handleInService(RemoteControls.learning, RemoteControls.launcherHasFocus())) return false
-        val device = event.device ?: return false
+        if (!RemoteInputPolicy.handleInService(RemoteControls.learning, RemoteControls.launcherHasFocus())) {
+            RemoteDiagnostics.record(this, src, event, null,
+                if (RemoteControls.learning) "Passed on: a button is being learned" else "Passed to the launcher window (it has focus)")
+            return false
+        }
+        val device = event.device ?: run {
+            RemoteDiagnostics.record(this, src, event, null, "Ignored: Android gave no input device for this press")
+            return false
+        }
         // Learned hybrid remotes can report mouse sources for their buttons; the saved
         // descriptor/key
         // is the authority. Avoid a full window-tree scan here: Android's key-filter deadline is
         // short.
-        if (device.isVirtual || event.keyCode in setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)) return false
+        if (device.isVirtual || event.keyCode in setOf(KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_UNKNOWN)) {
+            RemoteDiagnostics.record(this, src, event, null,
+                if (device.isVirtual) "Ignored: virtual (software) key, not a physical remote" else "Left to Android: reserved system key")
+            return false
+        }
         // Native arrows/OK must still reach dialogs whose controls Android does not expose to
         // accessibility.
-        if (event.keyCode in setOf(19, 20, 21, 22, 23, 66) &&
-            RemoteInputPolicy.nativeNavigation(controls.action(event), event.keyCode)) return false
+        if (event.keyCode in setOf(19, 20, 21, 22, 23, 66)) {
+            val native = controls.action(event)
+            if (RemoteInputPolicy.nativeNavigation(native, event.keyCode)) {
+                RemoteDiagnostics.record(this, src, event, native, "Left to Android: native navigation for the app on screen ($currentPackage)")
+                return false
+            }
+        }
         // Only text-sensitive shortcuts need a cross-process focus read. Navigation, locking,
         // unmapped keys and latched repeats/releases must not wait for another app's window tree.
+        var editing = false
         val action = controls.assignment(event) {
             val root = rootInActiveWindow
-            try {
+            val result = try {
                 root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { focused ->
                     try { focused.isEditable || focused.isPassword } finally { focused.recycle() }
                 } ?: false
             } finally { root?.recycle() }
+            editing = result
+            result
         }
         if (action == null) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                val saved = controls.action(event)
+                RemoteDiagnostics.record(this, src, event, saved, when {
+                    saved != null && editing -> "Blocked: a text field has focus, so this shortcut was held back"
+                    saved != null -> "Not run: assignment was not permitted on this screen"
+                    else -> "Not assigned for this device. If it used to work, the remote may have reconnected with a new identity: assign the button again"
+                })
+            }
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && event.keyCode == KeyEvent.KEYCODE_BACK) recordNavigation("back")
             return false
         }
         if (BuildConfig.DEBUG && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)
             android.util.Log.d("SnappRemote", "Mapped ${KeyEvent.keyCodeToString(event.keyCode)} to $action")
+        RemoteDiagnostics.record(this, src, event, action, "Accepted in ${currentPackage ?: "unknown app"}")
         if ((event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) ||
             (event.action == KeyEvent.ACTION_UP && event.keyCode == KeyEvent.KEYCODE_BACK && !event.isCanceled)) performMappedAction(action)
         return true
@@ -510,12 +652,14 @@ class RemoteActionService : AccessibilityService() {
         if (BuildConfig.FLAVOR == "ereader") return
         when (action) {
             "Home" -> { recordNavigation("home"); openRecordedApp(packageName) }
-            "Back" -> { recordNavigation("back"); if (!performGlobalAction(GLOBAL_ACTION_BACK)) message("Android could not go back on this screen.") }
+            "Back" -> { recordNavigation("back"); if (!performGlobalAction(GLOBAL_ACTION_BACK)) { RemoteDiagnostics.note(this, "Remote support", "Back failed: Android refused the action"); message("Android could not go back on this screen.") } }
             "Record/stop macro" -> toggleRecording()
             "Stop action" -> finishReplay("Action stopped")
             "Screen off" -> {
-                if (android.os.Build.VERSION.SDK_INT < 28 || !performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN))
+                if (android.os.Build.VERSION.SDK_INT < 28 || !performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)) {
+                    RemoteDiagnostics.note(this, "Remote support", "Screen off failed: Android refused to lock")
                     message("Android could not lock the screen on this device.")
+                }
             }
             "Apps" -> startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra("openApps", true))
@@ -532,18 +676,28 @@ class RemoteActionService : AccessibilityService() {
     // Moves accessibility/native focus where the target app exposes it; Select clicks the focused
     // node.
     private fun moveFocus(action: String) {
-        val root = rootInActiveWindow ?: return
+        val root = rootInActiveWindow ?: run {
+            RemoteDiagnostics.note(this, "Remote support", "$action had no effect: the app on screen exposes no window to accessibility")
+            return
+        }
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
         try {
-            if (action == "Select") { focused?.performAction(AccessibilityNodeInfo.ACTION_CLICK); return }
+            if (action == "Select") {
+                if (focused?.performAction(AccessibilityNodeInfo.ACTION_CLICK) != true)
+                    RemoteDiagnostics.note(this, "Remote support", "Select had no effect: nothing focused or the item refused the click")
+                return
+            }
             val direction = when (action) {
                 "Up" -> View.FOCUS_UP
                 "Down" -> View.FOCUS_DOWN
                 "Left" -> View.FOCUS_LEFT
                 else -> View.FOCUS_RIGHT
             }
-            val next = (focused ?: root).focusSearch(direction) ?: return
+            val next = (focused ?: root).focusSearch(direction) ?: run {
+                RemoteDiagnostics.note(this, "Remote support", "$action had no effect: no focusable item in that direction")
+                return
+            }
             try {
                 if (!next.performAction(AccessibilityNodeInfo.ACTION_FOCUS)) next.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
             } finally { next.recycle() }
@@ -1155,11 +1309,15 @@ class RemoteActionService : AccessibilityService() {
     changes. Actual service shutdown still cancels all work through onUnbind/onDestroy.
     */
     override fun onInterrupt() {
+        RemoteDiagnostics.service(this, "Remote support interrupted by Android")
         if (BuildConfig.DEBUG) android.util.Log.d("SnappMacro", "Accessibility interrupt")
     }
 
     // Releases overlays and capture identity when the user disables this accessibility service.
-    override fun onUnbind(intent: Intent?): Boolean { cleanUp(); instance = null; return super.onUnbind(intent) }
+    override fun onUnbind(intent: Intent?): Boolean {
+        RemoteDiagnostics.service(this, "Remote support disconnected (turned off or stopped by Android)")
+        cleanUp(); instance = null; return super.onUnbind(intent)
+    }
 
     // Releases the same resources when Android destroys the service process normally.
     override fun onDestroy() {
